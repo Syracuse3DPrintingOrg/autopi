@@ -8,6 +8,14 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Fixed
 
+- **Changing keys no longer wedges the Stream Deck.** The controller only
+  caught network errors, so a transient USB write failure while repainting the
+  new layout crashed the process, and systemd relaunched it straight back into
+  the same crash, which is why a manual restart did not recover it. The loop now
+  never exits on a deck or paint error: it re-opens the deck in-process (like
+  the source project), paints defensively per key, and its service never gives
+  up after a burst of restarts.
+
 - **Updating a device now actually applies host-side fixes.** The OTA updater
   overwrote itself but kept running the old copy, so changes to the updater (like
   GPIO passthrough) never took effect on the update that shipped them. It now

@@ -43,6 +43,9 @@ cat > /etc/systemd/system/autopi-streamdeck.service <<EOF
 Description=AutoPi Stream Deck controller
 After=network-online.target docker.service
 Wants=network-online.target
+# The controller recovers a lost deck in-process, so never let systemd's start
+# limit give up on it after a burst of early-boot restarts.
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
