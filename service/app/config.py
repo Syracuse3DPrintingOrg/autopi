@@ -13,7 +13,7 @@ from typing import Any
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 APP_NAME = "AutoPi"
-APP_VERSION = "0.1.3"
+APP_VERSION = "0.1.4"
 
 # Where the setup page writes persisted settings and where state files live.
 _DEFAULT_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -23,6 +23,8 @@ _SAVEABLE = (
     "theme_mode",
     "kiosk_enabled",
     "start_page_enabled",
+    "streamdeck_enabled",
+    "deck_model",
     "deck_rotation",
     "deck_brightness",
     "require_pin",
@@ -45,6 +47,10 @@ class Settings(BaseSettings):
     kiosk_enabled: bool = False
 
     # Stream Deck
+    streamdeck_enabled: bool = False
+    # Key count of the configured deck model: 6 (Mini), 15 (MK.2), or 32 (XL).
+    # Drives the editor grid when no deck reports a live count.
+    deck_model: int = 15
     deck_rotation: int = 0
     deck_brightness: int = 60
 

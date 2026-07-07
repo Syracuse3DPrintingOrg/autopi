@@ -8,6 +8,13 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **Visual Stream Deck and Start Page editor.** Drag keys from a categorized
+  library onto a deck-shaped grid. The grid scales to the selected model (Mini
+  6, MK.2 15, XL 32) or, when a Stream Deck is plugged in and its controller is
+  running, to the real deck automatically. Rotation reshapes the grid, and a
+  layout longer than the deck paginates with a wrapping "More" key. Set the
+  model, rotation, and brightness, then save the deck settings and both layouts
+  at once. A connected badge shows which deck reported in.
 - **A real interface, matching the look and feel it was spun out from.** The
   start menu, layout editor, and settings now use the same Bootstrap dark theme
   and icons, with a blue accent. The settings page is a sectioned menu

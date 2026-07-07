@@ -35,6 +35,16 @@ def paging_for(count: int):
     return deck_layout
 
 
+def _report_status(client: httpx.Client, connected: bool, key_count: int = 0,
+                   deck_type: str = "") -> None:
+    """Publish deck presence to the app so the editor can scale to the real deck."""
+    try:
+        client.post("/streamdeck/status", json={
+            "connected": connected, "key_count": key_count, "deck_type": deck_type})
+    except httpx.HTTPError:
+        pass
+
+
 def fetch_layout(client: httpx.Client, cfg: Config):
     """Return (ordered action ids, {id: action dict}) from the app."""
     layout = client.get(f"/layout/{cfg.surface}").json().get("slots", [])
@@ -51,18 +61,20 @@ def run(cfg: Config) -> int:
         log.error("The streamdeck driver is not installed; cannot open a deck.")
         return 2
 
+    client = httpx.Client(base_url=cfg.base_url, timeout=10)
     decks = DeviceManager().enumerate()
     if not decks:
         log.error("No Stream Deck found.")
+        _report_status(client, connected=False)
         return 1
     deck = decks[0]
     deck.open()
     deck.reset()
     deck.set_brightness(cfg.brightness)
     log.info("Opened %s (%d keys)", deck.deck_type(), deck.key_count())
+    _report_status(client, connected=True, key_count=deck.key_count(), deck_type=deck.deck_type())
 
     deck_layout = paging_for(deck.key_count())
-    client = httpx.Client(base_url=cfg.base_url, timeout=10)
     state = {"page": 0}
 
     def on_press(_deck, key, pressed):
@@ -91,6 +103,8 @@ def run(cfg: Config) -> int:
     try:
         while True:
             try:
+                _report_status(client, connected=True, key_count=deck.key_count(),
+                               deck_type=deck.deck_type())
                 layout, catalog = fetch_layout(client, cfg)
                 pages = deck_layout.build_pages(layout, deck.key_count())
                 state["pages"] = pages

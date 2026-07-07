@@ -2,46 +2,107 @@
 {% block title %}Layout editor: {{ app_name }}{% endblock %}
 {% block head %}
 <style>
-  .palette-chip, .slot { border-radius: 0.5rem; padding: 0.5rem 0.7rem; color: #fff;
-    cursor: grab; user-select: none; display: flex; align-items: center; gap: 0.4rem; }
-  .palette-chip { margin-bottom: 0.5rem; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 0.6rem;
-    padding: 0.6rem; background: var(--bs-tertiary-bg); border: 1px dashed var(--bs-border-color); border-radius: 0.6rem; }
-  .slot { min-height: 3rem; justify-content: center; text-align: center; border: 1px solid var(--bs-border-color);
-    background: var(--bs-secondary-bg); font-size: 0.85rem; }
-  .slot.blank { color: var(--bs-secondary-color); font-style: italic; background: transparent; border-style: dashed; }
-  .slot.drag-over { outline: 2px solid var(--bs-primary); }
+  .editor-card { background: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color);
+    border-radius: 0.75rem; padding: 1.5rem; }
+  .surface-toggle .btn { min-width: 8rem; }
+  .deck-grid { display: grid; gap: 0.6rem; }
+  .deck-key { position: relative; aspect-ratio: 1 / 1; border-radius: 0.6rem; color: #fff;
+    border: 2px solid rgba(255,255,255,0.15); display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 0.2rem; cursor: grab; user-select: none;
+    overflow: hidden; text-align: center; padding: 0.3rem; }
+  .deck-key .bi { font-size: 1.6rem; line-height: 1; }
+  .deck-key .k-lbl { font-size: 0.72rem; font-weight: 600; line-height: 1.05; }
+  .deck-key .k-num { position: absolute; top: 2px; right: 5px; font-size: 0.62rem; opacity: 0.7; }
+  .deck-key.blank { background: transparent !important; border-style: dashed; color: var(--bs-secondary-color); cursor: default; }
+  .deck-key.more { background: #334155 !important; cursor: default; opacity: 0.9; }
+  .deck-key.drag-over { outline: 2px solid var(--bs-primary); outline-offset: -2px; }
+  .pal-group { margin-bottom: 0.75rem; }
+  .pal-head { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.4px;
+    color: var(--bs-secondary-color); font-weight: 700; margin-bottom: 0.25rem; }
+  .pal-row { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+  .pal-chip { display: inline-flex; align-items: center; gap: 0.3rem; border-radius: 0.4rem;
+    padding: 0.25rem 0.55rem; color: #fff; font-size: 0.8rem; cursor: grab; user-select: none;
+    border: 1px solid rgba(255,255,255,0.12); }
+  .conn-badge.on { color: var(--bs-success); }
+  .conn-badge.off { color: var(--bs-secondary-color); }
 </style>
 {% endblock %}
 {% block body %}
 <div class="container-fluid">
-  <div class="row g-3">
-    <div class="col-md-3">
-      <h6 class="text-uppercase text-secondary small">Actions</h6>
-      <p class="small text-secondary">Drag an action onto a slot. Drag "Blank" to clear a slot.</p>
-      <div class="palette-chip" style="background:#475569" draggable="true" data-action="blank">
-        <i class="bi bi-eraser"></i>Blank
-      </div>
-      <div id="palette"></div>
+  <div class="d-flex align-items-center gap-2 mb-3 surface-toggle">
+    <div class="btn-group" role="group">
+      <button class="btn btn-primary" data-surface-btn="streamdeck"><i class="bi bi-usb-symbol me-1"></i>Stream Deck</button>
+      <button class="btn btn-outline-primary" data-surface-btn="start"><i class="bi bi-grid-3x3-gap me-1"></i>Start Page</button>
     </div>
-    <div class="col-md-9">
-      {% for surface in surfaces.keys() %}
-      <div class="mb-4" data-surface="{{ surface }}">
-        <div class="d-flex align-items-center gap-2 mb-2">
-          <h6 class="text-capitalize mb-0">{{ surface }}</h6>
-          <button class="btn btn-sm btn-primary" data-save="{{ surface }}">Save</button>
+    <span id="conn-badge" class="conn-badge off ms-2 small"><i class="bi bi-plug me-1"></i>No deck reported</span>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-8">
+      <div class="editor-card">
+        <div class="d-flex align-items-center gap-2 mb-3">
+          <i class="bi bi-grid-3x3-gap-fill" style="font-size:1.2rem"></i>
+          <h5 class="mb-0" id="editor-title">Stream Deck Device</h5>
         </div>
-        <div class="grid" id="grid-{{ surface }}"></div>
+
+        <div class="form-check form-switch mb-3" id="enabled-wrap">
+          <input class="form-check-input" type="checkbox" id="sd-enabled">
+          <label class="form-check-label" for="sd-enabled">Stream Deck connected to this device</label>
+        </div>
+
+        <div class="d-flex gap-2 mb-3">
+          <button class="btn btn-primary btn-sm" id="save-btn"><i class="bi bi-check-lg me-1"></i>Save settings</button>
+          <button class="btn btn-outline-secondary btn-sm" id="restart-btn"><i class="bi bi-arrow-clockwise me-1"></i>Restart service</button>
+          <span id="save-status" class="small align-self-center"></span>
+        </div>
+
+        <div class="row g-3 mb-3" id="deck-controls">
+          <div class="col-sm-5">
+            <label class="form-label small mb-1">Model</label>
+            <select class="form-select form-select-sm" id="sd-model">
+              <option value="6">6 keys (Stream Deck Mini)</option>
+              <option value="15">15 keys (Stream Deck MK.2 / Classic)</option>
+              <option value="32">32 keys (Stream Deck XL)</option>
+            </select>
+          </div>
+          <div class="col-sm-4">
+            <label class="form-label small mb-1">Rotation</label>
+            <select class="form-select form-select-sm" id="sd-rotation">
+              <option value="0">0&deg;</option>
+              <option value="90">90&deg; (Clockwise)</option>
+              <option value="180">180&deg;</option>
+              <option value="270">270&deg; (Counter-clockwise)</option>
+            </select>
+          </div>
+          <div class="col-sm-3">
+            <label class="form-label small mb-1">Brightness (5-100)</label>
+            <input type="number" class="form-control form-control-sm" id="sd-brightness" min="5" max="100">
+          </div>
+        </div>
+
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <i class="bi bi-grid-1x2"></i><span class="fw-semibold">Key layout</span>
+          <div class="btn-group btn-group-sm ms-2">
+            <button class="btn btn-outline-secondary" id="page-prev"><i class="bi bi-chevron-left"></i></button>
+            <button class="btn btn-outline-secondary disabled" id="page-label" tabindex="-1">Page 1 of 1</button>
+            <button class="btn btn-outline-secondary" id="page-next"><i class="bi bi-chevron-right"></i></button>
+          </div>
+          <button class="btn btn-outline-secondary btn-sm" id="add-page"><i class="bi bi-plus me-1"></i>Add page</button>
+        </div>
+        <div class="deck-grid" id="deck-grid"></div>
       </div>
-      {% endfor %}
+    </div>
+
+    <div class="col-lg-4">
+      <div class="editor-card">
+        <div class="fw-semibold mb-2"><i class="bi bi-collection me-1"></i>Key library</div>
+        <p class="small text-secondary mb-3">Drag a key onto a slot. Drag "Blank" to clear a slot.</p>
+        <div id="palette"></div>
+      </div>
     </div>
   </div>
 </div>
 {% endblock %}
 {% block scripts %}
-<script>
-  window.__ACTIONS__ = {{ actions | tojson }};
-  window.__SURFACES__ = {{ surfaces | tojson }};
-</script>
-<script src="static/js/layout-editor.js"></script>
+<script src="static/js/deck-editor.js"></script>
 {% endblock %}

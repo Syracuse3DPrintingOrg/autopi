@@ -13,9 +13,6 @@ from ..templating import templates, theme_context
 
 router = APIRouter(tags=["ui"])
 
-# Builtin ids that only do something on a physical Stream Deck.
-_DECK_ONLY = {"page_next", "page_prev"}
-
 
 def _render_slots(surface: str):
     """Turn a surface layout into template-ready key dicts."""
@@ -32,7 +29,7 @@ def _render_slots(surface: str):
             "icon": spec.icon or "bi-lightning-charge",
             "color": spec.color or "#334155",
         }
-        common["kind"] = "deckonly" if spec.id in _DECK_ONLY else "action"
+        common["kind"] = "deckonly" if spec.deck_only else "action"
         keys.append(common)
     return keys
 
@@ -64,8 +61,6 @@ def start_page(request: Request):
 
 @router.get("/layout-editor", response_class=HTMLResponse)
 def layout_editor(request: Request):
-    return templates.TemplateResponse(request, "layout_editor.html", theme_context(
-        request,
-        actions=[s.to_dict() for s in registry.all_actions().values()],
-        surfaces=layout_svc.get_all(),
-    ))
+    # The editor loads actions, layout, and deck status over the API itself.
+    return templates.TemplateResponse(request, "layout_editor.html",
+                                      theme_context(request))

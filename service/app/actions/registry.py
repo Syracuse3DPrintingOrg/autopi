@@ -33,8 +33,13 @@ class ActionSpec:
     params: dict[str, Any] = field(default_factory=dict)
     icon: str = "bi-lightning-charge"   # a Bootstrap Icons name
     color: str = "#334155"
+    # Palette grouping in the layout editor (e.g. "Actions", "System").
+    category: str = "Actions"
     # For driver == "macro": ordered list of action ids to run.
     members: list[str] = field(default_factory=list)
+    # True for keys that only do something on a physical Stream Deck (paging,
+    # brightness, screen power); the start menu shows them but hints instead.
+    deck_only: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -46,13 +51,21 @@ class ActionSpec:
 
 
 # Builtin surface controls. These are always available and cannot be deleted.
-# "driver": "builtin" is handled directly by run().
+# "driver": "builtin" is handled directly by run(). Most only do something on a
+# connected deck (deck_only), so the start menu shows them but hints on press.
+def _b(id, label, op, icon, color, category, deck_only=True):
+    return ActionSpec(id=id, label=label, driver="builtin", params={"op": op},
+                      icon=icon, color=color, category=category, deck_only=deck_only)
+
+
 BUILTINS: dict[str, ActionSpec] = {
-    "page_next": ActionSpec("page_next", "More", "builtin", {"op": "page_next"},
-                            "bi-arrow-right-circle", "#1f2937"),
-    "page_prev": ActionSpec("page_prev", "Back", "builtin", {"op": "page_prev"},
-                            "bi-arrow-left-circle", "#1f2937"),
-    "blank": ActionSpec("blank", "", "builtin", {"op": "blank"}, "", "#111827"),
+    "page_prev": _b("page_prev", "Back", "page_prev", "bi-chevron-left", "#1f2937", "Navigation"),
+    "page_next": _b("page_next", "More", "page_next", "bi-chevron-right", "#1f2937", "Navigation"),
+    "brightness": _b("brightness", "Bright", "brightness", "bi-brightness-high", "#b45309", "System"),
+    "screen_off": _b("screen_off", "Screen Off", "screen_off", "bi-display", "#334155", "System"),
+    "screen_on": _b("screen_on", "Screen On", "screen_on", "bi-display-fill", "#166534", "System"),
+    "clock": _b("clock", "Clock", "clock", "bi-clock", "#4338ca", "Info"),
+    "blank": ActionSpec("blank", "", "builtin", {"op": "blank"}, "", "#111827", category="Other"),
 }
 
 

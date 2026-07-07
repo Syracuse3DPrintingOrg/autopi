@@ -11,21 +11,22 @@ from ..actions.registry import ActionSpec, save_user_actions, user_actions
 from ..config import settings
 from ..services import layout as layout_svc
 
-# id, label, driver, params, icon, color
+# id, label, driver, params, icon, color, category
 _DEMO = [
-    ("lamp", "Lamp", "gpio", {"pin": 17, "mode": "toggle"}, "bi-lightbulb", "#b45309"),
-    ("fan", "Fan", "gpio", {"pin": 27, "mode": "toggle"}, "bi-fan", "#0e7490"),
-    ("door", "Door", "gpio", {"pin": 22, "mode": "pulse", "pulse_ms": 400}, "bi-door-open", "#7c3aed"),
-    ("ping", "Ping", "shell", {"command": "ping -c 1 1.1.1.1"}, "bi-broadcast-pin", "#334155"),
+    ("lamp", "Lamp", "gpio", {"pin": 17, "mode": "toggle"}, "bi-lightbulb", "#b45309", "Lights"),
+    ("fan", "Fan", "gpio", {"pin": 27, "mode": "toggle"}, "bi-fan", "#0e7490", "Lights"),
+    ("door", "Door", "gpio", {"pin": 22, "mode": "pulse", "pulse_ms": 400}, "bi-door-open", "#7c3aed", "Access"),
+    ("ping", "Ping", "shell", {"command": "ping -c 1 1.1.1.1"}, "bi-broadcast-pin", "#334155", "Network"),
     ("status", "Status", "http", {"method": "GET", "url": "http://127.0.0.1:9284/health"},
-     "bi-activity", "#166534"),
+     "bi-activity", "#166534", "Network"),
     ("webhook", "Webhook", "http", {"method": "POST", "url": "http://127.0.0.1:9284/health"},
-     "bi-cloud-arrow-up", "#1d4ed8"),
+     "bi-cloud-arrow-up", "#1d4ed8", "Network"),
 ]
 
 # A macro that fires two of the demo actions in order.
 _MACRO = ActionSpec(id="all-on", label="All on", driver="macro",
-                    members=["lamp", "fan"], icon="bi-collection", color="#be123c")
+                    members=["lamp", "fan"], icon="bi-collection", color="#be123c",
+                    category="Macros")
 
 
 def seed_if_empty() -> bool:
@@ -35,8 +36,8 @@ def seed_if_empty() -> bool:
     if actions_path.exists() or layout_path.exists() or user_actions():
         return False
 
-    specs = [ActionSpec(id=i, label=l, driver=d, params=p, icon=ic, color=c)
-             for (i, l, d, p, ic, c) in _DEMO]
+    specs = [ActionSpec(id=i, label=l, driver=d, params=p, icon=ic, color=c, category=cat)
+             for (i, l, d, p, ic, c, cat) in _DEMO]
     specs.append(_MACRO)
     save_user_actions(specs)
 
