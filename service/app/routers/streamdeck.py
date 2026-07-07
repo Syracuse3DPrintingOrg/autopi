@@ -1,13 +1,17 @@
 """Stream Deck status and control.
 
 The controller process (which owns the USB device) POSTs its live status here so
-the editor can scale the grid to the real deck and show a connected badge. When
-no controller has reported recently, the editor falls back to the selected deck
-model. ``restart`` best-effort bounces the systemd service on a Pi appliance.
+the editor can scale the grid to the real deck and show a connected badge. It
+also GETs this endpoint each poll to pull the desired rotation and brightness
+(set in the web editor) and to see a restart request, so config changes take
+effect live and a restart needs no host privileges.
+
+The app runs in a container and cannot restart the host systemd service
+directly, so "restart" is a flag the controller reads: it exits on request and
+systemd relaunches it. When no controller is running, the flag simply waits.
 """
 from __future__ import annotations
 
-import subprocess
 import time
 
 from fastapi import APIRouter
@@ -25,7 +29,7 @@ _FRESH_SECONDS = 30
 
 def _store() -> StateFile:
     return StateFile(settings.data_dir / "streamdeck-status.json",
-                     default={"connected": False, "key_count": 0, "ts": 0})
+                     default={"connected": False, "key_count": 0, "ts": 0, "restart_ts": 0})
 
 
 class StatusIn(BaseModel):
@@ -37,15 +41,18 @@ class StatusIn(BaseModel):
 @router.post("/status")
 def report_status(body: StatusIn):
     """Called by the controller to publish that a deck is (or is not) attached."""
-    _store().write({"connected": bool(body.connected), "key_count": int(body.key_count),
-                    "deck_type": body.deck_type, "ts": time.time()})
+    store = _store()
+    doc = store.read()
+    doc.update({"connected": bool(body.connected), "key_count": int(body.key_count),
+                "deck_type": body.deck_type, "ts": time.time()})
+    store.write(doc)
     return {"ok": True}
 
 
 @router.get("/status")
 def get_status():
-    """Resolve the grid the editor should draw: the live deck if one reported
-    recently, otherwise the configured model."""
+    """Resolve the grid the editor should draw and the settings the controller
+    should apply: the live deck if one reported recently, otherwise the model."""
     doc = _store().read()
     live = bool(doc.get("connected")) and (time.time() - doc.get("ts", 0)) < _FRESH_SECONDS
     model = settings.deck_model if settings.deck_model in deck_layout.GRID else 15
@@ -61,15 +68,19 @@ def get_status():
         "brightness": settings.deck_brightness,
         "enabled": settings.streamdeck_enabled,
         "supported": list(deck_layout.supported_key_counts()),
+        "restart_ts": doc.get("restart_ts", 0),
     }
 
 
 @router.post("/restart")
-def restart_service():
-    """Bounce the controller service (Pi appliance). No-op elsewhere."""
-    try:
-        subprocess.run(["systemctl", "restart", "autopi-streamdeck.service"],
-                       capture_output=True, timeout=10, check=True)
-        return {"ok": True, "message": "Stream Deck service restarted"}
-    except (FileNotFoundError, subprocess.SubprocessError):
-        return {"ok": False, "message": "No Stream Deck service on this host"}
+def restart_controller():
+    """Ask the controller to reconnect. It reads this flag on its next poll and
+    exits so systemd relaunches it, which re-applies rotation and repaints."""
+    store = _store()
+    doc = store.read()
+    doc["restart_ts"] = time.time()
+    store.write(doc)
+    live = bool(doc.get("connected")) and (time.time() - doc.get("ts", 0)) < _FRESH_SECONDS
+    if live:
+        return {"ok": True, "message": "Reconnecting the Stream Deck…"}
+    return {"ok": True, "message": "Restart requested; it applies when the deck controller is running"}

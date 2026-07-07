@@ -6,6 +6,16 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Stream Deck rotation, brightness, and Restart now work from the web
+  editor.** The app runs in a container and cannot restart the host service, so
+  Restart used to report "No Stream Deck service on this host." The controller
+  now pulls the rotation and brightness you set in the editor on each check and
+  applies them to a live deck without a restart, and Restart is a request the
+  controller honors by reconnecting itself. When a deck is connected, Restart
+  reports "Reconnecting the Stream Deck."
+
 ### Added
 
 - **Visual Stream Deck and Start Page editor.** Drag keys from a categorized
