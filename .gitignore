@@ -11,3 +11,8 @@ service/data/logs/
 .ruff_cache/
 node_modules/
 *.log
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key

@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "AutoPi",
+  "project_id": "09563e43-52d8-4e03-ae16-546cd01c4975"
+}
