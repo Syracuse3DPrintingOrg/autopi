@@ -1,5 +1,25 @@
-/* Minimal base styles shared across pages. Per-page layout lives in each
-   template's <style> block for now; a fuller theme system is a follow-on. */
-* { box-sizing: border-box; }
-body { font-family: system-ui, -apple-system, sans-serif; }
-a { color: #38bdf8; }
+/* AutoPi accent on top of the vendored Bootstrap dark theme. Keeps the same
+   Bootstrap 5 dark chrome the source project uses, with a distinct accent so
+   the app reads as AutoPi rather than the pink food brand. */
+:root {
+  --autopi-accent: #3b82f6;
+  --autopi-accent-rgb: 59, 130, 246;
+}
+[data-bs-theme="dark"] {
+  --bs-primary: var(--autopi-accent);
+  --bs-primary-rgb: var(--autopi-accent-rgb);
+  --bs-link-color: #8ab4ff;
+  --bs-link-hover-color: #a9c7ff;
+}
+.btn-primary {
+  --bs-btn-bg: var(--autopi-accent);
+  --bs-btn-border-color: var(--autopi-accent);
+  --bs-btn-hover-bg: #2f6fe0;
+  --bs-btn-hover-border-color: #2f6fe0;
+}
+.nav-pills .nav-link.active, .side-menu .nav-link.active {
+  background-color: var(--autopi-accent) !important;
+  color: #fff !important;
+}
+.brand-mark { font-weight: 700; letter-spacing: -0.5px; }
+.brand-mark .bi { color: var(--autopi-accent); }

@@ -1,66 +1,263 @@
-{% extends "base.html" %}
-{% block title %}Settings: {{ app_name }}{% endblock %}
-{% block head %}
-<style>
-  body { margin: 0; background: #0b0f17; color: #e5e7eb; font-family: system-ui, sans-serif; }
-  .wrap { max-width: 640px; margin: 0 auto; padding: 2rem 1.5rem; }
-  h1 { font-size: 1.3rem; }
-  a { color: #38bdf8; }
-  fieldset { border: 1px solid #1f2937; border-radius: 0.6rem; margin: 1.2rem 0; padding: 1rem 1.2rem; }
-  legend { padding: 0 0.5rem; color: #94a3b8; text-transform: uppercase; font-size: 0.8rem; letter-spacing: 0.05em; }
-  label { display: block; margin: 0.7rem 0 0.2rem; }
-  input, select { background: #111827; color: #fff; border: 1px solid #334155; border-radius: 0.4rem;
-    padding: 0.4rem 0.6rem; min-width: 8rem; }
-  button { background: #2563eb; color: #fff; border: 0; border-radius: 0.4rem; padding: 0.5rem 1.1rem;
-    cursor: pointer; margin-top: 1rem; }
-  .row { display: flex; align-items: center; gap: 0.6rem; }
-  #status { margin-left: 1rem; color: #4ade80; }
-</style>
-{% endblock %}
-{% block body %}
-<div class="wrap">
-  <h1>{{ app_name }} settings</h1>
-  <p><a href="/layout-editor">Layout editor</a> &middot; <a href="/start">Start menu</a>
-    &middot; v{{ app_version }}</p>
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="{{ theme_mode }}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <base href="/">
+  <title>Settings: {{ app_name }}</title>
+  <link href="static/vendor/bootstrap.min.css" rel="stylesheet">
+  <link href="static/vendor/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="static/css/app.css" rel="stylesheet">
+  <link rel="icon" type="image/svg+xml" href="static/icons/favicon.svg">
+  <style>
+    .setup-wrap { max-width: 1240px; margin: 1.5rem auto; padding: 0 1rem 4rem; }
+    .side-menu { position: sticky; top: 1rem; max-height: calc(100vh - 2rem); overflow-y: auto; }
+    .side-menu .nav-link { text-align: left; }
+    .menu-heading { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+      color: var(--bs-secondary-color); padding: 0.15rem 0.5rem; margin-top: 0.75rem; }
+    .menu-heading:first-child { margin-top: 0; }
+    .section-card { background: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color);
+      border-radius: 0.75rem; padding: 1.5rem; margin-bottom: 1.25rem; }
+    .section-title { font-size: 1.05rem; font-weight: 600; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem; }
+    .pane-intro { font-size: 0.85rem; color: var(--bs-secondary-color); margin: -0.25rem 0 1rem; }
+    .cat-card { background: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color); border-radius: 0.75rem;
+      padding: 1.1rem; height: 100%; cursor: pointer; transition: border-color 0.15s, transform 0.05s; }
+    .cat-card:hover { border-color: var(--bs-primary); }
+    .cat-card .bi { font-size: 1.4rem; color: var(--bs-primary); }
+    @media (max-width: 767px) {
+      .side-menu { position: static; }
+      .side-menu .nav { flex-direction: row !important; flex-wrap: nowrap; overflow-x: auto; }
+      .side-menu .nav-link { white-space: nowrap; }
+    }
+  </style>
+</head>
+<body>
+<div class="setup-wrap">
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h1 class="brand-mark h4 mb-0"><i class="bi bi-cpu me-1"></i>{{ app_name }} settings</h1>
+    <a href="start" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Back to app</a>
+  </div>
 
-  <fieldset>
-    <legend>Surfaces</legend>
-    <div class="row"><input type="checkbox" id="start_page_enabled"
-      {% if settings.start_page_enabled %}checked{% endif %}>
-      <label for="start_page_enabled" style="margin:0">Show the start menu</label></div>
-    <div class="row"><input type="checkbox" id="kiosk_enabled"
-      {% if settings.kiosk_enabled %}checked{% endif %}>
-      <label for="kiosk_enabled" style="margin:0">Kiosk display attached</label></div>
-  </fieldset>
+  <div class="row g-3">
+    <!-- Side menu -->
+    <div class="col-md-3">
+      <div class="side-menu">
+        <div class="mb-2">
+          <input type="search" class="form-control form-control-sm" id="settings-search"
+                 placeholder="Search settings" autocomplete="off" oninput="settingsSearch(this.value)">
+        </div>
+        <div class="nav flex-column nav-pills gap-1" role="tablist">
+          <button class="nav-link active d-flex align-items-center" data-bs-toggle="pill" data-bs-target="#pane-overview" type="button">
+            <i class="bi bi-grid me-2"></i>Overview
+          </button>
 
-  <fieldset>
-    <legend>Stream Deck</legend>
-    <label for="deck_rotation">Rotation</label>
-    <select id="deck_rotation">
-      {% for r in rotations %}
-      <option value="{{ r }}" {% if settings.deck_rotation == r %}selected{% endif %}>{{ r }}&deg;</option>
-      {% endfor %}
-    </select>
-    <label for="deck_brightness">Brightness ({{ settings.deck_brightness }}%)</label>
-    <input type="number" id="deck_brightness" min="5" max="100" value="{{ settings.deck_brightness }}">
-  </fieldset>
+          <div class="menu-heading">This Device</div>
+          <button class="nav-link d-flex align-items-center" data-bs-toggle="pill" data-bs-target="#pane-appearance" type="button">
+            <i class="bi bi-palette me-2"></i>Appearance
+          </button>
+          <button class="nav-link d-flex align-items-center" data-bs-toggle="pill" data-bs-target="#pane-start-page" type="button">
+            <i class="bi bi-grid-3x3-gap me-2"></i>Start Page &amp; Stream Deck
+          </button>
+          <button class="nav-link d-flex align-items-center" data-bs-toggle="pill" data-bs-target="#pane-display" type="button">
+            <i class="bi bi-display me-2"></i>Display &amp; Kiosk
+          </button>
+          <button class="nav-link d-flex align-items-center" data-bs-toggle="pill" data-bs-target="#pane-network" type="button">
+            <i class="bi bi-wifi me-2"></i>Network
+          </button>
 
-  <div class="row">
-    <button id="save">Save settings</button><span id="status"></span>
+          <div class="menu-heading">Connections</div>
+          <button class="nav-link d-flex align-items-center" data-bs-toggle="pill" data-bs-target="#pane-actions" type="button">
+            <i class="bi bi-lightning-charge me-2"></i>Actions
+          </button>
+          <button class="nav-link d-flex align-items-center" data-bs-toggle="pill" data-bs-target="#pane-home-assistant" type="button">
+            <i class="bi bi-house-gear me-2"></i>Home Assistant
+          </button>
+
+          <div class="menu-heading">System</div>
+          <button class="nav-link d-flex align-items-center" data-bs-toggle="pill" data-bs-target="#pane-security" type="button">
+            <i class="bi bi-shield-lock me-2"></i>Security
+          </button>
+          <button class="nav-link d-flex align-items-center" data-bs-toggle="pill" data-bs-target="#pane-updates" type="button">
+            <i class="bi bi-cloud-arrow-down me-2"></i>Updates
+          </button>
+          <button class="nav-link d-flex align-items-center" data-bs-toggle="pill" data-bs-target="#pane-advanced" type="button">
+            <i class="bi bi-tools me-2"></i>Advanced
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Content panes -->
+    <div class="col-md-9">
+      <div class="tab-content">
+
+        <div class="tab-pane fade show active" id="pane-overview" role="tabpanel" data-title="Overview">
+          <div class="section-title"><i class="bi bi-grid"></i>Overview</div>
+          <p class="pane-intro">Everything you can configure on this device, one click away.</p>
+          <div class="row g-3">
+            {% for c in [
+              ('pane-appearance','bi-palette','Appearance','Theme and colors'),
+              ('pane-start-page','bi-grid-3x3-gap','Start Page &amp; Stream Deck','Surfaces, rotation, brightness'),
+              ('pane-display','bi-display','Display &amp; Kiosk','On-screen kiosk'),
+              ('pane-network','bi-wifi','Network','Hostname and Wi-Fi access point'),
+              ('pane-actions','bi-lightning-charge','Actions','Your action library and drivers'),
+              ('pane-security','bi-shield-lock','Security','Optional PIN lock'),
+              ('pane-updates','bi-cloud-arrow-down','Updates','Version and updating'),
+              ('pane-advanced','bi-tools','Advanced','Data dir, health, raw settings') ] %}
+            <div class="col-sm-6 col-lg-4">
+              <div class="cat-card" role="button" onclick="openPane('{{ c[0] }}')">
+                <i class="bi {{ c[1] }}"></i>
+                <div class="fw-semibold mt-1">{{ c[2] | safe }}</div>
+                <div class="small text-secondary">{{ c[3] }}</div>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div class="tab-pane fade" id="pane-appearance" role="tabpanel" data-title="Appearance">
+          <div class="section-title"><i class="bi bi-palette"></i>Appearance</div>
+          <div class="section-card">
+            <label class="form-label">Theme</label>
+            <select class="form-select" data-setting="theme_mode" data-type="str">
+              <option value="dark" {% if s.theme_mode == 'dark' %}selected{% endif %}>Dark</option>
+              <option value="light" {% if s.theme_mode == 'light' %}selected{% endif %}>Light</option>
+            </select>
+            <div class="form-text">AutoPi uses a blue accent on the same dark interface throughout.</div>
+            <button class="btn btn-primary btn-sm mt-3 save-btn">Save</button>
+            <span class="save-status ms-2 small"></span>
+          </div>
+        </div>
+
+        <div class="tab-pane fade" id="pane-start-page" role="tabpanel" data-title="Start Page Stream Deck">
+          <div class="section-title"><i class="bi bi-grid-3x3-gap"></i>Start Page &amp; Stream Deck</div>
+          <p class="pane-intro">The start menu and the Stream Deck share one layout of keys.</p>
+          <div class="section-card">
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" id="start_page_enabled"
+                     data-setting="start_page_enabled" data-type="bool" {% if s.start_page_enabled %}checked{% endif %}>
+              <label class="form-check-label" for="start_page_enabled">Show the full-screen start menu</label>
+            </div>
+            <div class="mt-3">
+              <a href="layout-editor" class="btn btn-outline-primary btn-sm"><i class="bi bi-columns-gap me-1"></i>Open the layout editor</a>
+            </div>
+            <button class="btn btn-primary btn-sm mt-3 save-btn">Save</button>
+            <span class="save-status ms-2 small"></span>
+          </div>
+          <div class="section-card">
+            <div class="section-title h6"><i class="bi bi-usb-symbol"></i>Stream Deck</div>
+            <label class="form-label">Rotation</label>
+            <select class="form-select" data-setting="deck_rotation" data-type="int">
+              {% for r in rotations %}
+              <option value="{{ r }}" {% if s.deck_rotation == r %}selected{% endif %}>{{ r }}&deg;</option>
+              {% endfor %}
+            </select>
+            <label class="form-label mt-3">Brightness</label>
+            <input type="range" class="form-range" min="5" max="100" step="5"
+                   data-setting="deck_brightness" data-type="int" value="{{ s.deck_brightness }}"
+                   oninput="this.nextElementSibling.textContent = this.value + '%'">
+            <span class="small text-secondary">{{ s.deck_brightness }}%</span>
+            <div class="form-text">Supported decks: Mini (6), Original/MK.2 (15), and XL (32).</div>
+            <button class="btn btn-primary btn-sm mt-3 save-btn">Save</button>
+            <span class="save-status ms-2 small"></span>
+          </div>
+        </div>
+
+        <div class="tab-pane fade" id="pane-display" role="tabpanel" data-title="Display Kiosk">
+          <div class="section-title"><i class="bi bi-display"></i>Display &amp; Kiosk</div>
+          <div class="section-card">
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" id="kiosk_enabled"
+                     data-setting="kiosk_enabled" data-type="bool" {% if s.kiosk_enabled %}checked{% endif %}>
+              <label class="form-check-label" for="kiosk_enabled">A kiosk display is attached to this device</label>
+            </div>
+            <div class="form-text">On a Raspberry Pi appliance the kiosk shows the start menu full screen.
+              Rotation and sleep are set up on the device during install.</div>
+            <button class="btn btn-primary btn-sm mt-3 save-btn">Save</button>
+            <span class="save-status ms-2 small"></span>
+          </div>
+        </div>
+
+        <div class="tab-pane fade" id="pane-network" role="tabpanel" data-title="Network">
+          <div class="section-title"><i class="bi bi-wifi"></i>Network</div>
+          <div class="section-card">
+            <div class="d-flex justify-content-between"><span class="text-secondary">Hostname</span><span>{{ hostname }}</span></div>
+            <hr>
+            <div class="d-flex justify-content-between"><span class="text-secondary">Wi-Fi access point</span><span>AutoPi</span></div>
+            <div class="form-text">With no other connectivity the device serves a setup hotspot named AutoPi.
+              Wi-Fi and hostname are managed on the device (Raspberry Pi appliance).</div>
+          </div>
+        </div>
+
+        <div class="tab-pane fade" id="pane-actions" role="tabpanel" data-title="Actions library drivers">
+          <div class="section-title"><i class="bi bi-lightning-charge"></i>Actions</div>
+          <p class="pane-intro">Actions are the keys you place on the start menu and Stream Deck.</p>
+          <div class="section-card">
+            <div class="subsection-title mb-2">Available drivers</div>
+            <div id="drivers-list" class="d-flex flex-column gap-1 small text-secondary">Loading…</div>
+            <div class="mt-3">
+              <a href="layout-editor" class="btn btn-outline-primary btn-sm"><i class="bi bi-columns-gap me-1"></i>Arrange keys</a>
+            </div>
+            <div class="form-text">A per-driver form for creating and editing actions in the UI is on the roadmap;
+              for now the layout editor arranges the seeded demo keys.</div>
+          </div>
+        </div>
+
+        <div class="tab-pane fade" id="pane-home-assistant" role="tabpanel" data-title="Home Assistant">
+          <div class="section-title"><i class="bi bi-house-gear"></i>Home Assistant</div>
+          <div class="section-card">
+            <p class="mb-2">Control Home Assistant from a key by adding an <strong>HTTP action</strong> that calls its
+              REST API (for example a webhook or a <code>/api/services/…</code> call with a long-lived token).</p>
+            <a href="layout-editor" class="btn btn-outline-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>Add an action</a>
+            <div class="form-text">A dedicated Home Assistant integration may come later; the HTTP driver already
+              reaches any HA instance on your network.</div>
+          </div>
+        </div>
+
+        <div class="tab-pane fade" id="pane-security" role="tabpanel" data-title="Security PIN">
+          <div class="section-title"><i class="bi bi-shield-lock"></i>Security</div>
+          <div class="section-card">
+            <div class="form-check form-switch mb-2">
+              <input class="form-check-input" type="checkbox" id="require_pin"
+                     data-setting="require_pin" data-type="bool" {% if s.require_pin %}checked{% endif %}>
+              <label class="form-check-label" for="require_pin">Require a PIN to open settings</label>
+            </div>
+            <label class="form-label">PIN</label>
+            <input type="text" inputmode="numeric" class="form-control" style="max-width: 12rem"
+                   data-setting="pin" data-type="str" value="{{ s.pin }}" placeholder="e.g. 1234">
+            <button class="btn btn-primary btn-sm mt-3 save-btn">Save</button>
+            <span class="save-status ms-2 small"></span>
+          </div>
+        </div>
+
+        <div class="tab-pane fade" id="pane-updates" role="tabpanel" data-title="Updates">
+          <div class="section-title"><i class="bi bi-cloud-arrow-down"></i>Updates</div>
+          <div class="section-card">
+            <div class="d-flex justify-content-between"><span class="text-secondary">Installed version</span><span>v{{ app_version }}</span></div>
+            <hr>
+            <p class="mb-2">To update a device, run the updater on it over SSH:</p>
+            <pre class="bg-body-secondary rounded p-2 small mb-2">sudo /opt/autopi-src/scripts/image-build/autopi-update</pre>
+            <div class="form-text">It pulls the latest source, rebuilds the stack, and refreshes the Stream Deck
+              controller. Updating from this page is on the roadmap.</div>
+          </div>
+        </div>
+
+        <div class="tab-pane fade" id="pane-advanced" role="tabpanel" data-title="Advanced">
+          <div class="section-title"><i class="bi bi-tools"></i>Advanced</div>
+          <div class="section-card">
+            <div class="d-flex justify-content-between"><span class="text-secondary">Deployment mode</span><span>{{ s.deployment_mode }}</span></div>
+            <hr>
+            <div class="d-flex justify-content-between"><span class="text-secondary">Data directory</span><span class="text-truncate ms-2">{{ data_dir }}</span></div>
+            <hr>
+            <a href="health" target="_blank" class="btn btn-outline-secondary btn-sm mt-1"><i class="bi bi-heart-pulse me-1"></i>Health JSON</a>
+          </div>
+        </div>
+
+      </div>
+    </div>
   </div>
 </div>
-<script>
-  document.getElementById('save').addEventListener('click', async () => {
-    const body = {
-      start_page_enabled: document.getElementById('start_page_enabled').checked,
-      kiosk_enabled: document.getElementById('kiosk_enabled').checked,
-      deck_rotation: parseInt(document.getElementById('deck_rotation').value, 10),
-      deck_brightness: parseInt(document.getElementById('deck_brightness').value, 10),
-    };
-    const r = await fetch('/setup/save', {method: 'POST',
-      headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
-    document.getElementById('status').textContent = r.ok ? 'Saved' : 'Save failed';
-    setTimeout(() => document.getElementById('status').textContent = '', 2000);
-  });
-</script>
-{% endblock %}
+<script src="static/vendor/bootstrap.bundle.min.js"></script>
+<script src="static/js/settings.js"></script>
+</body>
+</html>

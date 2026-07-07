@@ -2,55 +2,46 @@
 {% block title %}Layout editor: {{ app_name }}{% endblock %}
 {% block head %}
 <style>
-  body { margin: 0; background: #0b0f17; color: #e5e7eb; font-family: system-ui, sans-serif; }
-  header { padding: 1rem 1.5rem; border-bottom: 1px solid #1f2937; display: flex;
-    align-items: center; gap: 1rem; }
-  header h1 { font-size: 1.1rem; margin: 0; }
-  header nav a { color: #38bdf8; margin-left: 1rem; text-decoration: none; }
-  main { display: grid; grid-template-columns: 260px 1fr; gap: 1.5rem; padding: 1.5rem; }
-  h2 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8; }
-  .chip, .slot { display: flex; align-items: center; gap: 0.5rem; border-radius: 0.5rem;
-    padding: 0.5rem 0.7rem; color: #fff; cursor: grab; user-select: none; }
-  .palette .chip { margin-bottom: 0.5rem; }
-  .surface { margin-bottom: 2rem; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-    gap: 0.6rem; padding: 0.6rem; background: #111827; border: 1px dashed #334155; border-radius: 0.6rem; }
-  .slot { min-height: 3rem; justify-content: center; text-align: center; border: 1px solid #334155;
-    background: #1e293b; }
-  .slot.blank { color: #475569; font-style: italic; background: transparent; border-style: dashed; }
-  .slot.drag-over { outline: 2px solid #38bdf8; }
-  button { background: #2563eb; color: #fff; border: 0; border-radius: 0.4rem;
-    padding: 0.4rem 0.9rem; cursor: pointer; }
-  .hint { color: #64748b; font-size: 0.8rem; }
+  .palette-chip, .slot { border-radius: 0.5rem; padding: 0.5rem 0.7rem; color: #fff;
+    cursor: grab; user-select: none; display: flex; align-items: center; gap: 0.4rem; }
+  .palette-chip { margin-bottom: 0.5rem; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 0.6rem;
+    padding: 0.6rem; background: var(--bs-tertiary-bg); border: 1px dashed var(--bs-border-color); border-radius: 0.6rem; }
+  .slot { min-height: 3rem; justify-content: center; text-align: center; border: 1px solid var(--bs-border-color);
+    background: var(--bs-secondary-bg); font-size: 0.85rem; }
+  .slot.blank { color: var(--bs-secondary-color); font-style: italic; background: transparent; border-style: dashed; }
+  .slot.drag-over { outline: 2px solid var(--bs-primary); }
 </style>
 {% endblock %}
 {% block body %}
-<header>
-  <h1>{{ app_name }} layout editor</h1>
-  <nav>
-    <a href="/start">Start menu</a>
-    <a href="/setup">Settings</a>
-  </nav>
-</header>
-<main>
-  <section class="palette">
-    <h2>Actions</h2>
-    <p class="hint">Drag an action onto a surface slot. Drag the "blank" chip to clear a slot.</p>
-    <div class="chip" style="background:#475569" draggable="true" data-action="blank">Blank</div>
-    <div id="palette"></div>
-  </section>
-  <section>
-    {% for surface in surfaces.keys() %}
-    <div class="surface" data-surface="{{ surface }}">
-      <h2>{{ surface }} <button data-save="{{ surface }}">Save</button></h2>
-      <div class="grid" id="grid-{{ surface }}"></div>
+<div class="container-fluid">
+  <div class="row g-3">
+    <div class="col-md-3">
+      <h6 class="text-uppercase text-secondary small">Actions</h6>
+      <p class="small text-secondary">Drag an action onto a slot. Drag "Blank" to clear a slot.</p>
+      <div class="palette-chip" style="background:#475569" draggable="true" data-action="blank">
+        <i class="bi bi-eraser"></i>Blank
+      </div>
+      <div id="palette"></div>
     </div>
-    {% endfor %}
-  </section>
-</main>
+    <div class="col-md-9">
+      {% for surface in surfaces.keys() %}
+      <div class="mb-4" data-surface="{{ surface }}">
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <h6 class="text-capitalize mb-0">{{ surface }}</h6>
+          <button class="btn btn-sm btn-primary" data-save="{{ surface }}">Save</button>
+        </div>
+        <div class="grid" id="grid-{{ surface }}"></div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
 <script>
   window.__ACTIONS__ = {{ actions | tojson }};
   window.__SURFACES__ = {{ surfaces | tojson }};
 </script>
-<script src="/static/js/layout-editor.js"></script>
+<script src="static/js/layout-editor.js"></script>
 {% endblock %}

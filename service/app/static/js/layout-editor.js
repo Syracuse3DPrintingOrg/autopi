@@ -12,9 +12,10 @@
 
   function chip(action) {
     const el = document.createElement('div');
-    el.className = 'chip';
+    el.className = 'palette-chip';
     el.style.background = (action && action.color) || '#475569';
-    el.textContent = action ? (action.label || action.id) : 'Blank';
+    const icon = (action && action.icon) || 'bi-lightning-charge';
+    el.innerHTML = '<i class="bi ' + icon + '"></i>' + (action ? (action.label || action.id) : 'Blank');
     el.draggable = true;
     el.dataset.action = action ? action.id : 'blank';
     el.addEventListener('dragstart', (e) => {

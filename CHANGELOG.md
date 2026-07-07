@@ -8,6 +8,16 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **A real interface, matching the look and feel it was spun out from.** The
+  start menu, layout editor, and settings now use the same Bootstrap dark theme
+  and icons, with a blue accent. The settings page is a sectioned menu
+  (Appearance, Start Page & Stream Deck, Display & Kiosk, Network, Actions,
+  Home Assistant, Security, Updates, Advanced) with search, one click to any
+  section. A fresh install seeds a handful of demo keys (a lamp, a fan, a door
+  pulse, a ping, a status check, a webhook, and an "all on" macro) onto both
+  the start menu and the Stream Deck so the grid is populated out of the box.
+- **On-device updater.** `autopi-update` pulls the latest source, rebuilds the
+  stack, and refreshes the Stream Deck controller, run over SSH.
 - **One-line install on a Raspberry Pi.** Flash Raspberry Pi OS Lite, SSH in,
   and run a single `curl ... | bash` line. It detects the Pi, a display, and a
   Stream Deck, installs Docker if needed, brings up AutoPi, and on a Pi

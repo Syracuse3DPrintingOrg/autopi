@@ -1,6 +1,8 @@
 """User-facing pages: the start menu, the layout editor, and a home redirect."""
 from __future__ import annotations
 
+import math
+
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
@@ -10,6 +12,9 @@ from ..services import layout as layout_svc
 from ..templating import templates, theme_context
 
 router = APIRouter(tags=["ui"])
+
+# Builtin ids that only do something on a physical Stream Deck.
+_DECK_ONLY = {"page_next", "page_prev"}
 
 
 def _render_slots(surface: str):
@@ -21,14 +26,24 @@ def _render_slots(surface: str):
         if spec is None or spec.id == "blank":
             keys.append({"kind": "blank"})
             continue
-        keys.append({
-            "kind": "key",
+        common = {
             "id": spec.id,
             "label": spec.label or spec.id,
             "icon": spec.icon or "bi-lightning-charge",
             "color": spec.color or "#334155",
-        })
+        }
+        common["kind"] = "deckonly" if spec.id in _DECK_ONLY else "action"
+        keys.append(common)
     return keys
+
+
+def _grid_dims(n: int) -> tuple[int, int]:
+    """A near-square grid that holds n keys (cols, rows)."""
+    if n <= 0:
+        return 1, 1
+    cols = math.ceil(math.sqrt(n))
+    rows = math.ceil(n / cols)
+    return cols, rows
 
 
 @router.get("/")
@@ -41,8 +56,10 @@ def home():
 @router.get("/start", response_class=HTMLResponse)
 def start_page(request: Request):
     keys = _render_slots("start")
+    cols, rows = _grid_dims(len(keys))
     return templates.TemplateResponse(request, "start.html", theme_context(
-        request, keys=keys, enabled=settings.start_page_enabled))
+        request, keys=keys, cols=cols, rows=rows,
+        enabled=settings.start_page_enabled))
 
 
 @router.get("/layout-editor", response_class=HTMLResponse)

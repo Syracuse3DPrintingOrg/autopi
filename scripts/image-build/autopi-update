@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# AutoPi over-the-air update helper (Docker deployments).
+#
+# Pulls the latest source into the on-device checkout, rebuilds and restarts the
+# stack, and refreshes the Stream Deck controller when it is installed. Run as
+# root on the device (it writes under /opt and touches systemd). Prints a short
+# human log, and a single JSON object as its LAST line for a future host bridge
+# to parse, mirroring the source project's convention.
+#
+#   sudo /opt/autopi-src/scripts/image-build/autopi-update
+#
+# This is the same OTA approach as the source project, adapted to AutoPi's
+# Docker Compose deployment. It is expected to change as the fleet grows.
+set -uo pipefail
+
+REPO_DIR="${REPO_DIR:-/opt/autopi-src}"
+BRANCH="${REPO_BRANCH:-main}"
+result="unknown"; detail=""; changed="false"
+
+emit() {  # always the last line
+  printf '{"ok": %s, "result": "%s", "changed": %s, "detail": "%s"}\n' \
+    "$1" "$result" "$changed" "$(printf '%s' "$detail" | sed 's/"/\\"/g')"
+}
+
+log() { printf '%s\n' "$*" >&2; }
+
+[ -d "$REPO_DIR/.git" ] || { result="no-checkout"; detail="No git checkout at $REPO_DIR"; log "$detail"; emit false; exit 1; }
+
+before="$(git -C "$REPO_DIR" rev-parse HEAD 2>/dev/null || echo none)"
+log "Pulling latest source in $REPO_DIR"
+if git -C "$REPO_DIR" pull --ff-only origin "$BRANCH" >&2; then
+  after="$(git -C "$REPO_DIR" rev-parse HEAD 2>/dev/null || echo none)"
+  [ "$before" != "$after" ] && changed="true"
+else
+  log "Pull failed or nothing to pull; redeploying the current checkout anyway"
+fi
+
+log "Rebuilding and starting the stack"
+if ( cd "$REPO_DIR" && docker compose up -d --build ) >&2; then
+  :
+else
+  result="compose-failed"; detail="docker compose up failed"; log "$detail"; emit false; exit 1
+fi
+
+# Refresh the Stream Deck controller if it is installed as a service.
+if systemctl list-unit-files 2>/dev/null | grep -q '^autopi-streamdeck.service'; then
+  log "Refreshing the Stream Deck controller"
+  if [ -d "$REPO_DIR/streamdeck/autopi_streamdeck" ] && [ -d /opt/autopi/streamdeck ]; then
+    cp -rf "$REPO_DIR/streamdeck/autopi_streamdeck" /opt/autopi/streamdeck/ 2>/dev/null || true
+    if [ -f /opt/autopi/streamdeck-venv/bin/pip ]; then
+      /opt/autopi/streamdeck-venv/bin/pip install -q -r "$REPO_DIR/streamdeck/requirements.txt" >&2 || true
+    fi
+  fi
+  systemctl restart autopi-streamdeck.service >&2 || true
+fi
+
+result="updated"; detail="Update complete"
+log "$detail"
+emit true
+exit 0

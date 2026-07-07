@@ -1,4 +1,5 @@
 import secrets
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -11,7 +12,21 @@ from .routers import layout as layout_router
 from .routers import setup as setup_router
 from .routers import ui as ui_router
 
-app = FastAPI(title=APP_NAME, version=APP_VERSION)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Seed a starter layout and demo keys on a fresh install so the start menu
+    # and Stream Deck are populated. Best-effort: a read-only data dir just
+    # leaves an empty grid.
+    try:
+        from .services.seed import seed_if_empty
+        seed_if_empty()
+    except Exception:
+        pass
+    yield
+
+
+app = FastAPI(title=APP_NAME, version=APP_VERSION, lifespan=lifespan)
 app.add_middleware(SessionMiddleware, secret_key=secrets.token_hex(32))
 
 _STATIC_DIR = Path(__file__).resolve().parent / "static"

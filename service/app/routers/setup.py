@@ -5,6 +5,8 @@ per-section form posts just its own fields without clobbering the others.
 """
 from __future__ import annotations
 
+import socket
+
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
@@ -19,7 +21,9 @@ router = APIRouter(prefix="/setup", tags=["setup"])
 def setup_page(request: Request):
     return templates.TemplateResponse(request, "setup.html", theme_context(
         request,
-        settings=settings,
+        s=settings,
+        hostname=socket.gethostname(),
+        data_dir=str(settings.data_dir),
         rotations=(0, 90, 180, 270),
         key_counts=deck_layout.supported_key_counts(),
     ))

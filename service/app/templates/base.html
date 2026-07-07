@@ -1,13 +1,39 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="{{ theme_mode }}">
+<html lang="en" data-bs-theme="{{ theme_mode }}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <base href="/">
   <title>{% block title %}{{ app_name }}{% endblock %}</title>
-  <link rel="stylesheet" href="/static/css/app.css">
+  <link href="static/vendor/bootstrap.min.css" rel="stylesheet">
+  <link href="static/vendor/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="static/css/app.css" rel="stylesheet">
+  <link rel="icon" type="image/svg+xml" href="static/icons/favicon.svg">
   {% block head %}{% endblock %}
 </head>
 <body>
+  {% block chrome %}
+  <nav class="navbar navbar-expand-lg border-bottom mb-3">
+    <div class="container-fluid">
+      <a class="navbar-brand brand-mark" href="ui/">
+        <i class="bi bi-cpu me-1"></i>{{ app_name }}
+      </a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#topnav">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="topnav">
+        <ul class="navbar-nav me-auto">
+          <li class="nav-item"><a class="nav-link" href="start"><i class="bi bi-grid-3x3-gap me-1"></i>Start</a></li>
+          <li class="nav-item"><a class="nav-link" href="layout-editor"><i class="bi bi-columns-gap me-1"></i>Layout</a></li>
+          <li class="nav-item"><a class="nav-link" href="setup"><i class="bi bi-gear me-1"></i>Settings</a></li>
+        </ul>
+        <span class="navbar-text small">v{{ app_version }}</span>
+      </div>
+    </div>
+  </nav>
+  {% endblock %}
   {% block body %}{% endblock %}
+  <script src="static/vendor/bootstrap.bundle.min.js"></script>
+  {% block scripts %}{% endblock %}
 </body>
 </html>
