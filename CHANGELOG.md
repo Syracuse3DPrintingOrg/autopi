@@ -6,6 +6,18 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ## [Unreleased]
 
+### Added
+
+- **Your actions, vehicle profiles, and CAN data now live in a local
+  database, and you can back them up or move them to another install.** A
+  new SQLite database sits alongside the existing settings files and holds
+  actions, vehicle profiles, CAN messages and their signals, and logic
+  rules. Download everything (or just one vehicle profile) as a single JSON
+  file from `GET /db/export`, and load it back in with `POST /db/import`.
+  Importing always adds or updates by id and never erases anything already
+  on the device, so it is safe to import an older backup or a partial file
+  onto a running install.
+
 ### Fixed
 
 - **Changing keys no longer wedges the Stream Deck.** The controller only
