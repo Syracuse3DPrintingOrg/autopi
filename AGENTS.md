@@ -106,9 +106,43 @@ test before handing off. A user-facing change also needs a CHANGELOG entry.
 
 ## Versioning
 
-`APP_VERSION` in `service/app/config.py` is the single source of truth
-(major.minor.patch). Pre-1.0: stay in `0.x`. Every user-facing change gets a
-CHANGELOG entry under `[Unreleased]`.
+- `APP_VERSION` in `service/app/config.py` is the single source of truth
+  (major.minor.patch). The project is pre-1.0: `1.0.0` is reserved for the
+  first public release, so stay in `0.x` until then.
+- **Every commit changes at least the patch number.** Run
+  `scripts/install-git-hooks.sh` once per clone to install a pre-commit hook
+  that auto-bumps the patch; it chains onto the beads hook and skips rebases,
+  merges, and beads-only commits. Re-run the installer if a beads hook update
+  rewrites the managed hook.
+- **Every user-facing change gets a CHANGELOG entry** under `[Unreleased]` in
+  the appropriate Added/Changed/Fixed section, written in the existing
+  plain-prose style. The changelog doubles as the release description, so write
+  for users, not for developers.
+- For a minor or major release, bump first so the hook stays out of the way:
+  `scripts/bump-version.sh minor && git add service/app/config.py`.
+
+## Authorship and Git
+
+- **All commits are authored by Dan's GitHub identity**
+  (`Syracuse3DPrinting <dm.marafino@gmail.com>`); the repo git config is
+  already set, do not change it. Never add Co-Authored-By trailers, AI
+  attributions, or session links to commit messages.
+- Development happens on **`main`** directly.
+- **Commit and push are part of done.** For any load-bearing change (code,
+  docs, instructions, provisioning) and for beads work, commit and push before
+  ending the session. The deployed devices update from GitHub, so an unpushed
+  change has not shipped. Do not wait to be asked.
+- The one exception: small conversational tweaks Dan asks for while just
+  chatting (a wording nit, a quick experiment) may be left uncommitted for his
+  review, unless he says ship it. When in doubt, commit and push.
+
+## Non-Interactive Shell Commands
+
+**ALWAYS use non-interactive flags** with file operations. `cp`, `mv`, and
+`rm` may be aliased to `-i` on some systems, which hangs an agent waiting for
+y/n input. Use `cp -f`, `mv -f`, `rm -f` (and `-rf` for recursive operations).
+Similarly: `scp`/`ssh` with `-o BatchMode=yes`, `apt-get -y`, and
+`HOMEBREW_NO_AUTO_UPDATE=1` for `brew`.
 
 ## Roadmap
 
