@@ -53,6 +53,21 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **Phase 2 foundations: a database, a CAN core, and a logic engine.** Three
+  building blocks toward turning AutoPi into a full test and automation
+  platform. A locally-hosted SQLite database (under the data directory) stores
+  actions, vehicle profiles, CAN message/signal definitions, and logic rules,
+  with whole-database and per-profile import and export at `/db/export` and
+  `/db/import`. A CAN core built on python-can with a backend-independent frame
+  model and provider abstraction: the socketcan backend and a bring-up script
+  for the Waveshare 2-Channel CAN-FD HAT (`can0`/`can1`) are in, and the CAN
+  action now sends real frames when an interface is present and simulates
+  otherwise. A PLC-like logic engine evaluates rules (comparisons, boolean
+  inputs, rising/falling edges, on-delay and off-delay timers, set-reset
+  latches, combined with AND/OR/NOT) on a fixed scan cycle, viewable at
+  `/logic/rules`. Each is pure and heavily tested; wiring them together (rules
+  driven by CAN signals, DB-backed actions, vehicle profiles) follows.
+
 - **Raspberry Pi appliance platform (host-bridge + appliance compose).**
   Following the Pi appliance blueprint, a small root helper (the host-bridge on
   127.0.0.1:9299) now performs the privileged host operations the container
