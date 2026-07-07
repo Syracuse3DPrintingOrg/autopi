@@ -9,6 +9,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from .config import APP_NAME, APP_VERSION, settings
 from .routers import actions as actions_router
 from .routers import layout as layout_router
+from .routers import logic as logic_router
 from .routers import setup as setup_router
 from .routers import streamdeck as streamdeck_router
 from .routers import system as system_router
@@ -38,6 +39,7 @@ app.include_router(ui_router.router)
 app.include_router(actions_router.router)
 app.include_router(layout_router.router)
 app.include_router(setup_router.router)
+app.include_router(logic_router.router)
 app.include_router(streamdeck_router.router)
 app.include_router(system_router.router)
 

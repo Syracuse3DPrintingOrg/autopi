@@ -6,6 +6,19 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ## [Unreleased]
 
+### Added
+
+- **A PLC-like logic engine for building automation rules.** You can now
+  describe a rule as a condition (comparing a signal, checking a boolean
+  input, detecting a rising or falling edge, an on-delay or off-delay timer,
+  or a set-reset latch, combined with AND, OR, and NOT) paired with the
+  actions it should trigger. The engine evaluates every rule on a fixed scan
+  cycle, so complex, stateful automation (like "hold the fan on for two
+  minutes after the sensor drops") is possible without writing code. This
+  lays the groundwork for wiring rules up to real inputs (CAN signals, GPIO,
+  timers) in a follow-up change; today it is available for read-only viewing
+  at `GET /logic/rules`.
+
 ### Fixed
 
 - **Changing keys no longer wedges the Stream Deck.** The controller only
