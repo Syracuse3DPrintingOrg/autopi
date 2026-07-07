@@ -1,14 +1,21 @@
+# Reference template. scripts/image-build/setup-streamdeck.sh generates the
+# authoritative unit at install time with the run user and venv path filled in.
 [Unit]
 Description=AutoPi Stream Deck controller
-After=network-online.target
+After=network-online.target docker.service
 Wants=network-online.target
 
 [Service]
 Type=simple
-# Point AUTOPI_BASE_URL at the app if it is not on the default localhost port.
-Environment=AUTOPI_BASE_URL=http://127.0.0.1:9284
-ExecStart=/usr/bin/python3 -m autopi_streamdeck
+# Run as a normal user in the plugdev group (see streamdeck/udev/99-streamdeck.rules)
+# so the controller can claim the Stream Deck without root.
+User=pi
+Group=plugdev
 WorkingDirectory=/opt/autopi/streamdeck
+Environment=AUTOPI_BASE_URL=http://127.0.0.1:9284
+ExecStart=/opt/autopi/streamdeck-venv/bin/python -m autopi_streamdeck
+# on-failure only: the controller recovers an unplugged deck in-process, so
+# systemd is just the backstop for a hard crash.
 Restart=on-failure
 RestartSec=5
 

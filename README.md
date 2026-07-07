@@ -21,16 +21,32 @@ point or on your network, and it runs just as well on a plain server.
 - Standalone **Wi-Fi access point** fallback so the device is reachable with
   no network present.
 
-## Run it
+## Install on a Raspberry Pi
+
+Flash Raspberry Pi OS Lite with Raspberry Pi Imager (set your Wi-Fi, hostname,
+and locale there), boot, SSH in, and run one line:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Syracuse3DPrintingOrg/autopi/main/install.sh | bash
+```
+
+It detects the Pi, a display, and a Stream Deck, installs Docker if needed,
+brings up AutoPi, and on a Pi appliance also sets up the kiosk display, the
+Stream Deck controller, and a Wi-Fi access point fallback. Then open
+`http://<hostname>.local:9284`.
+
+The same one-liner works on any Debian/Ubuntu server; it installs the stack
+only (no kiosk, deck, or access point).
+
+## Run it with Docker
+
+On a machine that already has Docker:
 
 ```bash
 docker compose up -d --build
 ```
 
 Then open <http://localhost:9284>.
-
-On a Raspberry Pi, `install.sh` provisions the appliance (kiosk display,
-Stream Deck, Wi-Fi AP fallback).
 
 ## Status
 
