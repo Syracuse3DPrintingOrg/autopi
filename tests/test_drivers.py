@@ -48,6 +48,23 @@ def test_can_frame_parsing_rejects_bad_id():
     assert isinstance(_parse_frame({"arbitration_id": "nothex"}), str)
 
 
-def test_can_driver_unavailable_in_phase_1():
-    # CAN stays off until Phase 2 wires up a real socketcan interface.
+def test_can_driver_unavailable_without_hardware():
+    # No can0/can1 SocketCAN interface on a dev machine, so the driver
+    # reports itself unavailable and execute() falls back to simulating.
     assert get_driver("can").available is False
+
+
+def test_can_execute_simulates_when_unavailable():
+    res = get_driver("can").execute(
+        {"channel": "can0", "arbitration_id": "0x7DF", "data": "02 01 0C"})
+    assert res.ok
+    assert res.data["simulated"] is True
+    assert res.data["arbitration_id"] == 0x7DF
+
+
+def test_can_execute_rejects_invalid_frame():
+    # 9 data bytes is not a valid classic CAN length (max 8).
+    res = get_driver("can").execute(
+        {"channel": "can0", "arbitration_id": "0x123",
+         "data": "01 02 03 04 05 06 07 08 09"})
+    assert res.ok is False

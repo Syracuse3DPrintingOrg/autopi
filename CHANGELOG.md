@@ -6,6 +6,16 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ## [Unreleased]
 
+### Added
+
+- **CAN bus support, starting with the Waveshare 2-Channel CAN-FD HAT.** A new
+  `can` action can send a classic CAN or CAN-FD frame (arbitration id, data
+  bytes, extended id) on `can0` or `can1`. `scripts/image-build/setup-can-waveshare.sh`
+  brings the HAT up on a Pi (SPI, the `mcp251xfd` overlay, and the bitrate),
+  documented in `docs/can.md`. With no HAT attached, the action still
+  validates the frame and reports what it would have sent, so a CAN layout can
+  be built and tested before the hardware is in the loop.
+
 ### Fixed
 
 - **Changing keys no longer wedges the Stream Deck.** The controller only

@@ -14,5 +14,6 @@ httpx>=0.27
 gpiozero>=2.0
 lgpio>=0.2.2.0
 
-# Phase 2 (CAN) will add:
-# python-can>=4.3
+# Phase 2 CAN core. Optional at runtime: with no python-can, or no CAN
+# interface, the can driver reports itself unavailable and simulates.
+python-can>=4.3
