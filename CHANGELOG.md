@@ -8,6 +8,15 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Fixed
 
+- **The Stream Deck keeps its keys through an update, and recovers on its own.**
+  The controller now reads its key layout straight from the app's data files on
+  the device, so a deck no longer blanks or loses its keys while the app
+  container restarts during an update, the way it did before. Combined with the
+  in-process recovery, a plugged-in deck reconnects by itself. Updating a device
+  also rewrites the deck's service so a previous crash loop can no longer wedge
+  it: the service is told never to give up, and its failed state is cleared on
+  update.
+
 - **Changing keys no longer wedges the Stream Deck.** The controller only
   caught network errors, so a transient USB write failure while repainting the
   new layout crashed the process, and systemd relaunched it straight back into

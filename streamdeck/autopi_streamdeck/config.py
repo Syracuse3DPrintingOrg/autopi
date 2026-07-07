@@ -14,6 +14,7 @@ from pathlib import Path
 
 ENV_CONFIG = "AUTOPI_STREAMDECK_CONFIG"
 ENV_BASE_URL = "AUTOPI_BASE_URL"
+ENV_DATA_DIR = "AUTOPI_DATA_DIR"
 
 ALLOWED_ROTATIONS = (0, 90, 180, 270)
 BRIGHTNESS_STEPS = (20, 40, 60, 80, 100)
@@ -27,6 +28,11 @@ class Config:
     poll_seconds: int = 5
     # Which shared surface this deck renders. Defaults to the streamdeck layout.
     surface: str = "streamdeck"
+    # The app's data dir on this host (bind-mounted into the container). The
+    # controller reads the layout, catalog, and deck settings straight from the
+    # state files here, so a plugged-in deck keeps showing its keys even while
+    # the app container restarts during an update. Empty falls back to HTTP.
+    data_dir: str = "/opt/autopi-src/service/data"
 
     def validated(self) -> "Config":
         self.base_url = self.base_url.rstrip("/")
@@ -54,7 +60,7 @@ def load(path=None) -> Config:
     resolved = resolved_config_path(path)
     if resolved.exists():
         data = tomllib.loads(resolved.read_text())
-        for name in ("base_url", "surface"):
+        for name in ("base_url", "surface", "data_dir"):
             if isinstance(data.get(name), str):
                 setattr(cfg, name, data[name])
         for name in ("brightness", "rotation", "poll_seconds"):
@@ -62,4 +68,6 @@ def load(path=None) -> Config:
                 setattr(cfg, name, data[name])
     if os.environ.get(ENV_BASE_URL):
         cfg.base_url = os.environ[ENV_BASE_URL]
+    if os.environ.get(ENV_DATA_DIR):
+        cfg.data_dir = os.environ[ENV_DATA_DIR]
     return cfg.validated()

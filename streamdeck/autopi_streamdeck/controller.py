@@ -17,7 +17,9 @@ same crash, so a bad layout wedged the deck permanently.
 """
 from __future__ import annotations
 
+import json
 import logging
+import os
 import time
 
 import httpx
@@ -58,12 +60,50 @@ def _fetch_desired(client: httpx.Client) -> dict:
         return {}
 
 
-def fetch_layout(client: httpx.Client, cfg: Config):
-    """Return (ordered action ids, {id: action dict}) from the app."""
-    layout = client.get(f"/layout/{cfg.surface}").json().get("slots", [])
+def _read_json(path: str):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+def read_local_slots(cfg: Config):
+    """Read this surface's key layout straight from the app's data dir.
+
+    Reading the file (not HTTP) is what keeps the deck showing its keys while
+    the app container restarts during an update, and never blanks the deck just
+    because a poll hit the app mid-restart. Returns a list of slots, or None
+    when the data dir is not readable (then the caller falls back to HTTP).
+    """
+    if not cfg.data_dir:
+        return None
+    doc = _read_json(os.path.join(cfg.data_dir, "layout.json"))
+    if not isinstance(doc, dict):
+        return None
+    slots = doc.get(cfg.surface)
+    return slots if isinstance(slots, list) else []
+
+
+def read_local_settings(cfg: Config) -> dict:
+    """Read deck rotation/brightness from the app's data dir (best-effort)."""
+    doc = _read_json(os.path.join(cfg.data_dir, "settings.json")) if cfg.data_dir else None
+    out = {}
+    if isinstance(doc, dict):
+        if isinstance(doc.get("deck_rotation"), int):
+            out["rotation"] = doc["deck_rotation"]
+        if isinstance(doc.get("deck_brightness"), int):
+            out["brightness"] = doc["deck_brightness"]
+    status = _read_json(os.path.join(cfg.data_dir, "streamdeck-status.json")) if cfg.data_dir else None
+    if isinstance(status, dict) and status.get("restart_ts"):
+        out["restart_ts"] = status["restart_ts"]
+    return out
+
+
+def fetch_catalog(client: httpx.Client) -> dict:
+    """Fetch the action catalog (labels/colors, incl. builtins) over HTTP."""
     actions = client.get("/actions").json().get("actions", [])
-    catalog = {a["id"]: a for a in actions}
-    return layout, catalog
+    return {a["id"]: a for a in actions if isinstance(a, dict) and a.get("id")}
 
 
 def run(cfg: Config) -> int:
@@ -76,7 +116,7 @@ def run(cfg: Config) -> int:
 
     client = httpx.Client(base_url=cfg.base_url, timeout=10)
     state = {"page": 0, "rotation": cfg.rotation, "brightness": cfg.brightness,
-             "pages": [], "start_ts": time.time()}
+             "pages": [], "start_ts": time.time(), "catalog": {}}
     deck = None
     try:
         while True:
@@ -164,23 +204,41 @@ def _tick(deck, client: httpx.Client, cfg: Config, state: dict) -> None:
 
     _report_status(client, connected=True, key_count=deck.key_count(), deck_type=deck.deck_type())
 
-    desired = _fetch_desired(client)
+    # Desired settings + restart signal: local files first (survive an app
+    # restart), HTTP as a fallback when the data dir is not readable.
+    desired = read_local_settings(cfg)
+    if not desired:
+        desired = _fetch_desired(client)
     if desired.get("restart_ts", 0) > state.get("start_ts", 0):
         raise _ReopenDeck("restart requested from the app")
-    if desired.get("brightness") and desired["brightness"] != state["brightness"]:
-        state["brightness"] = desired["brightness"]
-        deck.set_brightness(state["brightness"])
-    if desired.get("rotation") is not None and desired["rotation"] != state["rotation"]:
-        state["rotation"] = desired["rotation"]
+    br = desired.get("brightness")
+    if isinstance(br, int) and br != state["brightness"]:
+        state["brightness"] = br
+        deck.set_brightness(br)
+    rot = desired.get("rotation")
+    if rot is not None and rot != state["rotation"]:
+        state["rotation"] = rot
         deck.reset()
 
+    # Layout: read the slots straight from the app's data dir so the deck keeps
+    # its keys while the app container restarts. Fall back to HTTP only when the
+    # data dir is not readable.
+    slots = read_local_slots(cfg)
+    if slots is None:
+        try:
+            slots = client.get(f"/layout/{cfg.surface}").json().get("slots", [])
+        except httpx.HTTPError as exc:
+            log.warning("Could not reach the app for the layout: %s", exc)
+            return  # keep the deck showing its last page
+    # Catalog (labels/colors, incl. builtins) is fetched over HTTP and cached,
+    # so a transient app-down keeps the faces correct instead of blanking them.
     try:
-        layout, catalog = fetch_layout(client, cfg)
-    except httpx.HTTPError as exc:
-        log.warning("Could not reach the app: %s", exc)
-        return  # keep the deck; the app may just be restarting
+        state["catalog"] = fetch_catalog(client)
+    except httpx.HTTPError:
+        pass
+    catalog = state.get("catalog") or {}
 
-    pages = deck_layout.build_pages(layout, deck.key_count())
+    pages = deck_layout.build_pages(slots, deck.key_count())
     if state["page"] >= len(pages):
         state["page"] = 0
     state["pages"] = pages

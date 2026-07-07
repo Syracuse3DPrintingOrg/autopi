@@ -38,32 +38,8 @@ groupadd -f plugdev
 usermod -aG plugdev "${RUN_USER}" || true
 
 echo "Writing the systemd service"
-cat > /etc/systemd/system/autopi-streamdeck.service <<EOF
-[Unit]
-Description=AutoPi Stream Deck controller
-After=network-online.target docker.service
-Wants=network-online.target
-# The controller recovers a lost deck in-process, so never let systemd's start
-# limit give up on it after a burst of early-boot restarts.
-StartLimitIntervalSec=0
+RUN_USER="${RUN_USER}" bash "$(dirname "$0")/write-streamdeck-unit.sh" "${REPO_DIR}"
 
-[Service]
-Type=simple
-User=${RUN_USER}
-Group=plugdev
-WorkingDirectory=${INSTALL_DIR}
-Environment=AUTOPI_BASE_URL=http://127.0.0.1:9284
-ExecStart=${VENV_DIR}/bin/python -m autopi_streamdeck
-# on-failure only: the controller recovers an unplugged deck in-process, so
-# systemd is just the backstop for a hard crash.
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-systemctl daemon-reload
 systemctl enable --now autopi-streamdeck.service || \
   echo "Service enabled; it will start once a deck is attached and the app is up."
 echo "Stream Deck controller installed (running as ${RUN_USER})."

@@ -78,6 +78,11 @@ if systemctl list-unit-files 2>/dev/null | grep -q '^autopi-streamdeck.service';
       /opt/autopi/streamdeck-venv/bin/pip install -q -r "$REPO_DIR/streamdeck/requirements.txt" >&2 || true
     fi
   fi
+  # Regenerate the unit so an old install picks up StartLimitIntervalSec=0 and
+  # the local-data-dir env, then clear any failed state a past crash loop left
+  # (which was blocking a manual restart from recovering the deck).
+  bash "$REPO_DIR/scripts/image-build/write-streamdeck-unit.sh" "$REPO_DIR" >&2 || true
+  systemctl reset-failed autopi-streamdeck.service >&2 2>&1 || true
   systemctl restart autopi-streamdeck.service >&2 || log "deck restart failed"
 fi
 
