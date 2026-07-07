@@ -1,0 +1,25 @@
+#!/bin/bash
+# Fallback Wi-Fi access point watchdog.
+#
+# Runs once after the network comes up. It only starts the setup hotspot when
+# the device has NO connectivity at all, so a unit on wired Ethernet (or
+# already associated to Wi-Fi) never drops into AP mode.
+sleep 30
+# Already associated to a Wi-Fi network: nothing to do.
+if iw dev wlan0 link 2>/dev/null | grep -q "Connected"; then exit 0; fi
+# A default route via any interface means we have a gateway: stay off the AP.
+if ip route show default 2>/dev/null | grep -q .; then exit 0; fi
+# A wired interface that is up with an IPv4 address means LAN connectivity.
+for dev in /sys/class/net/*; do
+  name=$(basename "$dev")
+  case "$name" in lo|wlan*|docker*|br-*|veth*|tun*|tap*|vir*) continue;; esac
+  if [ "$(cat "$dev/carrier" 2>/dev/null)" = "1" ] \
+     && ip -4 addr show dev "$name" 2>/dev/null | grep -q "inet "; then
+    exit 0
+  fi
+done
+# No connectivity anywhere: bring up the captive setup hotspot.
+ip addr add 192.168.99.1/24 dev wlan0 2>/dev/null || true
+systemctl start hostapd
+systemctl start dnsmasq
+touch /run/autopi-ap-active

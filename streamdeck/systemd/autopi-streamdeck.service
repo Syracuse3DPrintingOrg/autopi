@@ -1,0 +1,16 @@
+[Unit]
+Description=AutoPi Stream Deck controller
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Point AUTOPI_BASE_URL at the app if it is not on the default localhost port.
+Environment=AUTOPI_BASE_URL=http://127.0.0.1:9284
+ExecStart=/usr/bin/python3 -m autopi_streamdeck
+WorkingDirectory=/opt/autopi/streamdeck
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

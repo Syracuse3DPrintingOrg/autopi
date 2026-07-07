@@ -1,0 +1,21 @@
+services:
+  autopi:
+    build: ./service
+    container_name: autopi
+    environment:
+      - TZ=${TZ:-America/New_York}
+    # Dev workflow: mount the code and run with --reload so `git pull` applies
+    # changes live. The published image's default command omits --reload.
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    volumes:
+      - ./service/app:/app/app
+      - ./service/data:/app/data
+    ports:
+      - "9284:8000"
+    # GPIO access on a Raspberry Pi host: uncomment the device mount below on a
+    # Pi. It is left off by default so `docker compose up` works on a server
+    # that has no /dev/gpiomem (the GPIO driver reports itself unavailable
+    # there and the app still runs).
+    # devices:
+    #   - "/dev/gpiomem:/dev/gpiomem"
+    restart: unless-stopped

@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Start: {{ app_name }}{% endblock %}
+{% block head %}
+<style>
+  html, body { height: 100%; margin: 0; overflow: hidden; background: #0b0f17; }
+  .start-wrap { position: fixed; inset: 0; display: flex; flex-direction: column; padding: 1.2vmin; }
+  .start-grid { flex: 1 1 auto; display: grid; gap: 1.2vmin; min-height: 0;
+    grid-template-columns: repeat(auto-fit, minmax(18vmin, 1fr)); grid-auto-rows: 1fr; }
+  .start-key { display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 0.6vmin; border: 2px solid rgba(255,255,255,0.15); border-radius: 1.4vmin;
+    color: #fff; cursor: pointer; user-select: none; overflow: hidden; text-align: center;
+    padding: 0.8vmin; transition: transform 0.05s ease, filter 0.1s ease; }
+  .start-key:hover { filter: brightness(1.12); }
+  .start-key:active { transform: scale(0.96); }
+  .start-key.blank { background: transparent !important; border-style: dashed; opacity: 0.2; cursor: default; }
+  .start-key .ico { font-size: min(7vw, 9vh); line-height: 1; }
+  .start-key .lbl { font-size: min(2.4vw, 3.4vh); font-weight: 600; line-height: 1.1; }
+  .start-empty { position: fixed; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 1rem; color: #cbd5e1; text-align: center; }
+  .start-empty a { color: #38bdf8; }
+  .start-toast { position: fixed; bottom: 2vmin; left: 50%; transform: translateX(-50%);
+    background: #1e293b; color: #fff; border-radius: 0.6rem; padding: 0.5rem 1rem; display: none; }
+</style>
+{% endblock %}
+{% block body %}
+{% if not enabled or keys|length == 0 %}
+<div class="start-empty">
+  <h2>No keys yet</h2>
+  <p>Add actions and drag them onto the start menu in the
+    <a href="/layout-editor">layout editor</a>.</p>
+</div>
+{% else %}
+<div class="start-wrap">
+  <div class="start-grid">
+    {% for k in keys %}
+      {% if k.kind == 'blank' %}
+      <div class="start-key blank"></div>
+      {% else %}
+      <div class="start-key" role="button" tabindex="0"
+           style="background: {{ k.color }}" data-action="{{ k.id }}">
+        <span class="ico">&#9889;</span><span class="lbl">{{ k.label }}</span>
+      </div>
+      {% endif %}
+    {% endfor %}
+  </div>
+</div>
+<div class="start-toast" id="toast"></div>
+<script src="/static/js/start.js"></script>
+{% endif %}
+{% endblock %}

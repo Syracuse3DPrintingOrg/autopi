@@ -1,0 +1,11 @@
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["service/app/static"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E402", "E501", "E701", "E702", "E741", "I001"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

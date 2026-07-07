@@ -1,0 +1,9 @@
+# AutoPi Stream Deck controller configuration. Copy to config.toml and edit.
+# Every field has a default, so an empty file works when the app is on
+# localhost with the default port.
+
+base_url = "http://127.0.0.1:9284"
+brightness = 60
+rotation = 0          # 0, 90, 180, or 270 degrees clockwise
+poll_seconds = 5
+surface = "streamdeck"

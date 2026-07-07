@@ -1,0 +1,5 @@
+/* Minimal base styles shared across pages. Per-page layout lives in each
+   template's <style> block for now; a fuller theme system is a follow-on. */
+* { box-sizing: border-box; }
+body { font-family: system-ui, -apple-system, sans-serif; }
+a { color: #38bdf8; }
