@@ -58,9 +58,30 @@ def session_scope() -> Iterator[Session]:
 
 
 def init_db() -> None:
-    """Create any missing tables. Never drops or resets existing data.
+    """Create any missing tables and columns. Never drops or resets data.
 
-    Safe to call on every startup: ``create_all`` only adds tables that do
-    not already exist and leaves existing ones (and their rows) untouched.
+    ``create_all`` adds only tables that do not already exist. It does not add
+    a new column to an existing table, so a tiny additive migration handles
+    the columns we grow onto existing tables. Both are safe to run on every
+    startup and never touch existing rows.
     """
-    Base.metadata.create_all(get_engine())
+    engine = get_engine()
+    Base.metadata.create_all(engine)
+    _add_missing_columns(engine)
+
+
+# table -> {column: SQLite column definition}. Additive only: every column is
+# nullable or defaulted so an ALTER on a populated table cannot fail.
+_ADDED_COLUMNS = {
+    "can_messages": {"database_id": "INTEGER"},
+}
+
+
+def _add_missing_columns(engine: Engine) -> None:
+    from sqlalchemy import text
+    with engine.begin() as conn:
+        for table, columns in _ADDED_COLUMNS.items():
+            existing = {row[1] for row in conn.exec_driver_sql(f"PRAGMA table_info({table})")}
+            for name, coldef in columns.items():
+                if name not in existing:
+                    conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {name} {coldef}")

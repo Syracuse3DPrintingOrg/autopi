@@ -53,6 +53,19 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **Import open-source CAN databases (DBC), and decode/encode frames.** AutoPi
+  now speaks DBC, the format the open-source CAN world ships its message and
+  signal definitions in. Upload any DBC file, or pull comma.ai's opendbc
+  collection (the largest open set of vehicle databases) onto a device with
+  `scripts/import-opendbc.sh`. Each imported database is stored locally with its
+  messages and signals, and records where it came from and under what license,
+  so open-source content stays attributable. Frames decode into named signal
+  values and encode back, built on the cantools library. New endpoints under
+  `/can` list databases and decode/encode. A LICENSING.md now tracks every
+  dependency's license and what it means for shipping AutoPi as a proprietary
+  product (notably python-can under the LGPL, and that CAN database content
+  carries its own licenses separate from the code).
+
 - **Phase 2 foundations: a database, a CAN core, and a logic engine.** Three
   building blocks toward turning AutoPi into a full test and automation
   platform. A locally-hosted SQLite database (under the data directory) stores

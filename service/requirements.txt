@@ -13,8 +13,12 @@ sqlalchemy>=2.0
 
 # CAN bus support (python-can, socketcan and other backends). Optional at
 # runtime: the CAN provider degrades to unavailable when it or the interface is
-# absent. See service/app/can/.
+# absent. See service/app/can/. NOTE: python-can is LGPL-3.0; see LICENSING.md.
 python-can>=4.3
+
+# DBC database parsing (opendbc and any DBC file) and frame encode/decode.
+# MIT. Optional: importing a DBC needs it, the rest of the app runs without it.
+cantools>=39
 
 # GPIO on a Raspberry Pi. gpiozero needs a pin-factory backend to actually
 # drive pins; lgpio is the one that works on current Raspberry Pi OS (Bookworm)

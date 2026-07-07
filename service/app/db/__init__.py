@@ -19,12 +19,13 @@ Modules:
 from __future__ import annotations
 
 from .engine import get_session, init_db, session_scope
-from .models import Action, Base, CanMessage, CanSignal, LogicRule, Profile
+from .models import Action, Base, CanDatabase, CanMessage, CanSignal, LogicRule, Profile
 
 __all__ = [
     "Base",
     "Action",
     "Profile",
+    "CanDatabase",
     "CanMessage",
     "CanSignal",
     "LogicRule",
