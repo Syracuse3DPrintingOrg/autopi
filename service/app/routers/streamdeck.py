@@ -18,7 +18,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from ..config import settings
-from ..services import deck_layout
+from ..services import bridge, deck_layout
 from ..services.state import StateFile
 
 router = APIRouter(prefix="/streamdeck", tags=["streamdeck"])
@@ -74,8 +74,11 @@ def get_status():
 
 @router.post("/restart")
 def restart_controller():
-    """Ask the controller to reconnect. It reads this flag on its next poll and
-    exits so systemd relaunches it, which re-applies rotation and repaints."""
+    """Restart the deck controller. On a Pi appliance this goes through the
+    host-bridge (a real systemctl restart); otherwise it falls back to a flag
+    the controller reads on its next poll and self-restarts from."""
+    if bridge.is_raspberry_pi() and bridge.available():
+        return bridge.call("POST", "/streamdeck/restart", timeout=15)
     store = _store()
     doc = store.read()
     doc["restart_ts"] = time.time()

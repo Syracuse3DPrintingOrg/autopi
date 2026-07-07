@@ -1,0 +1,18 @@
+# Raspberry Pi appliance compose. Selected on a Pi via COMPOSE_FILE in .env
+# (written by write-appliance-override.sh). It uses network_mode: host so the
+# container can reach the root host-bridge on 127.0.0.1:9299 and serves the app
+# directly on host port 9284. The per-board GPIO devices are added by the
+# generated docker-compose.override.yml. The plain docker-compose.yml (with a
+# published port and no host networking) stays the default on a server.
+services:
+  autopi:
+    build: ./service
+    container_name: autopi
+    environment:
+      - TZ=${TZ:-America/New_York}
+    network_mode: host
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "9284", "--reload"]
+    volumes:
+      - ./service/app:/app/app
+      - ./service/data:/app/data
+    restart: unless-stopped

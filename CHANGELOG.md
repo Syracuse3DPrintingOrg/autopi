@@ -8,6 +8,13 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Fixed
 
+- **Updating a device now actually applies host-side fixes.** The OTA updater
+  overwrote itself but kept running the old copy, so changes to the updater (like
+  GPIO passthrough) never took effect on the update that shipped them. It now
+  re-executes the fresh copy after pulling, syncs the Stream Deck controller and
+  the compose override separately from the Docker image (the image never carries
+  them), recovers a diverged checkout, and reports whether anything changed. This
+  is why the Stream Deck and GPIO fixes did not take on the last update.
 - **The Stream Deck controller now actually runs.** It was importing the app's
   paging code from a path that does not exist once the controller is installed
   on its own, so it crashed on startup and never connected. The controller is
@@ -29,6 +36,13 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **Raspberry Pi appliance platform (host-bridge + appliance compose).**
+  Following the Pi appliance blueprint, a small root helper (the host-bridge on
+  127.0.0.1:9299) now performs the privileged host operations the container
+  cannot: OTA update, reboot, restarting the Stream Deck service, and reading Pi
+  power/thermal/disk health. The app runs with host networking on a Pi so it can
+  reach the bridge, relays those operations to it with a shared token, and
+  degrades to a clean no-op on a plain server.
 - **Visual Stream Deck and Start Page editor.** Drag keys from a categorized
   library onto a deck-shaped grid. The grid scales to the selected model (Mini
   6, MK.2 15, XL 32) or, when a Stream Deck is plugged in and its controller is

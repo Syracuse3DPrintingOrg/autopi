@@ -223,11 +223,12 @@ install_docker() {
   ok "Docker installed"
 }
 
-# Give the container access to the Pi's GPIO (writes docker-compose.override.yml
-# mapping the board's gpio devices). Without it the GPIO driver runs simulated
-# and keys like the demo lamp/fan do nothing.
-configure_gpio_access() {
-  $SUDO bash "$REPO_DIR/scripts/image-build/setup-gpio.sh" "$REPO_DIR" || true
+# On a Pi, select the appliance compose (network_mode: host so the container can
+# reach the host-bridge, and serves on :9284) and map the board's GPIO devices.
+# Without this the GPIO driver runs simulated and keys like the demo lamp/fan do
+# nothing, and the app cannot reach the host-bridge.
+configure_appliance_compose() {
+  $SUDO bash "$REPO_DIR/scripts/image-build/write-appliance-override.sh" "$REPO_DIR" || true
 }
 
 bring_up_stack() {
@@ -238,6 +239,10 @@ bring_up_stack() {
 
 provision_appliance() {
   local ib="$REPO_DIR/scripts/image-build"
+  # The host-bridge is the root helper the container calls for updates, reboot,
+  # and Stream Deck restarts. Install it first so those work from the UI.
+  say "Installing the host-bridge"
+  $SUDO bash "$ib/setup-host-bridge.sh" "$REPO_DIR" || warn "Host-bridge setup failed; skipping."
   if [ "$(yesno "$ENABLE_AP")" = true ]; then
     say "Installing the Wi-Fi fallback access point"
     $SUDO bash "$ib/setup-wifi-ap.sh" || warn "Wi-Fi AP setup failed; skipping."
@@ -282,7 +287,7 @@ main() {
   need_root
   fetch_repo
   install_docker
-  configure_gpio_access
+  [ "$DEPLOYMENT_MODE" = "pi_hosted" ] && configure_appliance_compose
   bring_up_stack
   [ "$DEPLOYMENT_MODE" = "pi_hosted" ] && provision_appliance
   print_done

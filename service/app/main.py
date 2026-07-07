@@ -11,6 +11,7 @@ from .routers import actions as actions_router
 from .routers import layout as layout_router
 from .routers import setup as setup_router
 from .routers import streamdeck as streamdeck_router
+from .routers import system as system_router
 from .routers import ui as ui_router
 
 
@@ -38,6 +39,7 @@ app.include_router(actions_router.router)
 app.include_router(layout_router.router)
 app.include_router(setup_router.router)
 app.include_router(streamdeck_router.router)
+app.include_router(system_router.router)
 
 
 @app.get("/health")
