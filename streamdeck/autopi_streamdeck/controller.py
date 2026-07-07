@@ -14,25 +14,11 @@ import time
 
 import httpx
 
+from . import deck_layout
 from .config import Config
 from .render import render_key
 
 log = logging.getLogger(__name__)
-
-
-def _key_count(deck) -> int:
-    return deck.key_count()
-
-
-def paging_for(count: int):
-    """Import the app's pure paging helpers (shared source of truth)."""
-    import sys
-    from pathlib import Path
-    service = Path(__file__).resolve().parents[2] / "service"
-    if str(service) not in sys.path:
-        sys.path.insert(0, str(service))
-    from app.services import deck_layout  # noqa: E402
-    return deck_layout
 
 
 def _report_status(client: httpx.Client, connected: bool, key_count: int = 0,
@@ -74,7 +60,6 @@ def run(cfg: Config) -> int:
     log.info("Opened %s (%d keys)", deck.deck_type(), deck.key_count())
     _report_status(client, connected=True, key_count=deck.key_count(), deck_type=deck.deck_type())
 
-    deck_layout = paging_for(deck.key_count())
     start_ts = time.time()
     # Rotation and brightness are owned by the app (set in the web editor) and
     # pulled each poll, so config changes take effect live without a restart.

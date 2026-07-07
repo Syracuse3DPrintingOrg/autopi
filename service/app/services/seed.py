@@ -30,10 +30,14 @@ _MACRO = ActionSpec(id="all-on", label="All on", driver="macro",
 
 
 def seed_if_empty() -> bool:
-    """Seed demo actions + layout when nothing is configured. Returns True if seeded."""
-    actions_path = settings.data_dir / "actions.json"
-    layout_path = settings.data_dir / "layout.json"
-    if actions_path.exists() or layout_path.exists() or user_actions():
+    """Seed demo actions and fill empty surfaces on a fresh (or upgraded) install.
+
+    Keyed off having no user actions rather than the presence of a state file:
+    an earlier build could leave an empty layout.json behind, which used to make
+    seeding skip and leave a blank start page. If a library already exists,
+    nothing is touched.
+    """
+    if user_actions():
         return False
 
     specs = [ActionSpec(id=i, label=l, driver=d, params=p, icon=ic, color=c, category=cat)
@@ -42,8 +46,8 @@ def seed_if_empty() -> bool:
     save_user_actions(specs)
 
     order = ["lamp", "fan", "door", "ping", "status", "webhook", "all-on"]
-    # The web start menu shows the actions; the deck gets the same plus its
-    # built-in paging key so a small deck can scroll.
-    layout_svc.set_layout("start", order)
-    layout_svc.set_layout("streamdeck", order)
+    # Only fill a surface that is empty, so a saved layout is never overwritten.
+    for surface in ("start", "streamdeck"):
+        if not any(layout_svc.get_layout(surface)):
+            layout_svc.set_layout(surface, order)
     return True

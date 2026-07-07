@@ -12,6 +12,9 @@ service/data/logs/
 node_modules/
 *.log
 
+# Generated on-device by install.sh (per-board GPIO passthrough)
+docker-compose.override.yml
+
 # Beads / Dolt files (added by bd init)
 .dolt/
 *.db

@@ -8,6 +8,17 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Fixed
 
+- **The Stream Deck controller now actually runs.** It was importing the app's
+  paging code from a path that does not exist once the controller is installed
+  on its own, so it crashed on startup and never connected. The controller is
+  now fully self-contained, like the source project's, so a plugged-in deck
+  comes up and shows your layout.
+- **GPIO keys work on the start menu and the deck.** The demo lamp, fan, and
+  door keys did nothing because the app runs in a container with no access to
+  the Pi's GPIO and no pin backend installed. The installer (and updater) now
+  map the board's GPIO devices into the container and the image ships the lgpio
+  backend, so GPIO actions drive real pins. A blank start page left over from
+  an earlier build now re-seeds its demo keys on update.
 - **Stream Deck rotation, brightness, and Restart now work from the web
   editor.** The app runs in a container and cannot restart the host service, so
   Restart used to report "No Stream Deck service on this host." The controller

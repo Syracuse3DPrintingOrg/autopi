@@ -7,9 +7,12 @@ python-multipart>=0.0.9
 pydantic-settings>=2.2
 httpx>=0.27
 
-# GPIO on a Raspberry Pi. Harmless to install elsewhere: the driver reports
-# itself unavailable when there is no real pin factory, so the app still runs.
+# GPIO on a Raspberry Pi. gpiozero needs a pin-factory backend to actually
+# drive pins; lgpio is the one that works on current Raspberry Pi OS (Bookworm)
+# and on the Pi 5. Both are harmless elsewhere: with no real GPIO device the
+# driver reports itself unavailable and the app still runs (simulated).
 gpiozero>=2.0
+lgpio>=0.2.2.0
 
 # Phase 2 (CAN) will add:
 # python-can>=4.3

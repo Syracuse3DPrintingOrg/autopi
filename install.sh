@@ -223,6 +223,13 @@ install_docker() {
   ok "Docker installed"
 }
 
+# Give the container access to the Pi's GPIO (writes docker-compose.override.yml
+# mapping the board's gpio devices). Without it the GPIO driver runs simulated
+# and keys like the demo lamp/fan do nothing.
+configure_gpio_access() {
+  $SUDO bash "$REPO_DIR/scripts/image-build/setup-gpio.sh" "$REPO_DIR" || true
+}
+
 bring_up_stack() {
   say "Building and starting the AutoPi stack (this can take a few minutes)"
   ( cd "$REPO_DIR" && $SUDO docker compose up -d --build ) || die "docker compose failed."
@@ -275,6 +282,7 @@ main() {
   need_root
   fetch_repo
   install_docker
+  configure_gpio_access
   bring_up_stack
   [ "$DEPLOYMENT_MODE" = "pi_hosted" ] && provision_appliance
   print_done

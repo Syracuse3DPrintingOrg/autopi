@@ -35,6 +35,10 @@ else
   log "Pull failed or nothing to pull; redeploying the current checkout anyway"
 fi
 
+# Refresh the GPIO passthrough override for this Pi (no-op off a Pi). This lets
+# an existing install pick up GPIO access on update without re-running install.
+bash "$REPO_DIR/scripts/image-build/setup-gpio.sh" "$REPO_DIR" >&2 || true
+
 log "Rebuilding and starting the stack"
 if ( cd "$REPO_DIR" && docker compose up -d --build ) >&2; then
   :
