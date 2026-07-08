@@ -19,7 +19,12 @@ Each entry:
 - ``fd``: whether to open the bus in CAN-FD mode.
 - ``data_bitrate``: CAN-FD data-phase bitrate in bit/s, ignored when
   ``fd`` is False.
-- ``label``: an optional human-friendly name shown in the UI.
+- ``purpose``: what this bus is for, one of ``PURPOSES`` below. ``custom``
+  means the free-text ``label`` is the display name; any other purpose has
+  a fixed display name (see ``PURPOSE_LABELS``) so every surface that shows
+  a channel (monitor, simulate, actions) says the same thing.
+- ``label``: the free-text name used when ``purpose`` is ``custom`` (or, for
+  entries saved before ``purpose`` existed, a plain label with no purpose).
 """
 from __future__ import annotations
 
@@ -27,6 +32,17 @@ from ..config import settings
 from .state import StateFile
 
 DEFAULT_BITRATE = 500000
+
+# A channel's purpose drives the fixed display name every surface that picks
+# a channel (monitor, simulate, actions) shows, so the same bus is called the
+# same thing everywhere. "custom" falls back to the free-text label.
+PURPOSE_LABELS = {
+    "powertrain": "Powertrain",
+    "infotainment": "Infotainment",
+    "body": "Body",
+    "diagnostic": "Diagnostic",
+}
+PURPOSES = (*PURPOSE_LABELS.keys(), "custom")
 
 
 def _store() -> StateFile:
@@ -45,6 +61,9 @@ def get_interface(interface_id: str) -> dict | None:
 
 
 def _normalize(entry: dict) -> dict:
+    purpose = entry.get("purpose") or ""
+    if purpose not in PURPOSES:
+        purpose = ""
     return {
         "id": str(entry["id"]),
         "backend": entry.get("backend") or "socketcan",
@@ -52,8 +71,22 @@ def _normalize(entry: dict) -> dict:
         "bitrate": int(entry.get("bitrate") or DEFAULT_BITRATE),
         "fd": bool(entry.get("fd", False)),
         "data_bitrate": int(entry["data_bitrate"]) if entry.get("data_bitrate") else None,
+        "purpose": purpose,
         "label": entry.get("label") or "",
     }
+
+
+def display_label(entry: dict) -> str:
+    """The name to show for this interface everywhere a channel is picked.
+
+    A named purpose (powertrain, infotainment, body, diagnostic) always wins
+    with its fixed label; "custom" or no purpose falls back to the free-text
+    label, and finally to the channel id itself.
+    """
+    purpose = entry.get("purpose") or ""
+    if purpose in PURPOSE_LABELS:
+        return PURPOSE_LABELS[purpose]
+    return entry.get("label") or entry.get("id", "")
 
 
 def save_interface(entry: dict) -> dict:

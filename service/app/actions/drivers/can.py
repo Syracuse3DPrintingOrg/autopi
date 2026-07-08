@@ -30,7 +30,9 @@ class CanDriver(Driver):
     simulate_when_unavailable = True  # execute() reports a simulated send with no bus
     param_schema = [
         {"key": "channel", "label": "Interface", "type": "text", "required": True,
-         "default": "can0"},
+         "default": "can0",
+         "help": "The channel name, e.g. can0. See CAN Interfaces in Settings for what "
+                 "each configured channel is used for."},
         {"key": "arbitration_id", "label": "Arbitration ID (hex)", "type": "text",
          "required": True, "help": "e.g. 0x7DF"},
         {"key": "data", "label": "Data bytes (hex)", "type": "text", "required": False,

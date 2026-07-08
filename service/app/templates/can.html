@@ -19,6 +19,7 @@
     <div id="interfaces" class="d-flex gap-2"></div>
     <span id="cantools-warn" class="badge text-bg-warning d-none">cantools not installed: DBC features disabled</span>
   </div>
+  <datalist id="can-channel-list"></datalist>
 
   <div class="row">
     <div class="col-lg-5">
@@ -76,7 +77,7 @@
           <div class="col-4"><label class="form-label small mb-0">Message</label>
             <select class="form-select form-select-sm" id="enc-msg"></select></div>
           <div class="col-4"><label class="form-label small mb-0">Channel</label>
-            <input class="form-control form-control-sm mono" id="enc-ch" value="can0"></div>
+            <input class="form-control form-control-sm mono" id="enc-ch" value="can0" list="can-channel-list"></div>
         </div>
         <div id="enc-signals" class="row g-2 mt-1"></div>
         <div class="mt-2 d-flex gap-2">
@@ -91,7 +92,7 @@
         <h6><i class="bi bi-send me-1"></i>Send a raw frame</h6>
         <div class="row g-2 align-items-end">
           <div class="col-3"><label class="form-label small mb-0">Channel</label>
-            <input class="form-control form-control-sm mono" id="raw-ch" value="can0"></div>
+            <input class="form-control form-control-sm mono" id="raw-ch" value="can0" list="can-channel-list"></div>
           <div class="col-3"><label class="form-label small mb-0">Arb ID (hex)</label>
             <input class="form-control form-control-sm mono" id="raw-id" placeholder="0x7DF"></div>
           <div class="col-4"><label class="form-label small mb-0">Data (hex)</label>
@@ -106,4 +107,7 @@
   </div>
 </div>
 {% endblock %}
-{% block scripts %}<script src="static/js/can.js"></script>{% endblock %}
+{% block scripts %}
+<script src="static/js/can-channel-labels.js"></script>
+<script src="static/js/can.js"></script>
+{% endblock %}

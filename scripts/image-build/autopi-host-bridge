@@ -43,8 +43,8 @@ HOST, PORT = "127.0.0.1", 9299
 # Bump this whenever the bridge gains or changes routes. The app compares it to
 # the version it expects and tells the user to restart a stale bridge (a
 # restart is what actually loads a newly-installed bridge file). 2 = network
-# (Wi-Fi) routes added.
-BRIDGE_VERSION = 2
+# (Wi-Fi) routes added. 3 = CAN interface up/down/status routes added.
+BRIDGE_VERSION = 3
 
 # Grace: allow a tokenless request for this release so a bridge that updates
 # ahead of the app does not lock the fleet out mid-update. Flip to False one
@@ -149,6 +149,21 @@ def parse_nmcli_scan(output: str) -> list[dict]:
         if prev is None or (signal or 0) > (prev["signal"] or 0):
             best[ssid] = {"ssid": ssid, "signal": signal, "secured": secured}
     return sorted(best.values(), key=lambda n: n["signal"] or 0, reverse=True)
+
+
+def is_valid_can_interface(name: str) -> bool:
+    """Guard for the ``interface`` field on every CAN route.
+
+    Bringing an interface up or down needs root, so a bad name here is the
+    one way an app-side bug (or a request replay) could reach past the
+    intended can0/can1 into some other host network device. Linux interface
+    names are at most 15 bytes (IFNAMSIZ - 1) and this only needs to admit
+    the SocketCAN naming convention (canN, vcanN) plus anything a virtual/
+    custom channel might reasonably be called.
+    """
+    import re
+
+    return bool(name) and len(name) <= 15 and re.fullmatch(r"[A-Za-z0-9_.-]+", name) is not None
 
 
 def parse_iw_scan(output: str) -> list[dict]:
@@ -267,6 +282,69 @@ def op_network_connect(body: dict) -> dict:
     return {"ok": False, "error": "no Wi-Fi tool available (need nmcli or wpa_cli)"}
 
 
+def _ip_link_show(interface: str) -> dict:
+    """Run `ip -details -json link show <interface>` and return the parsed
+    JSON list, or an error. Read-only, so this needs no root at all; it is
+    routed through the bridge anyway so the same code path works whether or
+    not the app container shares the host's network namespace."""
+    rc, out, err = _run(["ip", "-details", "-json", "link", "show", interface], timeout=5)
+    if rc != 0:
+        return {"ok": False, "error": (err or f"no such interface: {interface}").strip()[:500]}
+    try:
+        return {"ok": True, "link": json.loads(out)}
+    except ValueError:
+        return {"ok": False, "error": "could not parse ip link output"}
+
+
+def op_can_up(body: dict) -> dict:
+    """Bring a CAN interface up, setting its arbitration (and CAN-FD data)
+    bitrate first. Mirrors what setup-can-waveshare.sh's boot-time helper
+    does, but on demand and for one interface at a time."""
+    interface = str(body.get("interface") or "").strip()
+    if not is_valid_can_interface(interface):
+        return {"ok": False, "error": "invalid interface name"}
+    try:
+        bitrate = int(body.get("bitrate") or 500000)
+    except (TypeError, ValueError):
+        return {"ok": False, "error": "bitrate must be a number"}
+    fd = bool(body.get("fd"))
+    data_bitrate = body.get("data_bitrate")
+    _run(["ip", "link", "set", interface, "down"], timeout=5)  # best effort; may already be down
+    type_cmd = ["ip", "link", "set", interface, "type", "can", "bitrate", str(bitrate)]
+    if fd:
+        try:
+            data_bitrate = int(data_bitrate) if data_bitrate else bitrate
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "data_bitrate must be a number"}
+        type_cmd += ["dbitrate", str(data_bitrate), "fd", "on"]
+    rc, _out, err = _run(type_cmd, timeout=10)
+    if rc != 0:
+        return {"ok": False, "error": (err or "could not configure the interface").strip()[:500]}
+    rc, _out, err = _run(["ip", "link", "set", interface, "up"], timeout=10)
+    if rc != 0:
+        return {"ok": False, "error": (err or "could not bring the interface up").strip()[:500]}
+    status = _ip_link_show(interface)
+    return {"ok": True, "message": f"{interface} is up", **status}
+
+
+def op_can_down(body: dict) -> dict:
+    interface = str(body.get("interface") or "").strip()
+    if not is_valid_can_interface(interface):
+        return {"ok": False, "error": "invalid interface name"}
+    rc, _out, err = _run(["ip", "link", "set", interface, "down"], timeout=10)
+    if rc != 0:
+        return {"ok": False, "error": (err or "could not bring the interface down").strip()[:500]}
+    status = _ip_link_show(interface)
+    return {"ok": True, "message": f"{interface} is down", **status}
+
+
+def op_can_status(body: dict) -> dict:
+    interface = str(body.get("interface") or "").strip()
+    if not is_valid_can_interface(interface):
+        return {"ok": False, "error": "invalid interface name"}
+    return _ip_link_show(interface)
+
+
 def read_health(_body: dict) -> dict:
     """Raw Pi power/thermal/disk read. Every probe degrades to unknown."""
     out: dict = {"throttled": None, "temp_c": None, "disk_percent": None}
@@ -316,6 +394,9 @@ ROUTES = {
     ("GET", "/network/status"): op_network_status,
     ("POST", "/network/wifi/scan"): op_network_scan,
     ("POST", "/network/wifi/connect"): op_network_connect,
+    ("POST", "/can/up"): op_can_up,
+    ("POST", "/can/down"): op_can_down,
+    ("POST", "/can/status"): op_can_status,
     ("GET", "/health"): lambda _body: {"ok": True, "bridge": "autopi",
                                        "version": BRIDGE_VERSION, "ts": time.time()},
 }

@@ -8,6 +8,15 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **Set up and test the CAN hardware from the app.** The CAN Interfaces settings
+  now bring an interface up or down (bitrate and CAN-FD data bitrate), show a live
+  health badge (up/down, bus-off or error-passive, and error counts), run a
+  loopback self-test, and send a test frame, so you can confirm each bus is live
+  and correctly wired. Give each bus a purpose (Powertrain, Infotainment, Body,
+  Diagnostic) and that name shows everywhere you pick a channel, so you always
+  know which network is which. Bring-up runs through the on-device host helper;
+  off-device it shows the exact command to run instead.
+
 - **A builder overview dashboard.** Opening the app on a computer now lands on an
   overview that orients you: the active vehicle, your CAN interfaces and their
   status, quick tiles for the main jobs (monitor, console, arrange keys, run a
