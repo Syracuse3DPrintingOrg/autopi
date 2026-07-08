@@ -6,6 +6,16 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ## [Unreleased]
 
+### Added
+
+- **Vehicle test profiles.** A new profiles page lets you save a vehicle's
+  year, make, model, and one or more VINs, along with which CAN interfaces
+  and CAN databases go with it, and pick one as the active profile for CAN
+  work. A fresh install starts with two ready-made profiles for the
+  Stellantis Uconnect 5 infotainment platform, Atlantis High and Atlantis
+  Mid, so there is something to build infotainment CAN actions against right
+  away.
+
 ### Fixed
 
 - **The Stream Deck keeps its keys through an update, and recovers on its own.**

@@ -64,3 +64,11 @@ def layout_editor(request: Request):
     # The editor loads actions, layout, and deck status over the API itself.
     return templates.TemplateResponse(request, "layout_editor.html",
                                       theme_context(request))
+
+
+@router.get("/ui/profiles", response_class=HTMLResponse)
+def profiles_page(request: Request):
+    # Lives under /ui because /profiles is already the CRUD API's prefix.
+    # The page loads and saves profiles over that API itself.
+    return templates.TemplateResponse(request, "profiles.html",
+                                      theme_context(request))

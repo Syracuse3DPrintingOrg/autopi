@@ -1,0 +1,240 @@
+{% extends "base.html" %}
+{% block title %}Vehicle profiles: {{ app_name }}{% endblock %}
+{% block head %}
+<style>
+  .editor-card { background: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color);
+    border-radius: 0.75rem; padding: 1.5rem; }
+  .profile-row { border: 1px solid var(--bs-border-color); border-radius: 0.6rem;
+    padding: 0.75rem 1rem; margin-bottom: 0.6rem; display: flex; align-items: center;
+    justify-content: space-between; gap: 0.75rem; }
+  .profile-row.active { border-color: var(--bs-primary); box-shadow: 0 0 0 1px var(--bs-primary); }
+  .profile-meta { color: var(--bs-secondary-color); font-size: 0.85rem; }
+  .vin-chip { display: inline-block; background: var(--bs-secondary-bg); border-radius: 0.4rem;
+    padding: 0.1rem 0.45rem; font-size: 0.78rem; margin: 0.1rem 0.2rem 0.1rem 0; font-family: monospace; }
+</style>
+{% endblock %}
+{% block body %}
+<div class="container-fluid">
+  <div class="row g-3">
+    <div class="col-lg-7">
+      <div class="editor-card">
+        <div class="d-flex align-items-center gap-2 mb-3">
+          <i class="bi bi-car-front-fill" style="font-size:1.2rem"></i>
+          <h5 class="mb-0">Vehicle profiles</h5>
+        </div>
+        <p class="small text-secondary">
+          A profile saves a vehicle's year, make, model, VIN, and the CAN
+          setup you want to reuse each time you work on it. Pick one active
+          profile before running CAN actions built to reference it.
+        </p>
+        <div id="profile-list"></div>
+        <div id="empty-msg" class="text-secondary small d-none">
+          No profiles yet. Add one with the form.
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-5">
+      <div class="editor-card">
+        <div class="fw-semibold mb-3" id="form-title"><i class="bi bi-plus-circle me-1"></i>Add a profile</div>
+        <form id="profile-form">
+          <input type="hidden" id="f-id">
+          <div class="mb-2">
+            <label class="form-label small mb-1">Name</label>
+            <input type="text" class="form-control form-control-sm" id="f-name" required>
+          </div>
+          <div class="row g-2 mb-2">
+            <div class="col-4">
+              <label class="form-label small mb-1">Year</label>
+              <input type="number" class="form-control form-control-sm" id="f-year">
+            </div>
+            <div class="col-4">
+              <label class="form-label small mb-1">Make</label>
+              <input type="text" class="form-control form-control-sm" id="f-make">
+            </div>
+            <div class="col-4">
+              <label class="form-label small mb-1">Model</label>
+              <input type="text" class="form-control form-control-sm" id="f-model">
+            </div>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small mb-1">Primary VIN</label>
+            <input type="text" class="form-control form-control-sm" id="f-vin" maxlength="17">
+          </div>
+          <div class="mb-2">
+            <label class="form-label small mb-1">Additional VINs</label>
+            <input type="text" class="form-control form-control-sm" id="f-vins"
+                   placeholder="comma separated, e.g. 1C4RJFAG0MC000001, 1C4RJFAG0MC000002">
+          </div>
+          <div class="mb-3">
+            <label class="form-label small mb-1">CAN interfaces</label>
+            <input type="text" class="form-control form-control-sm" id="f-interfaces"
+                   placeholder="comma separated, e.g. can0, can1">
+          </div>
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary btn-sm" id="save-btn">
+              <i class="bi bi-check-lg me-1"></i>Save
+            </button>
+            <button type="button" class="btn btn-outline-secondary btn-sm d-none" id="cancel-btn">
+              Cancel edit
+            </button>
+          </div>
+          <div id="form-status" class="small mt-2"></div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  const listEl = document.getElementById('profile-list');
+  const emptyEl = document.getElementById('empty-msg');
+  const form = document.getElementById('profile-form');
+  const formTitle = document.getElementById('form-title');
+  const cancelBtn = document.getElementById('cancel-btn');
+  const statusEl = document.getElementById('form-status');
+  let activeId = null;
+
+  function csv(value) {
+    return value.split(',').map((v) => v.trim()).filter(Boolean);
+  }
+
+  function resetForm() {
+    document.getElementById('f-id').value = '';
+    form.reset();
+    formTitle.innerHTML = '<i class="bi bi-plus-circle me-1"></i>Add a profile';
+    cancelBtn.classList.add('d-none');
+  }
+
+  function fillForm(p) {
+    document.getElementById('f-id').value = p.id;
+    document.getElementById('f-name').value = p.name || '';
+    document.getElementById('f-year').value = p.year || '';
+    document.getElementById('f-make').value = p.make || '';
+    document.getElementById('f-model').value = p.model || '';
+    document.getElementById('f-vin').value = p.vin || '';
+    const extraVins = (p.config && p.config.vins || []).filter((v) => v !== p.vin);
+    document.getElementById('f-vins').value = extraVins.join(', ');
+    document.getElementById('f-interfaces').value =
+      ((p.config && p.config.can_interfaces) || []).join(', ');
+    formTitle.innerHTML = '<i class="bi bi-pencil me-1"></i>Edit profile';
+    cancelBtn.classList.remove('d-none');
+  }
+
+  function renderRow(p) {
+    const isActive = p.id === activeId;
+    const vins = (p.config && p.config.vins) || [];
+    const row = document.createElement('div');
+    row.className = 'profile-row' + (isActive ? ' active' : '');
+    const details = document.createElement('div');
+    const title = document.createElement('div');
+    title.innerHTML = '<strong>' + (p.name || 'Untitled profile') + '</strong>' +
+      (isActive ? ' <span class="badge text-bg-primary ms-1">Active</span>' : '');
+    details.appendChild(title);
+    const meta = document.createElement('div');
+    meta.className = 'profile-meta';
+    meta.textContent = [p.year, p.make, p.model].filter(Boolean).join(' ') || 'No year/make/model set';
+    details.appendChild(meta);
+    if (vins.length) {
+      const vinWrap = document.createElement('div');
+      vinWrap.className = 'mt-1';
+      vins.forEach((v) => {
+        const chip = document.createElement('span');
+        chip.className = 'vin-chip';
+        chip.textContent = v;
+        vinWrap.appendChild(chip);
+      });
+      details.appendChild(vinWrap);
+    }
+    row.appendChild(details);
+
+    const actions = document.createElement('div');
+    actions.className = 'd-flex gap-1 flex-shrink-0';
+
+    const activateBtn = document.createElement('button');
+    activateBtn.className = 'btn btn-sm ' + (isActive ? 'btn-primary' : 'btn-outline-primary');
+    activateBtn.innerHTML = isActive ? '<i class="bi bi-check2"></i>' : 'Set active';
+    activateBtn.title = isActive ? 'Active profile' : 'Make this the active profile';
+    activateBtn.addEventListener('click', () => setActive(p.id));
+    actions.appendChild(activateBtn);
+
+    const editBtn = document.createElement('button');
+    editBtn.className = 'btn btn-sm btn-outline-secondary';
+    editBtn.innerHTML = '<i class="bi bi-pencil"></i>';
+    editBtn.addEventListener('click', () => fillForm(p));
+    actions.appendChild(editBtn);
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'btn btn-sm btn-outline-danger';
+    delBtn.innerHTML = '<i class="bi bi-trash"></i>';
+    delBtn.addEventListener('click', () => deleteProfile(p.id));
+    actions.appendChild(delBtn);
+
+    row.appendChild(actions);
+    return row;
+  }
+
+  async function load() {
+    const resp = await fetch('/profiles');
+    const data = await resp.json();
+    activeId = data.active_id;
+    listEl.innerHTML = '';
+    if (!data.profiles.length) {
+      emptyEl.classList.remove('d-none');
+      return;
+    }
+    emptyEl.classList.add('d-none');
+    data.profiles.forEach((p) => listEl.appendChild(renderRow(p)));
+  }
+
+  async function setActive(id) {
+    await fetch('/profiles/active', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profile_id: id }),
+    });
+    load();
+  }
+
+  async function deleteProfile(id) {
+    if (!confirm('Delete this profile?')) return;
+    await fetch('/profiles/' + id, { method: 'DELETE' });
+    load();
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const id = document.getElementById('f-id').value;
+    const yearVal = document.getElementById('f-year').value;
+    const body = {
+      name: document.getElementById('f-name').value,
+      year: yearVal ? parseInt(yearVal, 10) : null,
+      make: document.getElementById('f-make').value,
+      model: document.getElementById('f-model').value,
+      vin: document.getElementById('f-vin').value,
+      vins: csv(document.getElementById('f-vins').value),
+      config: { can_interfaces: csv(document.getElementById('f-interfaces').value) },
+    };
+    statusEl.textContent = 'Saving...';
+    const resp = await fetch(id ? '/profiles/' + id : '/profiles', {
+      method: id ? 'PUT' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (resp.ok) {
+      statusEl.textContent = 'Saved.';
+      resetForm();
+      load();
+    } else {
+      statusEl.textContent = 'Could not save that profile.';
+    }
+  });
+
+  cancelBtn.addEventListener('click', resetForm);
+
+  load();
+})();
+</script>
+{% endblock %}
