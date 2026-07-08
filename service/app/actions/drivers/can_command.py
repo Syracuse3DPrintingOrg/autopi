@@ -36,7 +36,9 @@ class CanCommandDriver(Driver):
     simulate_when_unavailable = True  # execute() reports a simulated send with no bus
     param_schema = [
         {"key": "channel", "label": "Interface", "type": "text", "required": False,
-         "default": "can0"},
+         "default": "can0",
+         "help": "The channel name, e.g. can0. See CAN Interfaces in Settings for what "
+                 "each configured channel is used for."},
         {"key": "database_id", "label": "CAN database", "type": "number", "required": False,
          "help": "Pick the database this command's message belongs to. Leave blank "
                  "to send a raw frame instead."},

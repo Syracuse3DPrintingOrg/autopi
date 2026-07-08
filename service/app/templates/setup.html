@@ -295,7 +295,8 @@
 
         <div class="tab-pane fade" id="pane-can-interfaces" role="tabpanel" data-title="CAN Interfaces">
           <div class="section-title"><i class="bi bi-diagram-3"></i>CAN Interfaces</div>
-          <p class="pane-intro">Tell AutoPi which backend and bitrate to use for each CAN channel.
+          <p class="pane-intro">Tell AutoPi which backend and bitrate to use for each CAN channel,
+            say what each bus is for, bring it up, and confirm it is working.
             A channel with no configured interface here falls back to SocketCAN at 500 kbit/s.</p>
           <div class="section-card">
             <div class="subsection-title mb-2">Configured interfaces</div>
@@ -326,8 +327,18 @@
                 <input type="number" class="form-control form-control-sm" id="can-if-data-bitrate" placeholder="optional">
               </div>
               <div class="col-sm-4">
+                <label class="form-label small mb-1">Purpose</label>
+                <select class="form-select form-select-sm" id="can-if-purpose">
+                  <option value="">Custom label below</option>
+                  <option value="powertrain">Powertrain</option>
+                  <option value="infotainment">Infotainment</option>
+                  <option value="body">Body</option>
+                  <option value="diagnostic">Diagnostic</option>
+                </select>
+              </div>
+              <div class="col-sm-4" id="can-if-label-wrap">
                 <label class="form-label small mb-1">Label</label>
-                <input type="text" class="form-control form-control-sm" id="can-if-label" placeholder="optional">
+                <input type="text" class="form-control form-control-sm" id="can-if-label" placeholder="e.g. Rear body module bus">
               </div>
               <div class="col-12">
                 <div class="form-check form-switch">

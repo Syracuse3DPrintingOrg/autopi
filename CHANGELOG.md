@@ -8,6 +8,17 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **Bring up, label, and test your CAN hardware from the web UI.** The CAN
+  Interfaces settings pane now brings a SocketCAN channel up or down at its
+  configured bitrate (and CAN-FD data bitrate) with one button, shows its live
+  state (up/down, bus-off/error-active/error-passive, rx/tx error counters),
+  and runs a one-click loopback self-test or sends a fixed test frame you can
+  watch for on a scope or a second node. Bringing a channel up needs root, so
+  it goes through the host-bridge; off a Pi, or before the bridge is updated,
+  you get the exact manual `ip link` command instead of a false success. Every
+  interface also gets a purpose (Powertrain, Infotainment, Body, Diagnostic, or
+  a custom label) that now shows up everywhere you pick a channel, so you
+  always know which bus you are looking at.
 - **Two ways to use it: an operator screen and a builder.** The Raspberry Pi
   runs standalone with a simple, large-touch Operator screen (the active vehicle,
   its key grid, and a full-screen test runner with pass/fail confirms), while a

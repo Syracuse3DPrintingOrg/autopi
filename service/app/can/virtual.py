@@ -21,9 +21,14 @@ log = logging.getLogger(__name__)
 class VirtualProvider(CanProvider):
     name = "virtual"
 
-    def __init__(self, channel: str = "virtual0", fd: bool = False, **kwargs: Any) -> None:
+    def __init__(self, channel: str = "virtual0", fd: bool = False,
+                 receive_own_messages: bool = False, **kwargs: Any) -> None:
         super().__init__(channel)
         self.fd = fd
+        # Off by default; the loopback self-test opens a dedicated provider
+        # with this on so a single instance hears its own sent frames with
+        # no second provider needed.
+        self.receive_own_messages = receive_own_messages
         self._bus: Any = None
         self._open_failed = False
 
@@ -53,7 +58,10 @@ class VirtualProvider(CanProvider):
         try:
             import can
 
-            self._bus = can.interface.Bus(channel=self.channel, interface="virtual", fd=self.fd)
+            self._bus = can.interface.Bus(
+                channel=self.channel, interface="virtual", fd=self.fd,
+                receive_own_messages=self.receive_own_messages,
+            )
             self._open_failed = False
             return True
         except Exception as exc:

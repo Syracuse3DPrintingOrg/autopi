@@ -22,9 +22,14 @@ log = logging.getLogger(__name__)
 class SocketCanProvider(CanProvider):
     name = "socketcan"
 
-    def __init__(self, channel: str = "can0", fd: bool = False, **kwargs: Any) -> None:
+    def __init__(self, channel: str = "can0", fd: bool = False,
+                 receive_own_messages: bool = False, **kwargs: Any) -> None:
         super().__init__(channel)
         self.fd = fd
+        # Off by default (matches normal python-can behavior); the loopback
+        # self-test opens a dedicated provider with this on so it can hear
+        # its own transmitted frames with no other node on the bus.
+        self.receive_own_messages = receive_own_messages
         self._bus: Any = None
         self._open_failed = False
 
@@ -61,7 +66,10 @@ class SocketCanProvider(CanProvider):
         try:
             import can
 
-            self._bus = can.interface.Bus(channel=self.channel, interface="socketcan", fd=self.fd)
+            self._bus = can.interface.Bus(
+                channel=self.channel, interface="socketcan", fd=self.fd,
+                receive_own_messages=self.receive_own_messages,
+            )
             self._open_failed = False
             return True
         except Exception as exc:

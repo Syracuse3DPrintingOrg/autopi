@@ -28,7 +28,8 @@
     <div class="row g-2 align-items-end mb-3">
       <div class="col-md-3">
         <label class="form-label small">Channel</label>
-        <input type="text" class="form-control form-control-sm" id="f-channel" value="can0">
+        <input type="text" class="form-control form-control-sm" id="f-channel" value="can0" list="can-channel-list">
+        <datalist id="can-channel-list"></datalist>
       </div>
       <div class="col-md-3">
         <label class="form-label small">Backend</label>
@@ -66,6 +67,7 @@
 </div>
 {% endblock %}
 {% block scripts %}
+<script src="static/js/can-channel-labels.js"></script>
 <script>
 (function () {
   const rowsEl = document.getElementById('mon-rows');
