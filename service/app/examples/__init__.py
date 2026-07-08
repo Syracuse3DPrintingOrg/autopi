@@ -2,6 +2,7 @@
 from . import dt15  # noqa: F401
 from . import ram1500  # noqa: F401
 from . import giorgio  # noqa: F401
+from . import ford_f150  # noqa: F401
 
 EXAMPLES = {
     "dt15": {
@@ -21,5 +22,11 @@ EXAMPLES = {
         "description": giorgio.DESCRIPTION,
         "load": giorgio.load,
         "is_loaded": giorgio.is_loaded,
+    },
+    "ford_f150": {
+        "name": ford_f150.NAME,
+        "description": ford_f150.DESCRIPTION,
+        "load": ford_f150.load,
+        "is_loaded": ford_f150.is_loaded,
     },
 }

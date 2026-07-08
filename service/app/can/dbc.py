@@ -155,10 +155,10 @@ def encode(dbc_text: str, message: str | int, signals: dict[str, Any],
         full["COUNTER"] = int(counter) % 16
     for sig in msg.signals:
         if sig.name not in full:
-            if sig.choices:
-                full[sig.name] = min(int(k) for k in sig.choices)
-            else:
-                full[sig.name] = 0
+            # Fill an unset signal so its raw value is 0 (an empty frame for
+            # those bits). For a signal with an offset, physical 0 can be out of
+            # the field's range, so use the physical value that maps to raw 0.
+            full[sig.name] = sig.offset if getattr(sig, "offset", None) is not None else 0
     # strict=False: real DBCs (e.g. opendbc) often carry placeholder [0|1]
     # signal ranges that would wrongly reject a valid physical value.
     data = list(bytes(db.encode_message(msg.frame_id, full, strict=False)))

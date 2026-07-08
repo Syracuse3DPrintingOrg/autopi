@@ -8,6 +8,15 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **Ford F-150 (2024) sample on the real Ford CAN-FD DBC.** A fourth vehicle
+  example uses the real ford_lincoln_base_pt.dbc from opendbc (MIT), which covers
+  the modern Ford CAN-FD platform (F-150, Mustang Mach-E, Explorer, Bronco Sport,
+  Maverick, and more). Monitoring is fully real: connect over the HAT and the
+  actual vehicle speed, gear, engine RPM, wheel speeds, and steering angle decode
+  from the bus. Ford protects messages with per-message counters and checksums,
+  so this sample is read-focused; if you have FORScan definitions or captures for
+  a specific truck, import them on the CAN page to extend it.
+
 - **Set up and test the CAN hardware from the app.** The CAN Interfaces settings
   now bring an interface up or down (bitrate and CAN-FD data bitrate), show a live
   health badge (up/down, bus-off or error-passive, and error counts), run a

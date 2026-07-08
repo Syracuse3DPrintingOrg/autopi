@@ -63,6 +63,7 @@ Bundled data:
 | Data | License | Notes |
 |---|---|---|
 | opendbc DBC files (comma.ai) | MIT | Imported on demand, not vendored in the repo. Keep attribution. |
+| ford_lincoln_base_pt.dbc (vendored, opendbc) | MIT | Bundled for the Ford F-150 sample; opendbc |
 | fca_giorgio.dbc (vendored, opendbc) | MIT | Bundled for the Alfa Romeo Giulia sample; opendbc |
 | chrysler_cusw.dbc (vendored, opendbc) | MIT | Bundled for the RAM 1500 sample; see service/app/examples/data/NOTICE.md |
 | User-imported DBC files | Varies | Recorded per database in `CanDatabase.source` / `.license`. |

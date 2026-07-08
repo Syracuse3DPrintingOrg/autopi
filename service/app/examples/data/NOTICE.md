@@ -9,3 +9,7 @@ assist signals; it does not include proprietary infotainment/radio messages.
 `fca_giorgio.dbc` is also from opendbc (MIT), covering the Stellantis Giorgio
 platform (Alfa Romeo Giulia/Stelvio, Maserati Grecale). Redistributed with
 attribution under the MIT license.
+
+`ford_lincoln_base_pt.dbc` is from opendbc (MIT), the modern Ford CAN-FD
+powertrain database (F-150, Mustang Mach-E, Explorer, Bronco Sport, Maverick,
+and more). Redistributed with attribution under the MIT license.
