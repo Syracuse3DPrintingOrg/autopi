@@ -1,0 +1,586 @@
+{% extends "base.html" %}
+{% block title %}CAN firewall: {{ app_name }}{% endblock %}
+{% block head %}
+<style>
+  .fw-card { background: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color);
+    border-radius: 0.75rem; padding: 1.5rem; }
+  #rules-table tr.disabled { opacity: 0.55; }
+  #rules-table td, #captures-table td { vertical-align: middle; }
+  .gw-badge.on { color: var(--bs-success); }
+  .gw-badge.off { color: var(--bs-secondary-color); }
+  .action-badge { text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.03em; }
+  .action-allow { color: var(--bs-success); }
+  .action-block { color: var(--bs-danger); }
+  .action-rewrite { color: var(--bs-warning); }
+  .action-inject { color: var(--bs-info); }
+</style>
+{% endblock %}
+{% block body %}
+<div class="container-fluid">
+  <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+    <h5 class="mb-0"><i class="bi bi-shield-lock me-1"></i>CAN Firewall</h5>
+    <span id="gw-badge" class="gw-badge off ms-2 small"><i class="bi bi-circle-fill me-1"></i>Gateway stopped</span>
+  </div>
+
+  <div class="fw-card mb-3">
+    <p class="text-body-secondary small mb-3">
+      Sit the app between two CAN interfaces and forward traffic between them
+      through the rule list below. Rules run in order; the first one that
+      matches a frame decides what happens to it. A frame that matches
+      nothing passes through unchanged.
+    </p>
+    <div class="row g-2 align-items-end mb-2">
+      <div class="col-md-3">
+        <label class="form-label small">Channel A</label>
+        <input type="text" class="form-control form-control-sm" id="f-chan-a" list="can-channel-list">
+        <datalist id="can-channel-list"></datalist>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small">Channel B</label>
+        <input type="text" class="form-control form-control-sm" id="f-chan-b" list="can-channel-list">
+      </div>
+      <div class="col-md-3">
+        <div class="form-check form-switch mt-4">
+          <input class="form-check-input" type="checkbox" id="f-fwd-ab" checked>
+          <label class="form-check-label small" for="f-fwd-ab">Forward A &rarr; B</label>
+        </div>
+        <div class="form-check form-switch">
+          <input class="form-check-input" type="checkbox" id="f-fwd-ba" checked>
+          <label class="form-check-label small" for="f-fwd-ba">Forward B &rarr; A</label>
+        </div>
+      </div>
+      <div class="col-md-3 btn-group">
+        <button id="btn-save-config" class="btn btn-sm btn-outline-secondary"><i class="bi bi-save me-1"></i>Save</button>
+        <button id="btn-gw-start" class="btn btn-sm btn-outline-success"><i class="bi bi-play-fill me-1"></i>Start</button>
+        <button id="btn-gw-stop" class="btn btn-sm btn-outline-secondary"><i class="bi bi-stop-fill me-1"></i>Stop</button>
+      </div>
+    </div>
+    <div id="gw-error" class="text-danger small"></div>
+    <div id="gw-stats" class="small text-body-secondary"></div>
+  </div>
+
+  <div class="fw-card mb-3">
+    <h6 class="mb-3"><i class="bi bi-list-ol me-1"></i>Rules</h6>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle" id="rules-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Direction</th>
+            <th>Match</th>
+            <th>Action</th>
+            <th>Enabled</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="rules-rows"></tbody>
+      </table>
+    </div>
+    <div id="rules-empty" class="text-body-secondary small d-none">No rules yet. Every frame passes through unchanged until you add one.</div>
+  </div>
+
+  <div class="fw-card mb-3">
+    <h6 class="mb-3"><i class="bi bi-plus-circle me-1"></i>Add rule</h6>
+    <form id="rule-form" class="row g-2">
+      <div class="col-md-3">
+        <label class="form-label small">Name</label>
+        <input type="text" class="form-control form-control-sm" id="r-name" placeholder="Block diagnostics">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small">Direction</label>
+        <select class="form-select form-select-sm" id="r-direction">
+          <option value="both">Both directions</option>
+          <option value="a_to_b">A to B only</option>
+          <option value="b_to_a">B to A only</option>
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small">Action</label>
+        <select class="form-select form-select-sm" id="r-action">
+          <option value="allow">Allow</option>
+          <option value="block">Block</option>
+          <option value="rewrite">Rewrite</option>
+          <option value="inject">Inject extra frame</option>
+        </select>
+      </div>
+      <div class="col-md-3">
+        <div class="form-check mt-4">
+          <input class="form-check-input" type="checkbox" id="r-enabled" checked>
+          <label class="form-check-label small" for="r-enabled">Enabled</label>
+        </div>
+      </div>
+
+      <div class="col-12"><hr class="my-1"></div>
+      <div class="col-md-3">
+        <label class="form-label small">Match: arbitration ID</label>
+        <input type="text" class="form-control form-control-sm" id="r-arb" placeholder="0x100">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small">Match: mask (optional)</label>
+        <input type="text" class="form-control form-control-sm" id="r-mask" placeholder="0x7F0">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small">Match: id range min (optional)</label>
+        <input type="text" class="form-control form-control-sm" id="r-idmin" placeholder="0x100">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small">Match: id range max (optional)</label>
+        <input type="text" class="form-control form-control-sm" id="r-idmax" placeholder="0x1FF">
+      </div>
+
+      <div class="col-md-3">
+        <label class="form-label small">Match: database (optional)</label>
+        <select class="form-select form-select-sm" id="r-match-db"></select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small">Match: signal name</label>
+        <input type="text" class="form-control form-control-sm" id="r-signal" placeholder="SPEED">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small">Op</label>
+        <select class="form-select form-select-sm" id="r-op">
+          <option value="eq">=</option>
+          <option value="ne">!=</option>
+          <option value="gt">&gt;</option>
+          <option value="lt">&lt;</option>
+          <option value="ge">&gt;=</option>
+          <option value="le">&lt;=</option>
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label small">Value</label>
+        <input type="text" class="form-control form-control-sm" id="r-value" placeholder="42">
+      </div>
+
+      <div class="col-12 rewrite-fields d-none">
+        <hr class="my-1">
+        <div class="row g-2">
+          <div class="col-md-3">
+            <label class="form-label small">Rewrite: raw data bytes</label>
+            <input type="text" class="form-control form-control-sm" id="r-rw-data" placeholder="00 01 02">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small">Rewrite: database</label>
+            <select class="form-select form-select-sm" id="r-rw-db"></select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small">Rewrite: message</label>
+            <input type="text" class="form-control form-control-sm" id="r-rw-message" placeholder="SPEED_MSG">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small">Rewrite: signals (JSON)</label>
+            <input type="text" class="form-control form-control-sm" id="r-rw-signals" placeholder='{"SPEED": 0}'>
+          </div>
+        </div>
+        <p class="text-body-secondary small mb-0 mt-1">
+          Raw bytes overwrite the whole payload. A database and message
+          instead decode the frame's current signals, change only the ones
+          you list, and re-encode the rest untouched.
+        </p>
+      </div>
+
+      <div class="col-12 inject-fields d-none">
+        <hr class="my-1">
+        <div class="row g-2">
+          <div class="col-md-3">
+            <label class="form-label small">Inject: arbitration ID</label>
+            <input type="text" class="form-control form-control-sm" id="r-inj-arb" placeholder="0x200">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small">Inject: raw data bytes</label>
+            <input type="text" class="form-control form-control-sm" id="r-inj-data" placeholder="00 01">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small">Inject: database (optional)</label>
+            <select class="form-select form-select-sm" id="r-inj-db"></select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small">Inject: message / signals (JSON)</label>
+            <input type="text" class="form-control form-control-sm" id="r-inj-message" placeholder="message name">
+            <input type="text" class="form-control form-control-sm mt-1" id="r-inj-signals" placeholder='{"SPEED": 0}'>
+          </div>
+        </div>
+        <p class="text-body-secondary small mb-0 mt-1">
+          The matched frame still passes through as normal; this extra frame
+          is sent alongside it on the same outgoing channel.
+        </p>
+      </div>
+
+      <div class="col-12">
+        <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-plus-lg me-1"></i>Add rule</button>
+        <span id="rule-error" class="text-danger small ms-2"></span>
+      </div>
+    </form>
+  </div>
+
+  <div class="fw-card">
+    <h6 class="mb-3"><i class="bi bi-hdd-stack me-1"></i>Inhale / exhale</h6>
+    <p class="text-body-secondary small mb-3">
+      Inhale captures a run of frames from a channel into a named buffer.
+      Exhale replays a saved buffer back to a channel, keeping the original
+      spacing between frames (scaled by speed), and can optionally run the
+      same rules above so a replay can drop or rewrite frames too.
+    </p>
+    <div class="row g-2 align-items-end mb-3">
+      <div class="col-md-3">
+        <label class="form-label small">Name</label>
+        <input type="text" class="form-control form-control-sm" id="in-name" placeholder="Idle run">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small">Channel</label>
+        <input type="text" class="form-control form-control-sm" id="in-channel" list="can-channel-list" value="can0">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small">Max frames</label>
+        <input type="number" min="1" class="form-control form-control-sm" id="in-max-frames" placeholder="unlimited">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small">Max seconds</label>
+        <input type="number" min="1" class="form-control form-control-sm" id="in-max-secs" placeholder="unlimited">
+      </div>
+      <div class="col-md-3 btn-group">
+        <button id="btn-inhale-start" class="btn btn-sm btn-outline-success"><i class="bi bi-download me-1"></i>Start inhale</button>
+        <button id="btn-inhale-stop" class="btn btn-sm btn-outline-secondary"><i class="bi bi-stop-fill me-1"></i>Stop</button>
+      </div>
+    </div>
+    <div id="inhale-status" class="small text-body-secondary mb-3"></div>
+
+    <div class="table-responsive">
+      <table class="table table-sm align-middle" id="captures-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Channel</th>
+            <th>Frames</th>
+            <th>Captured</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="captures-rows"></tbody>
+      </table>
+    </div>
+    <div id="captures-empty" class="text-body-secondary small d-none">No captures yet.</div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="static/js/can-channel-labels.js"></script>
+<script>
+(function () {
+  const gwBadge = document.getElementById('gw-badge');
+  const gwError = document.getElementById('gw-error');
+  const gwStats = document.getElementById('gw-stats');
+  const rulesRows = document.getElementById('rules-rows');
+  const rulesEmpty = document.getElementById('rules-empty');
+  const ruleForm = document.getElementById('rule-form');
+  const ruleError = document.getElementById('rule-error');
+  const matchDbSel = document.getElementById('r-match-db');
+  const rwDbSel = document.getElementById('r-rw-db');
+  const injDbSel = document.getElementById('r-inj-db');
+  const capturesRows = document.getElementById('captures-rows');
+  const capturesEmpty = document.getElementById('captures-empty');
+  const inhaleStatus = document.getElementById('inhale-status');
+
+  function actionClass(a) { return 'action-badge action-' + a; }
+
+  function matchSummary(m) {
+    m = m || {};
+    const parts = [];
+    if (m.arbitration_id !== null && m.arbitration_id !== undefined) {
+      let s = '0x' + Number(m.arbitration_id).toString(16).toUpperCase();
+      if (m.mask !== null && m.mask !== undefined) s += ' & 0x' + Number(m.mask).toString(16).toUpperCase();
+      parts.push(s);
+    } else if (m.id_min !== null && m.id_min !== undefined || m.id_max !== null && m.id_max !== undefined) {
+      parts.push(`range 0x${Number(m.id_min || 0).toString(16)}-0x${Number(m.id_max || 0).toString(16)}`);
+    }
+    if (m.signal) parts.push(`${m.signal} ${m.op || 'eq'} ${m.value}`);
+    return parts.length ? parts.join(', ') : 'any frame';
+  }
+
+  async function loadDatabases() {
+    try {
+      const res = await fetch('can/databases');
+      const body = await res.json();
+      for (const sel of [matchDbSel, rwDbSel, injDbSel]) {
+        sel.innerHTML = '<option value="">(none)</option>';
+        for (const d of (body.databases || [])) {
+          const opt = document.createElement('option');
+          opt.value = d.id;
+          opt.textContent = d.name || ('Database ' + d.id);
+          sel.appendChild(opt);
+        }
+      }
+    } catch (e) {
+      // No databases imported yet; raw-byte rules still work.
+    }
+  }
+
+  async function loadConfig() {
+    const res = await fetch('firewall/config');
+    const cfg = await res.json();
+    document.getElementById('f-chan-a').value = cfg.channel_a || 'can0';
+    document.getElementById('f-chan-b').value = cfg.channel_b || 'can1';
+    document.getElementById('f-fwd-ab').checked = cfg.forward_a_to_b !== false;
+    document.getElementById('f-fwd-ba').checked = cfg.forward_b_to_a !== false;
+  }
+
+  async function refreshStatus() {
+    const res = await fetch('firewall/status');
+    const status = await res.json();
+    gwBadge.classList.toggle('on', status.running);
+    gwBadge.classList.toggle('off', !status.running);
+    gwBadge.innerHTML = '<i class="bi bi-circle-fill me-1"></i>' +
+      (status.running ? 'Gateway running' : 'Gateway stopped');
+    const liveA = status.live_a ? 'live' : 'not live';
+    const liveB = status.live_b ? 'live' : 'not live';
+    const s = status.stats || {};
+    gwStats.textContent =
+      `${status.channel_a} (${liveA}) <-> ${status.channel_b} (${liveB}): ` +
+      `${s.forwarded || 0} forwarded, ${s.blocked || 0} blocked, ` +
+      `${s.rewritten || 0} rewritten, ${s.injected || 0} injected, ${s.errors || 0} errors`;
+    if (status.needs_two_interfaces) {
+      gwError.textContent = 'Channel A and B are the same interface; pick two different channels.';
+    } else if (status.error) {
+      gwError.textContent = status.error;
+    } else {
+      gwError.textContent = '';
+    }
+  }
+
+  async function refreshRules() {
+    const res = await fetch('firewall/rules');
+    const body = await res.json();
+    const rules = body.rules || [];
+    rulesEmpty.classList.toggle('d-none', rules.length > 0);
+    rulesRows.innerHTML = '';
+    for (const r of rules) {
+      const tr = document.createElement('tr');
+      tr.className = r.enabled ? '' : 'disabled';
+      tr.innerHTML = `
+        <td>${r.name || '(unnamed)'}</td>
+        <td>${r.direction}</td>
+        <td class="small">${matchSummary(r.match)}</td>
+        <td><span class="${actionClass(r.action)}">${r.action}</span></td>
+        <td>
+          <div class="form-check form-switch mb-0">
+            <input class="form-check-input toggle-rule" type="checkbox" ${r.enabled ? 'checked' : ''} data-id="${r.id}">
+          </div>
+        </td>
+        <td class="text-end">
+          <button class="btn btn-sm btn-outline-danger btn-delete-rule" data-id="${r.id}"><i class="bi bi-trash"></i></button>
+        </td>`;
+      rulesRows.appendChild(tr);
+    }
+  }
+
+  function fmtWhen(ts) {
+    if (!ts) return '';
+    return new Date(ts * 1000).toLocaleString();
+  }
+
+  async function refreshCaptures() {
+    const res = await fetch('firewall/captures');
+    const body = await res.json();
+    const captures = body.captures || [];
+    capturesEmpty.classList.toggle('d-none', captures.length > 0);
+    capturesRows.innerHTML = '';
+    for (const c of captures) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${c.name}</td>
+        <td>${c.channel}</td>
+        <td>${c.frame_count}</td>
+        <td>${fmtWhen(c.created_at)}</td>
+        <td class="text-end">
+          <button class="btn btn-sm btn-outline-primary btn-exhale" data-id="${c.id}" data-channel="${c.channel}"><i class="bi bi-upload"></i> Exhale</button>
+          <button class="btn btn-sm btn-outline-danger btn-delete-capture" data-id="${c.id}"><i class="bi bi-trash"></i></button>
+        </td>`;
+      capturesRows.appendChild(tr);
+    }
+  }
+
+  async function refreshInhaleStatus() {
+    const channel = document.getElementById('in-channel').value || 'can0';
+    try {
+      const res = await fetch('firewall/inhale/status?channel=' + encodeURIComponent(channel));
+      const status = await res.json();
+      inhaleStatus.textContent = status.running
+        ? `Inhaling on ${status.channel}: ${status.frame_count} frames captured so far`
+        : '';
+    } catch (e) {
+      inhaleStatus.textContent = '';
+    }
+  }
+
+  document.getElementById('btn-save-config').addEventListener('click', async () => {
+    await fetch('firewall/config', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        channel_a: document.getElementById('f-chan-a').value || 'can0',
+        channel_b: document.getElementById('f-chan-b').value || 'can1',
+        forward_a_to_b: document.getElementById('f-fwd-ab').checked,
+        forward_b_to_a: document.getElementById('f-fwd-ba').checked,
+      }),
+    });
+    refreshStatus();
+  });
+
+  document.getElementById('btn-gw-start').addEventListener('click', async () => {
+    const res = await fetch('firewall/start', { method: 'POST' });
+    const body = await res.json();
+    if (!body.ok && body.error) gwError.textContent = body.error;
+    refreshStatus();
+  });
+  document.getElementById('btn-gw-stop').addEventListener('click', async () => {
+    await fetch('firewall/stop', { method: 'POST' });
+    refreshStatus();
+  });
+
+  document.getElementById('r-action').addEventListener('change', (ev) => {
+    document.querySelector('.rewrite-fields').classList.toggle('d-none', ev.target.value !== 'rewrite');
+    document.querySelector('.inject-fields').classList.toggle('d-none', ev.target.value !== 'inject');
+  });
+
+  rulesRows.addEventListener('click', async (ev) => {
+    const delBtn = ev.target.closest('.btn-delete-rule');
+    if (delBtn) {
+      if (!confirm('Delete this rule?')) return;
+      await fetch(`firewall/rules/${delBtn.dataset.id}`, { method: 'DELETE' });
+      refreshRules();
+    }
+  });
+  rulesRows.addEventListener('change', async (ev) => {
+    if (!ev.target.classList.contains('toggle-rule')) return;
+    const id = ev.target.dataset.id;
+    const res = await fetch(`firewall/rules/${id}`);
+    const rule = await res.json();
+    rule.enabled = ev.target.checked;
+    await fetch(`firewall/rules/${id}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rule),
+    });
+  });
+
+  function parseJsonField(id, fallback) {
+    const raw = document.getElementById(id).value.trim();
+    if (!raw) return fallback;
+    return JSON.parse(raw);
+  }
+
+  ruleForm.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    ruleError.textContent = '';
+    const action = document.getElementById('r-action').value;
+    let rewrite = {}, inject = {};
+    try {
+      if (action === 'rewrite') {
+        rewrite = {
+          data: document.getElementById('r-rw-data').value || null,
+          database_id: rwDbSel.value ? parseInt(rwDbSel.value, 10) : null,
+          message: document.getElementById('r-rw-message').value || null,
+          signals: parseJsonField('r-rw-signals', {}),
+        };
+      }
+      if (action === 'inject') {
+        inject = {
+          arbitration_id: document.getElementById('r-inj-arb').value || null,
+          data: document.getElementById('r-inj-data').value || '',
+          database_id: injDbSel.value ? parseInt(injDbSel.value, 10) : null,
+          message: document.getElementById('r-inj-message').value || null,
+          signals: parseJsonField('r-inj-signals', {}),
+        };
+      }
+    } catch (e) {
+      ruleError.textContent = 'Signals must be valid JSON';
+      return;
+    }
+    const payload = {
+      name: document.getElementById('r-name').value,
+      enabled: document.getElementById('r-enabled').checked,
+      direction: document.getElementById('r-direction').value,
+      action,
+      match: {
+        arbitration_id: document.getElementById('r-arb').value || null,
+        mask: document.getElementById('r-mask').value || null,
+        id_min: document.getElementById('r-idmin').value || null,
+        id_max: document.getElementById('r-idmax').value || null,
+        database_id: matchDbSel.value ? parseInt(matchDbSel.value, 10) : null,
+        signal: document.getElementById('r-signal').value || null,
+        op: document.getElementById('r-op').value,
+        value: document.getElementById('r-value').value || null,
+      },
+      rewrite,
+      inject,
+    };
+    // Hex-ish text fields to ints where the API expects an int.
+    for (const key of ['arbitration_id', 'mask', 'id_min', 'id_max']) {
+      const v = payload.match[key];
+      if (v !== null && v !== '') payload.match[key] = parseInt(v, 16) || parseInt(v, 10);
+    }
+    if (payload.match.value !== null) {
+      const n = Number(payload.match.value);
+      payload.match.value = Number.isNaN(n) ? payload.match.value : n;
+    }
+    const res = await fetch('firewall/rules', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      ruleError.textContent = body.detail || 'Could not add rule';
+      return;
+    }
+    ruleForm.reset();
+    refreshRules();
+  });
+
+  document.getElementById('btn-inhale-start').addEventListener('click', async () => {
+    const channel = document.getElementById('in-channel').value || 'can0';
+    const maxFrames = document.getElementById('in-max-frames').value;
+    const maxSecs = document.getElementById('in-max-secs').value;
+    await fetch('firewall/inhale/start', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: document.getElementById('in-name').value,
+        channel,
+        max_frames: maxFrames ? parseInt(maxFrames, 10) : null,
+        max_duration_s: maxSecs ? parseFloat(maxSecs) : null,
+      }),
+    });
+    refreshInhaleStatus();
+  });
+
+  document.getElementById('btn-inhale-stop').addEventListener('click', async () => {
+    const channel = document.getElementById('in-channel').value || 'can0';
+    await fetch('firewall/inhale/stop?channel=' + encodeURIComponent(channel), { method: 'POST' });
+    refreshInhaleStatus();
+    refreshCaptures();
+  });
+
+  capturesRows.addEventListener('click', async (ev) => {
+    const exhaleBtn = ev.target.closest('.btn-exhale');
+    const delBtn = ev.target.closest('.btn-delete-capture');
+    if (exhaleBtn) {
+      const channel = prompt('Replay to which channel?', exhaleBtn.dataset.channel);
+      if (!channel) return;
+      await fetch(`firewall/captures/${exhaleBtn.dataset.id}/exhale`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channel, speed: 1.0, use_rules: false }),
+      });
+    } else if (delBtn) {
+      if (!confirm('Delete this capture?')) return;
+      await fetch(`firewall/captures/${delBtn.dataset.id}`, { method: 'DELETE' });
+      refreshCaptures();
+    }
+  });
+
+  loadDatabases();
+  loadConfig();
+  refreshStatus();
+  refreshRules();
+  refreshCaptures();
+  refreshInhaleStatus();
+  setInterval(refreshStatus, 2000);
+  setInterval(refreshInhaleStatus, 2000);
+})();
+</script>
+{% endblock %}

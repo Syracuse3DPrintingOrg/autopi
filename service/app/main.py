@@ -15,6 +15,7 @@ from .routers import can_sim as can_sim_router
 from .routers import db as db_router
 from .routers import diagnostics as diagnostics_router
 from .routers import examples as examples_router
+from .routers import firewall as firewall_router
 from .routers import layout as layout_router
 from .routers import logs as logs_router
 from .routers import logic as logic_router
@@ -83,6 +84,7 @@ app.include_router(can_dbc_router.router)
 app.include_router(can_sim_router.router)
 app.include_router(can_monitor_router.router)
 app.include_router(can_interfaces_router.router)
+app.include_router(firewall_router.router)
 app.include_router(diagnostics_router.router)
 app.include_router(examples_router.router)
 app.include_router(logs_router.router)

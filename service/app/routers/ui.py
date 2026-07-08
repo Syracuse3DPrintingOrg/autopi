@@ -175,6 +175,12 @@ def can_monitor_page(request: Request):
     return templates.TemplateResponse(request, "can_monitor.html", theme_context(request))
 
 
+@router.get("/ui/firewall", response_class=HTMLResponse)
+def firewall_page(request: Request):
+    # The panel loads rules, gateway status, and captures over the API.
+    return templates.TemplateResponse(request, "firewall.html", theme_context(request))
+
+
 @router.get("/ui/actions", response_class=HTMLResponse)
 def actions_page(request: Request):
     # The library loads drivers, actions, and CAN databases over the API.

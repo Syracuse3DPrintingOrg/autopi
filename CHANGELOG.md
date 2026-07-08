@@ -8,6 +8,19 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **A CAN firewall and gateway, plus inhale/exhale capture and replay.** The
+  new Firewall page sits the app between two CAN interfaces and forwards
+  traffic between them through an ordered rule list: allow, block, rewrite a
+  frame's signals or raw bytes (re-encoding through an imported database so
+  counters and checksums stay valid), or inject an extra frame alongside the
+  one that matched. Rules can match by arbitration id, a mask or id range, or
+  a decoded signal comparison. Inhale captures a run of frames from a channel
+  into a named buffer with a frame-count or time limit; exhale replays a
+  saved buffer back to a channel at its original pace (or scaled faster or
+  slower), optionally running it back through the same rules so a replay can
+  be edited on the way out. The gateway degrades to a clear message when it
+  does not have two distinct interfaces to bridge.
+
 - **Toyota, Honda, and Hyundai samples on real open-source DBCs.** Three more
   vehicle examples built on real opendbc data (MIT): a 2024 Toyota RAV4
   (toyota_nodsu_pt), a 2022 Honda Civic (honda_civic_ex), and a 2024 Hyundai
