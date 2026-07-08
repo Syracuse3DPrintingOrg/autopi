@@ -8,6 +8,14 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **Stream Deck keys now match their on-screen tile.** A physical key's face
+  now shows the same icon, label, and color the start menu and layout editor
+  draw for it, so what you arrange on screen is what you see on the deck. A
+  key whose icon can't be drawn falls back to a short abbreviation instead of
+  going blank, and paging past a full deck shows which page pressing the
+  paging key lands on. Key images scale to whatever deck is plugged in
+  (Mini, original/MK.2, or XL).
+
 - **CAN firewall and inhale/exhale.** Sit between two CAN buses and control
   traffic in flight: rules match by arbitration id (exact, mask, or range) and an
   optional decoded-signal comparison, and allow, block, rewrite (change a signal

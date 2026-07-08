@@ -5,6 +5,9 @@ import pytest
 
 # The app package lives under service/; make it importable like the app does.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "service"))
+# The Stream Deck controller package lives under streamdeck/, run in place on
+# an appliance (never pip-installed); make it importable the same way.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "streamdeck"))
 
 
 @pytest.fixture(autouse=True)
