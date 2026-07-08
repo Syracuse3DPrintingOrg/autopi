@@ -102,7 +102,8 @@ def set_enabled(entry_id: str, enabled: bool) -> dict[str, Any] | None:
 
 # -- frame building (pure) -----------------------------------------------
 
-def build_frame(entry: dict[str, Any], dbc_text: str | None = None) -> Frame:
+def build_frame(entry: dict[str, Any], dbc_text: str | None = None,
+                counter: int | None = None) -> Frame:
     """Build the :class:`Frame` a transmit entry describes.
 
     Uses ``database_id`` + ``message`` + ``signals`` to encode via cantools
@@ -126,7 +127,8 @@ def build_frame(entry: dict[str, Any], dbc_text: str | None = None) -> Frame:
         if not dbc_text:
             raise ValueError("No DBC text available to encode this entry's signals")
         from .dbc import encode as dbc_encode
-        data = dbc_encode(dbc_text, entry["message"], entry.get("signals") or {})
+        data = dbc_encode(dbc_text, entry["message"], entry.get("signals") or {},
+                          counter=counter, checksum=entry.get("checksum", ""))
     else:
         raw = entry.get("data") or ""
         data = parse_data_bytes(raw) if isinstance(raw, str) else list(raw)
@@ -195,7 +197,13 @@ class SimEngine:
         """Build and send one entry's frame now. Returns ``(ok, error)``."""
         try:
             dbc_text = self._resolve_dbc_text(entry)
-            frame = build_frame(entry, dbc_text)
+            # A checksum-protected message needs a rolling counter that
+            # increments each transmit, so a real module accepts the frame.
+            counter = None
+            if entry.get("checksum"):
+                from . import checksum as checksum_mod
+                counter = checksum_mod.next_counter(str(entry.get("id") or entry.get("name")))
+            frame = build_frame(entry, dbc_text, counter=counter)
         except ValueError as exc:
             return False, str(exc)
         backend = entry.get("backend") or "socketcan"

@@ -55,6 +55,9 @@ controller (`streamdeck/requirements.txt`):
 | Pillow | MIT-CMU (HPND) | Permissive | Key image rendering |
 | websockets | BSD-3-Clause | Permissive | Deck kiosk control |
 
+The Chrysler counter/checksum algorithm in `service/app/can/checksum.py` is
+reproduced from opendbc (MIT).
+
 Bundled data:
 
 | Data | License | Notes |

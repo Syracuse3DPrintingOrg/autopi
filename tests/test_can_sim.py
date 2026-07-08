@@ -57,7 +57,7 @@ def test_build_frame_invalid_frame_raises_with_validate_message():
 def test_build_frame_uses_database_encoding_when_configured(monkeypatch):
     calls = []
 
-    def fake_encode(dbc_text, message, signals):
+    def fake_encode(dbc_text, message, signals, **kwargs):
         calls.append((dbc_text, message, signals))
         return [9, 9]
 

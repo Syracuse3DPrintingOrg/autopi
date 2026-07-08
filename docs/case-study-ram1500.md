@@ -18,15 +18,15 @@ from the Vehicles page ("Load" next to the RAM 1500 sample) or POST
 - The PRNDL selector, turn-signal selector, and speed/tach controls drive a
   **cluster simulation** built from the real cluster messages.
 
-## The honest caveat about sending
+## Sending: counter and checksum are computed
 
 Chrysler messages carry a rolling **COUNTER** and a **CHECKSUM** that receiving
-modules validate. This sample encodes structurally-correct frames, but a real
-cluster or ECU may ignore a sent frame until that counter/checksum is computed.
-opendbc contains the algorithm; wiring it into the send path is a follow-up.
-**Reading and decoding are unaffected** and fully real. Also note this DBC does
-not include proprietary infotainment/radio messages, capture those from the
-vehicle with the Monitor page.
+modules validate. AutoPi now computes both (the exact opendbc Chrysler
+algorithm) when a message or simulation entry sets its checksum to `chrysler`,
+which the RAM 1500 sample does. So a frame it sends carries a rolling counter and
+a valid checksum, and a real cluster or ECU accepts it. This DBC does not include
+proprietary infotainment/radio messages, capture those from the vehicle with the
+Monitor page.
 
 ## Which bus
 

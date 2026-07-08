@@ -40,6 +40,9 @@ class CanCommandDriver(Driver):
         {"key": "database_id", "label": "CAN database", "type": "number", "required": False,
          "help": "Pick the database this command's message belongs to. Leave blank "
                  "to send a raw frame instead."},
+        {"key": "checksum", "label": "Checksum algorithm", "type": "choice",
+         "choices": ["", "chrysler"], "required": False, "default": "",
+         "help": "Set to chrysler for Stellantis CUSW messages so a real module accepts the frame."},
         {"key": "message", "label": "Message", "type": "text", "required": False,
          "help": "The message name from the selected database, e.g. VOLUME_CONTROL."},
         {"key": "signals", "label": "Signal values", "type": "keyvalue", "required": False,
@@ -133,8 +136,13 @@ def build_command_frame(
     override_raw = str(params.get("arbitration_id", "")).strip()
 
     if dbc_text and message:
+        checksum = str(params.get("checksum", "") or "")
+        counter = None
+        if checksum:
+            from app.can import checksum as checksum_mod
+            counter = checksum_mod.next_counter(f"cmd:{message}")
         try:
-            data = dbc_encode(dbc_text, message, signals)
+            data = dbc_encode(dbc_text, message, signals, counter=counter, checksum=checksum)
         except Exception as exc:  # cantools raises its own exception types
             return f"Could not encode {message}: {exc}"
         arbitration_id = resolved_arbitration_id

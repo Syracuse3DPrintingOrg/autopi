@@ -130,22 +130,36 @@ def decode(dbc_text: str, arbitration_id: int, data: bytes) -> dict[str, Any]:
     return {k: (v.value if hasattr(v, "value") else v) for k, v in decoded.items()}
 
 
-def encode(dbc_text: str, message: str | int, signals: dict[str, Any]) -> list[int]:
+def encode(dbc_text: str, message: str | int, signals: dict[str, Any],
+           counter: int | None = None, checksum: str = "") -> list[int]:
     """Encode named signal values into frame data bytes using cantools.
 
     ``message`` may be a message name or an arbitration id. Signals the caller
     does not set are filled with 0 (or their first named value), so a command
     key that sets a single button does not have to spell out every other signal
     in the message.
+
+    When ``counter`` is given and the message has a COUNTER signal, it is set to
+    that value; when ``checksum`` names an algorithm (e.g. "chrysler"), the
+    checksum byte is recomputed so a real module accepts the frame.
     """
+    from . import checksum as checksum_mod
     db = _load_cached(dbc_text)
     msg = db.get_message_by_name(message) if isinstance(message, str) else db.get_message_by_frame_id(message)
     full = dict(signals or {})
+    signal_names = {sig.name for sig in msg.signals}
+    unknown = set(full) - signal_names
+    if unknown:
+        raise KeyError(f"Unknown signal(s) for {msg.name}: {', '.join(sorted(unknown))}")
+    if counter is not None and "COUNTER" in signal_names:
+        full["COUNTER"] = int(counter) % 16
     for sig in msg.signals:
         if sig.name not in full:
             if sig.choices:
                 full[sig.name] = min(int(k) for k in sig.choices)
             else:
                 full[sig.name] = 0
-    data = db.encode_message(msg.frame_id, full)
-    return list(bytes(data))
+    # strict=False: real DBCs (e.g. opendbc) often carry placeholder [0|1]
+    # signal ranges that would wrongly reject a valid physical value.
+    data = list(bytes(db.encode_message(msg.frame_id, full, strict=False)))
+    return checksum_mod.finalize(checksum, data)

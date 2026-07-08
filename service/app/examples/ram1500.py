@@ -56,7 +56,8 @@ def _cmd(db_id, aid, label, message, signals, icon, color, category):
     upsert_action(ActionSpec(id=aid, label=label, driver="can_command", icon=icon, color=color,
                              category=category,
                              params={"channel": CHANNEL, "database_id": db_id,
-                                     "message": message, "signals": signals}))
+                                     "message": message, "signals": signals,
+                                     "checksum": "chrysler"}))
 
 
 def _sel(aid, label, entry, signals, icon, color, category, mode="set", **extra):
@@ -112,7 +113,8 @@ def _seed_sim(db_id: int) -> None:
     existing = {e.get("name"): e for e in simulation.list_entries()}
     for name, spec in wanted.items():
         entry = {"name": name, "channel": CHANNEL, "backend": "socketcan",
-                 "database_id": db_id, "is_fd": False, "enabled": True, **spec}
+                 "database_id": db_id, "is_fd": False, "enabled": True,
+                 "checksum": "chrysler", **spec}
         if name in existing:
             simulation.update_entry(existing[name]["id"], entry)
         else:
