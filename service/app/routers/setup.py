@@ -37,9 +37,10 @@ async def save_settings(request: Request):
     # Coerce known typed fields so a form's strings land as the right type.
     updates: dict = {}
     for key, value in body.items():
-        if key in {"start_page_enabled", "kiosk_enabled", "require_pin", "streamdeck_enabled"}:
+        if key in {"start_page_enabled", "kiosk_enabled", "require_pin", "streamdeck_enabled",
+                   "logging_enabled"}:
             updates[key] = bool(value)
-        elif key in {"deck_rotation", "deck_brightness", "deck_model"}:
+        elif key in {"deck_rotation", "deck_brightness", "deck_model", "log_retention_days"}:
             try:
                 updates[key] = int(value)
             except (TypeError, ValueError):

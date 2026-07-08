@@ -13,7 +13,7 @@ from typing import Any
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 APP_NAME = "AutoPi"
-APP_VERSION = "0.1.24"
+APP_VERSION = "0.1.25"
 
 # Where the setup page writes persisted settings and where state files live.
 _DEFAULT_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -29,6 +29,8 @@ _SAVEABLE = (
     "deck_brightness",
     "require_pin",
     "pin",
+    "logging_enabled",
+    "log_retention_days",
 )
 
 
@@ -57,6 +59,10 @@ class Settings(BaseSettings):
     # Access control (optional PIN gate for the setup page).
     require_pin: bool = False
     pin: str = ""
+
+    # Logging journal (service/app/services/journal.py).
+    logging_enabled: bool = True
+    log_retention_days: int = 14
 
     def load_saved(self) -> None:
         """Layer settings.json over the current values (in place)."""
