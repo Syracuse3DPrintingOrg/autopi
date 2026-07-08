@@ -84,11 +84,11 @@ def is_loaded() -> bool:
         return False
 
 
-def _cmd(action_id, label, message, signals, icon, color, category, arb):
+def _cmd(action_id, label, message, signals, icon, color, category, db_id):
     """A momentary CAN command sent to the radio (can_command driver)."""
     upsert_action(ActionSpec(
         id=action_id, label=label, driver="can_command", icon=icon, color=color, category=category,
-        params={"channel": CHANNEL, "arbitration_id": hex(arb), "message": message, "signals": signals},
+        params={"channel": CHANNEL, "database_id": db_id, "message": message, "signals": signals},
     ))
 
 
@@ -169,7 +169,7 @@ def _seed_actions(db_id: int) -> None:
              ("media_volup", "Vol +", 4, "bi-volume-up"), ("media_mute", "Mute", 6, "bi-volume-mute"),
              ("media_source", "Source", 7, "bi-music-note-list"), ("media_power", "Power", 8, "bi-power")]
     for aid, label, code, icon in media:
-        _cmd(aid, label, "ICS_Command", {"ICS_MediaCmd": code, "ICS_Volume": 0, "ICS_Source": 0}, icon, "#1d4ed8", "Media", ICS)
+        _cmd(aid, label, "ICS_Command", {"ICS_MediaCmd": code, "ICS_Volume": 0, "ICS_Source": 0}, icon, "#1d4ed8", "Media", db_id)
 
     # Steering-wheel media controls.
     swc = [("swc_volup", "SWC Vol +", 1, "bi-volume-up"), ("swc_voldown", "SWC Vol -", 2, "bi-volume-down"),
@@ -177,7 +177,7 @@ def _seed_actions(db_id: int) -> None:
            ("swc_mode", "SWC Mode", 5, "bi-arrow-repeat"), ("swc_voice", "SWC Voice", 6, "bi-mic"),
            ("swc_mute", "SWC Mute", 7, "bi-volume-mute")]
     for aid, label, code, icon in swc:
-        _cmd(aid, label, "SWC_Media", {"SWC_Button": code}, icon, "#7c3aed", "Steering wheel", SWC)
+        _cmd(aid, label, "SWC_Media", {"SWC_Button": code}, icon, "#7c3aed", "Steering wheel", db_id)
 
     # Adjustable speed.
     for aid, label, val in [("speed_0", "0", 0), ("speed_30", "30", 30), ("speed_60", "60", 60), ("speed_100", "100", 100)]:

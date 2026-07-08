@@ -8,6 +8,19 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **Live RAM 1500 (2024) sample on a real open-source DBC.** A second example on
+  the Vehicles page uses the real chrysler_cusw.dbc from comma.ai's opendbc
+  (MIT, vendored with attribution), which covers the RAM 1500 (2019-2024). Its
+  monitoring is fully real: connect over the Waveshare HAT and the actual speed,
+  gear (PRNDL), steering angle, wheel speeds, doors, and seatbelt decode from the
+  bus. The steering-wheel keys are the real cruise/ACC buttons, and a PRNDL /
+  turn-signal / speed selector drives a cluster simulation. Sending to
+  checksum-validated modules still needs the Chrysler counter/checksum computed
+  (a follow-up); reading is unaffected. See docs/case-study-ram1500.md.
+- **DBC import tolerates real-world quirks.** The importer now falls back to
+  lenient parsing, and encode fills unset signals with defaults, so real DBCs
+  (like opendbc's) import and a command key that sets one signal still encodes.
+
 - **DT15 case study: a full RAM DT bench you can load in one click.** A complete
   worked example on the Vehicles page loads the DT15 profile (2025 RAM DT, VIN,
   Atlantis High) with media/ICS keys, steering-wheel media keys, an adjustable
