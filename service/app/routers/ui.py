@@ -64,3 +64,15 @@ def layout_editor(request: Request):
     # The editor loads actions, layout, and deck status over the API itself.
     return templates.TemplateResponse(request, "layout_editor.html",
                                       theme_context(request))
+
+
+@router.get("/can", response_class=HTMLResponse)
+def can_console(request: Request):
+    # The CAN console loads databases, interfaces, and decode/encode over the API.
+    return templates.TemplateResponse(request, "can.html", theme_context(request))
+
+
+@router.get("/automation", response_class=HTMLResponse)
+def automation(request: Request):
+    # Logic rules and database backup/restore, loaded over the API.
+    return templates.TemplateResponse(request, "automation.html", theme_context(request))

@@ -53,6 +53,16 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **The platform is now visible and usable in the app, not just the API.** New
+  top-nav sections put the tools one click away: a **CAN** console and an
+  **Automation** page. The CAN console lists your imported CAN databases,
+  uploads a DBC file or bulk-imports opendbc, browses each database's messages
+  and signals, and decodes a raw frame into named values or encodes signal
+  values and sends them, plus a raw-frame sender and live interface status. The
+  Automation page lists your logic rules and does database backup and restore
+  (download the whole database as a file, import it back without wiping data).
+  Settings now links across to CAN, Automation, and the layout editor.
+
 - **Import open-source CAN databases (DBC), and decode/encode frames.** AutoPi
   now speaks DBC, the format the open-source CAN world ships its message and
   signal definitions in. Upload any DBC file, or pull comma.ai's opendbc

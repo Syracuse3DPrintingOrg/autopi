@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}CAN: {{ app_name }}{% endblock %}
+{% block head %}
+<style>
+  .card { background: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color); margin-bottom: 1rem; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .iface-pill { font-size: 0.8rem; }
+  .sig-table td, .sig-table th { padding: 0.25rem 0.5rem; font-size: 0.85rem; }
+  .db-row { cursor: pointer; }
+  .db-row.active { outline: 2px solid var(--bs-primary); }
+  #msg-list { max-height: 320px; overflow: auto; }
+  .result-ok { color: #4ade80; } .result-err { color: #f87171; }
+</style>
+{% endblock %}
+{% block body %}
+<div class="container-fluid">
+  <div class="d-flex align-items-center gap-3 mb-3">
+    <h4 class="mb-0"><i class="bi bi-diagram-3 me-1"></i>CAN</h4>
+    <div id="interfaces" class="d-flex gap-2"></div>
+    <span id="cantools-warn" class="badge text-bg-warning d-none">cantools not installed: DBC features disabled</span>
+  </div>
+
+  <div class="row">
+    <div class="col-lg-5">
+      <!-- Databases -->
+      <div class="card">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="mb-0"><i class="bi bi-database me-1"></i>CAN databases (DBC)</h6>
+            <button class="btn btn-sm btn-outline-primary" id="import-opendbc">Import opendbc</button>
+          </div>
+          <div class="table-responsive"><table class="table table-sm align-middle mb-2">
+            <thead><tr><th>Name</th><th>Vehicle</th><th>License</th><th>Msgs</th><th></th></tr></thead>
+            <tbody id="db-list"><tr><td colspan="5" class="text-secondary">Loading…</td></tr></tbody>
+          </table></div>
+          <form id="upload-form" class="d-flex gap-2 align-items-center">
+            <input type="file" class="form-control form-control-sm" id="dbc-file" accept=".dbc" required>
+            <button class="btn btn-sm btn-primary" type="submit">Upload DBC</button>
+          </form>
+          <div class="form-text">Or run <span class="mono">sudo /opt/autopi-src/scripts/import-opendbc.sh</span> on the device to bulk-import comma.ai's opendbc (MIT).</div>
+          <div id="db-status" class="small mt-1"></div>
+        </div>
+      </div>
+
+      <!-- Message browser -->
+      <div class="card">
+        <div class="card-body">
+          <h6><i class="bi bi-list-columns me-1"></i>Messages <small class="text-secondary" id="msg-db-name"></small></h6>
+          <div id="msg-list"><div class="text-secondary small">Select a database above.</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-7">
+      <!-- Decode -->
+      <div class="card"><div class="card-body">
+        <h6><i class="bi bi-box-arrow-in-down me-1"></i>Decode a frame</h6>
+        <div class="row g-2 align-items-end">
+          <div class="col-4"><label class="form-label small mb-0">Database</label>
+            <select class="form-select form-select-sm" id="dec-db"></select></div>
+          <div class="col-3"><label class="form-label small mb-0">Arb ID (hex)</label>
+            <input class="form-control form-control-sm mono" id="dec-id" placeholder="0x1F0"></div>
+          <div class="col-3"><label class="form-label small mb-0">Data (hex)</label>
+            <input class="form-control form-control-sm mono" id="dec-data" placeholder="01 02 03 04"></div>
+          <div class="col-2"><button class="btn btn-sm btn-primary w-100" id="dec-go">Decode</button></div>
+        </div>
+        <div id="dec-result" class="mt-2 small"></div>
+      </div></div>
+
+      <!-- Encode + send -->
+      <div class="card"><div class="card-body">
+        <h6><i class="bi bi-box-arrow-up me-1"></i>Encode &amp; send</h6>
+        <div class="row g-2 align-items-end">
+          <div class="col-4"><label class="form-label small mb-0">Database</label>
+            <select class="form-select form-select-sm" id="enc-db"></select></div>
+          <div class="col-4"><label class="form-label small mb-0">Message</label>
+            <select class="form-select form-select-sm" id="enc-msg"></select></div>
+          <div class="col-4"><label class="form-label small mb-0">Channel</label>
+            <input class="form-control form-control-sm mono" id="enc-ch" value="can0"></div>
+        </div>
+        <div id="enc-signals" class="row g-2 mt-1"></div>
+        <div class="mt-2 d-flex gap-2">
+          <button class="btn btn-sm btn-outline-primary" id="enc-go">Encode</button>
+          <button class="btn btn-sm btn-primary" id="enc-send">Encode &amp; send</button>
+          <span id="enc-result" class="small align-self-center"></span>
+        </div>
+      </div></div>
+
+      <!-- Raw send -->
+      <div class="card"><div class="card-body">
+        <h6><i class="bi bi-send me-1"></i>Send a raw frame</h6>
+        <div class="row g-2 align-items-end">
+          <div class="col-3"><label class="form-label small mb-0">Channel</label>
+            <input class="form-control form-control-sm mono" id="raw-ch" value="can0"></div>
+          <div class="col-3"><label class="form-label small mb-0">Arb ID (hex)</label>
+            <input class="form-control form-control-sm mono" id="raw-id" placeholder="0x7DF"></div>
+          <div class="col-4"><label class="form-label small mb-0">Data (hex)</label>
+            <input class="form-control form-control-sm mono" id="raw-data" placeholder="02 01 0C"></div>
+          <div class="col-2"><button class="btn btn-sm btn-primary w-100" id="raw-go">Send</button></div>
+        </div>
+        <div class="form-check form-switch mt-1"><input class="form-check-input" type="checkbox" id="raw-fd">
+          <label class="form-check-label small" for="raw-fd">CAN-FD</label></div>
+        <div id="raw-result" class="small mt-1"></div>
+      </div></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="static/js/can.js"></script>{% endblock %}

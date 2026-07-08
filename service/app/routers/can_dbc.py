@@ -129,3 +129,54 @@ def encode(body: EncodeIn):
         return {"ok": True, "data": data, "hex": " ".join(f"{b:02X}" for b in data)}
     except Exception as exc:
         raise HTTPException(400, f"Encode failed: {exc}")
+
+
+# --- live bus: interface status and a direct frame send --------------------
+from ..can import Frame, get_channel  # noqa: E402
+
+_DEFAULT_CHANNELS = ("can0", "can1")
+
+
+@router.get("/interfaces")
+def list_interfaces():
+    """Report the default CAN channels and whether each is a real, open bus."""
+    out = []
+    for ch in _DEFAULT_CHANNELS:
+        try:
+            available = get_channel(ch).available
+        except Exception:
+            available = False
+        out.append({"channel": ch, "available": available})
+    return {"interfaces": out}
+
+
+class SendIn(BaseModel):
+    channel: str = "can0"
+    arbitration_id: str            # hex or int string, e.g. "0x7DF"
+    data: str = ""                 # hex bytes
+    is_fd: bool = False
+    is_extended_id: bool = False
+
+
+@router.post("/send")
+def send_frame(body: SendIn):
+    """Send a single CAN frame on a channel (simulated when no hardware)."""
+    from ..can import parse_arbitration_id, parse_data_bytes
+    try:
+        arb = parse_arbitration_id(body.arbitration_id)
+        data = parse_data_bytes(body.data)
+    except ValueError as exc:
+        raise HTTPException(400, f"Invalid frame: {exc}")
+    frame = Frame(arbitration_id=arb, data=data, is_fd=body.is_fd,
+                  is_extended_id=body.is_extended_id)
+    err = frame.validate()
+    if err:
+        raise HTTPException(400, err)
+    channel = get_channel(body.channel)
+    if not channel.available:
+        return {"ok": True, "simulated": True,
+                "message": f"(simulated) would send {frame.format()} on {body.channel}"}
+    if channel.send(frame):
+        return {"ok": True, "simulated": False,
+                "message": f"Sent {frame.format()} on {body.channel}"}
+    return {"ok": False, "message": f"Send failed on {body.channel}"}
