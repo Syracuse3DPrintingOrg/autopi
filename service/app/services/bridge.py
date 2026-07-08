@@ -101,9 +101,13 @@ def call(method: str, path: str, timeout: float = 30.0, json: Any = None) -> dic
         # means an older bridge is still running (the update replaced the file
         # but the process was not restarted). Give an actionable message.
         return {"ok": False, "stale_bridge": True,
-                "error": "The host-bridge is out of date (it does not have this "
-                         "feature yet). Restart it on the device: "
-                         "sudo systemctl restart autopi-host-bridge"}
+                "error": "The host-bridge on this device is an older version that does "
+                         "not have this feature yet. Update the device so the newer "
+                         "bridge is installed and restarted: run the update from the "
+                         "Settings page, or on the device run 'sudo autopi-update'. If it "
+                         "still reports out of date, run 'sudo systemctl restart "
+                         "autopi-host-bridge' (the update replaced the file but the running "
+                         "daemon was not restarted)."}
     try:
         return r.json()
     except ValueError:

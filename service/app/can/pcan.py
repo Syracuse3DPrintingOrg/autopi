@@ -8,6 +8,7 @@ plugged in, ``available`` is False and every call is a safe no-op, mirroring
 from __future__ import annotations
 
 import logging
+import sys
 from typing import Any
 
 from .base import CanProvider, Frame
@@ -32,14 +33,25 @@ class PcanProvider(CanProvider):
         self.data_bitrate = data_bitrate
         self._bus: Any = None
         self._open_failed = False
+        # The last connection error, in plain language, so the self-test and the
+        # status badge can say why a PEAK adapter would not connect instead of a
+        # generic failure.
+        self.last_error: str | None = None
 
     @property
     def available(self) -> bool:
+        # Availability means the adapter actually opens, not merely that
+        # python-can is importable: the "pcan" interface needs PEAK's PCAN-Basic
+        # userspace driver, which most Linux/Pi setups do not have. Attempt the
+        # open once (cached) so the status badge tells the truth.
         if self._bus is not None:
             return True
         if self._open_failed:
             return False
-        return self._module_importable()
+        if not self._module_importable():
+            self.last_error = "python-can is not installed."
+            return False
+        return self.open()
 
     @staticmethod
     def _module_importable() -> bool:
@@ -70,12 +82,38 @@ class PcanProvider(CanProvider):
                     kwargs["data_bitrate"] = self.data_bitrate
             self._bus = can.interface.Bus(**kwargs)
             self._open_failed = False
+            self.last_error = None
             return True
         except Exception as exc:
+            self.last_error = self._explain(exc)
             log.info("Could not open PCAN channel %s: %s", self.channel, exc)
             self._open_failed = True
             self._bus = None
             return False
+
+    def _explain(self, exc: Exception) -> str:
+        """Turn a python-can open failure into an actionable message.
+
+        The common trap on a Raspberry Pi is picking the pcan backend at all: a
+        PEAK PCAN-USB there is handled by the mainline peak_usb kernel driver and
+        shows up as a normal SocketCAN interface (can0/can1), which AutoPi drives
+        through the socketcan backend. python-can's pcan interface instead needs
+        PEAK's separate PCAN-Basic userspace library, which is mostly a
+        Windows/macOS thing and is rarely installed on Linux.
+        """
+        detail = str(exc) or exc.__class__.__name__
+        if sys.platform.startswith("linux"):
+            return (
+                f"Could not open PEAK adapter '{self.channel}' ({detail}). "
+                "On Linux a PEAK PCAN-USB is used through SocketCAN, not this pcan "
+                "backend: set this interface's backend to socketcan with channel "
+                "can0 (or can1) and bring it up on the CAN Interfaces page. The pcan "
+                "backend needs PEAK's PCAN-Basic driver, which is not installed here."
+            )
+        return (
+            f"Could not open PEAK adapter '{self.channel}' ({detail}). Check that the "
+            "adapter is plugged in and PEAK's PCAN-Basic driver is installed."
+        )
 
     def close(self) -> None:
         if self._bus is not None:

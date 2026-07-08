@@ -34,14 +34,22 @@ class VectorProvider(CanProvider):
         self.app_name = app_name
         self._bus: Any = None
         self._open_failed = False
+        self.last_error: str | None = None
 
     @property
     def available(self) -> bool:
+        # As with PCAN, availability means the hardware actually opens (the
+        # Vector backend needs the vendor XL Driver Library), so the status badge
+        # reflects a real connection attempt rather than just python-can being
+        # importable.
         if self._bus is not None:
             return True
         if self._open_failed:
             return False
-        return self._module_importable()
+        if not self._module_importable():
+            self.last_error = "python-can is not installed."
+            return False
+        return self.open()
 
     @staticmethod
     def _module_importable() -> bool:
@@ -64,6 +72,7 @@ class VectorProvider(CanProvider):
         if self._bus is not None:
             return True
         if not self._module_importable():
+            self.last_error = "python-can is not installed."
             log.info("python-can not installed; vector provider unavailable")
             self._open_failed = True
             return False
@@ -82,8 +91,15 @@ class VectorProvider(CanProvider):
                     kwargs["data_bitrate"] = self.data_bitrate
             self._bus = can.interface.Bus(**kwargs)
             self._open_failed = False
+            self.last_error = None
             return True
         except Exception as exc:
+            detail = str(exc) or exc.__class__.__name__
+            self.last_error = (
+                f"Could not open Vector channel '{self.channel}' ({detail}). Check the "
+                "adapter is connected and the Vector XL Driver Library is installed; the "
+                "app_name must also be registered in the Vector Hardware Config."
+            )
             log.info("Could not open Vector channel %s: %s", self.channel, exc)
             self._open_failed = True
             self._bus = None

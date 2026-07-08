@@ -93,7 +93,9 @@ def config_status(interface_id: str):
     if entry.get("data_bitrate"):
         kwargs["data_bitrate"] = entry["data_bitrate"]
     provider = get_channel(entry["channel"], backend=entry["backend"], **kwargs)
-    return {"id": entry["id"], "available": provider.available}
+    available = provider.available
+    return {"id": entry["id"], "available": available,
+            "error": None if available else getattr(provider, "last_error", None)}
 
 
 def _require_link_backed(interface_id: str) -> dict:

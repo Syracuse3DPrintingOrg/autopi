@@ -6,6 +6,22 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ## [Unreleased]
 
+### Fixed
+
+- **PEAK PCAN (and Vector) now say why they will not connect.** Picking the pcan
+  or vector backend used to show the interface as available even when it could
+  not open, then fail a self-test with a generic error. The status and self-test
+  now report the real reason. On a Raspberry Pi the usual cause is that a PEAK
+  PCAN-USB is a SocketCAN device (can0/can1 via the peak_usb driver), not the
+  pcan backend, which needs PEAK's separate PCAN-Basic driver; the message now
+  says exactly that and points to the socketcan backend.
+- **Clearer fix when the host-bridge is out of date.** Bringing a CAN interface
+  up on an older device reported the bridge as out of date but only suggested a
+  restart, which does not help when the bridge file itself is old. The message
+  now points to the device update (which reinstalls and restarts the bridge), and
+  re-running the bridge installer now restarts the running daemon instead of
+  leaving the old one in place.
+
 ### Added
 
 - **Kiosk hardening: rotation, idle blanking, and an on-screen keyboard.** The Pi

@@ -51,11 +51,15 @@ def run_loopback_test(provider: Any, timeout: float = 2.0) -> dict:
     unavailable, send failed); ``passed`` is the actual test result.
     """
     if not provider.available:
+        detail = getattr(provider, "last_error", None)
         return {"ok": False, "passed": False,
-                "error": "Interface is not available. Bring it up first."}
+                "error": detail or "Interface is not available. Bring it up first."}
     frame = build_test_frame()
     if not provider.send(frame):
-        return {"ok": False, "passed": False, "error": "Could not send the test frame."}
+        detail = getattr(provider, "last_error", None)
+        msg = "Could not send the test frame."
+        return {"ok": False, "passed": False,
+                "error": f"{msg} {detail}" if detail else msg}
     received = provider.recv(timeout=timeout)
     if not frames_match(frame, received):
         return {"ok": True, "passed": False,

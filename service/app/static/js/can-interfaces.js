@@ -182,7 +182,11 @@
         .then((r) => r.json())
         .then((d) => {
           const el = row.querySelector('[data-status="' + iface.id + '"]');
-          if (el) el.innerHTML = statusBadge(!!d.available);
+          if (el) {
+            const reason = (!d.available && d.error)
+              ? '<span class="small text-secondary d-block mt-1">' + d.error + '</span>' : '';
+            el.innerHTML = statusBadge(!!d.available) + reason;
+          }
         })
         .catch(() => {
           const el = row.querySelector('[data-status="' + iface.id + '"]');

@@ -32,5 +32,10 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-systemctl enable --now autopi-host-bridge.service
+systemctl enable autopi-host-bridge.service
+# restart, not just enable --now: when re-running this to update an already
+# running bridge, enable --now would leave the old daemon (and old version)
+# in place. reset-failed clears any prior crash-loop state first.
+systemctl reset-failed autopi-host-bridge.service 2>/dev/null || true
+systemctl restart autopi-host-bridge.service
 echo "Host-bridge installed and listening on 127.0.0.1:9299 (token: ${TOKEN_PATH})."
