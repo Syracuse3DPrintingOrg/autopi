@@ -263,10 +263,47 @@
     });
   }
 
+  const detectedEl = document.getElementById('can-if-detected');
+  function loadDetected() {
+    if (!detectedEl) return;
+    fetch('can/interfaces/detected').then((r) => r.json()).then((d) => {
+      const items = d.interfaces || [];
+      if (!items.length) {
+        detectedEl.innerHTML = '<span class="text-secondary">No CAN interfaces detected on this device yet. '
+          + 'On a Pi, enable the CAN HAT and reboot; a USB adapter should appear once it is plugged in.</span>';
+        return;
+      }
+      detectedEl.innerHTML = '';
+      items.forEach((it) => {
+        const row = document.createElement('div');
+        row.className = 'd-flex align-items-center justify-content-between border-bottom py-1 gap-2';
+        const state = it.up
+          ? '<span class="badge text-bg-success">up</span>'
+          : '<span class="badge text-bg-secondary">down</span>';
+        row.innerHTML = '<div><code>' + it.name + '</code> ' + state
+          + '<div class="text-secondary">' + (it.description || '') + '</div></div>';
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn btn-outline-primary btn-sm flex-shrink-0';
+        btn.textContent = 'Use';
+        btn.title = 'Fill the form below with this channel';
+        btn.addEventListener('click', () => {
+          if (idInput) idInput.value = it.name;
+          if (channelInput) channelInput.value = it.name;
+          if (backendSel) backendSel.value = 'socketcan';
+          if (channelInput) channelInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        });
+        row.appendChild(btn);
+        detectedEl.appendChild(row);
+      });
+    }).catch(() => { detectedEl.textContent = 'Could not read the detected interfaces.'; });
+  }
+
   saveBtn.addEventListener('click', saveInterface);
   cancelBtn.addEventListener('click', resetForm);
 
   updateLabelVisibility();
   loadBackends();
+  loadDetected();
   loadList();
 })();

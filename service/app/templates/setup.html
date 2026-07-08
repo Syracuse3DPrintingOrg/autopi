@@ -299,6 +299,13 @@
             say what each bus is for, bring it up, and confirm it is working.
             A channel with no configured interface here falls back to SocketCAN at 500 kbit/s.</p>
           <div class="section-card">
+            <div class="subsection-title mb-2">Detected on this device</div>
+            <p class="small text-secondary mb-2">The CAN interfaces present right now and what each one is.
+              Use one of these channel names below (they are assigned in the order the kernel finds the
+              adapters, so a USB adapter can take can0 and push a HAT to can1/can2).</p>
+            <div id="can-if-detected" class="small">Checking&hellip;</div>
+          </div>
+          <div class="section-card">
             <div class="subsection-title mb-2">Configured interfaces</div>
             <div id="can-if-list" class="d-flex flex-column gap-2">Loading&hellip;</div>
           </div>

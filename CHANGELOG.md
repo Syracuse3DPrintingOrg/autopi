@@ -6,6 +6,15 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ## [Unreleased]
 
+### Added
+
+- **See the CAN interfaces on your device, and pick channels from a dropdown.**
+  The CAN Interfaces settings now list every interface actually present on the
+  device and what each one is (for example can0 = PEAK PCAN-USB, can1 = Waveshare
+  CAN-FD HAT), with a Use button to fill the form, so you no longer have to guess
+  channel names. The Monitor page's channel field is now a dropdown of those
+  detected and configured channels, each shown with its purpose or adapter.
+
 ### Fixed
 
 - **Waveshare 2-CH CAN FD HAT second channel: use the correct SPI bus (Mode A).**

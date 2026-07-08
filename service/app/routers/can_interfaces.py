@@ -56,6 +56,14 @@ def get_backends():
     return {"backends": list_backends()}
 
 
+@router.get("/detected")
+def detected_interfaces():
+    """The CAN interfaces that actually exist on this device, so a user can see
+    which channel names to use (and what each one is) instead of guessing."""
+    from ..can.detect import list_can_interfaces
+    return {"interfaces": list_can_interfaces()}
+
+
 def _with_display_label(entry: dict) -> dict:
     return {**entry, "purpose_label": can_interfaces.display_label(entry)}
 
