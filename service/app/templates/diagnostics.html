@@ -1,0 +1,259 @@
+{% extends "base.html" %}
+{% block title %}Diagnostics: {{ app_name }}{% endblock %}
+{% block head %}
+<style>
+  .diag-card { background: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color);
+    border-radius: 0.75rem; padding: 1.5rem; }
+  #diag-result { font-family: var(--bs-font-monospace, monospace); white-space: pre-wrap;
+    word-break: break-word; }
+  .sim-badge { display: none; }
+  .sim-badge.show { display: inline-block; }
+</style>
+{% endblock %}
+{% block body %}
+<div class="container-fluid">
+  <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+    <h5 class="mb-0"><i class="bi bi-clipboard2-pulse me-1"></i>Diagnostics</h5>
+    <span id="status-badge" class="text-body-secondary small">Checking channel...</span>
+  </div>
+
+  <div class="diag-card mb-3">
+    <p class="text-body-secondary small mb-3">
+      Send a UDS or OBD-II request on a CAN channel over ISO-TP and see the
+      decoded response. Without an adapter attached, requests return a
+      clearly marked simulated response so the request/response shapes are
+      still visible.
+    </p>
+    <div class="row g-2 align-items-end mb-3">
+      <div class="col-md-2">
+        <label class="form-label small">Channel</label>
+        <input type="text" class="form-control form-control-sm" id="f-channel" value="can0">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small">Backend</label>
+        <input type="text" class="form-control form-control-sm" id="f-backend" value="socketcan">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small">Request ID</label>
+        <input type="text" class="form-control form-control-sm" id="f-request-id" value="0x7E0">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small">Response ID</label>
+        <input type="text" class="form-control form-control-sm" id="f-response-id" value="0x7E8">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label small">Protocol</label>
+        <select class="form-select form-select-sm" id="f-protocol">
+          <option value="uds">UDS</option>
+          <option value="obd">OBD-II (mode 01)</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="uds-fields" class="row g-2 align-items-end mb-3">
+      <div class="col-md-3">
+        <label class="form-label small">Service</label>
+        <select class="form-select form-select-sm" id="f-uds-service">
+          <option value="session">Diagnostic session control</option>
+          <option value="tester-present">Tester present</option>
+          <option value="read-did">Read data by identifier</option>
+          <option value="write-did">Write data by identifier</option>
+          <option value="routine">Routine control</option>
+          <option value="dtcs">Read DTCs</option>
+        </select>
+      </div>
+      <div class="col-md-3 uds-arg" data-service="session">
+        <label class="form-label small">Session</label>
+        <select class="form-select form-select-sm" id="f-session">
+          <option value="1">1: default</option>
+          <option value="2">2: programming</option>
+          <option value="3" selected>3: extended</option>
+          <option value="4">4: safety system</option>
+        </select>
+      </div>
+      <div class="col-md-3 uds-arg d-none" data-service="read-did write-did">
+        <label class="form-label small">DID (hex)</label>
+        <input type="text" class="form-control form-control-sm" id="f-did" value="0xF190">
+      </div>
+      <div class="col-md-3 uds-arg d-none" data-service="write-did">
+        <label class="form-label small">Data (hex bytes)</label>
+        <input type="text" class="form-control form-control-sm" id="f-write-data" placeholder="01 02 03">
+      </div>
+      <div class="col-md-3 uds-arg d-none" data-service="routine">
+        <label class="form-label small">Routine ID (hex)</label>
+        <input type="text" class="form-control form-control-sm" id="f-routine-id" value="0x0203">
+      </div>
+      <div class="col-md-3 uds-arg d-none" data-service="routine">
+        <label class="form-label small">Sub-function</label>
+        <select class="form-select form-select-sm" id="f-subfunction">
+          <option value="1" selected>1: start</option>
+          <option value="2">2: stop</option>
+          <option value="3">3: request results</option>
+        </select>
+      </div>
+      <div class="col-md-3 uds-arg d-none" data-service="dtcs">
+        <label class="form-label small">Status mask (hex)</label>
+        <input type="text" class="form-control form-control-sm" id="f-status-mask" value="0xFF">
+      </div>
+    </div>
+
+    <div id="obd-fields" class="row g-2 align-items-end mb-3 d-none">
+      <div class="col-md-4">
+        <label class="form-label small">PID</label>
+        <select class="form-select form-select-sm" id="f-pid"></select>
+      </div>
+    </div>
+
+    <button id="btn-send" class="btn btn-sm btn-primary"><i class="bi bi-send me-1"></i>Send</button>
+    <span id="sim-badge" class="sim-badge badge text-bg-warning ms-2">Simulated response</span>
+  </div>
+
+  <div class="diag-card">
+    <h6 class="mb-2">Response</h6>
+    <div id="diag-result" class="small text-body-secondary">No request sent yet.</div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  const channelEl = document.getElementById('f-channel');
+  const backendEl = document.getElementById('f-backend');
+  const requestIdEl = document.getElementById('f-request-id');
+  const responseIdEl = document.getElementById('f-response-id');
+  const protocolEl = document.getElementById('f-protocol');
+  const serviceEl = document.getElementById('f-uds-service');
+  const udsFields = document.getElementById('uds-fields');
+  const obdFields = document.getElementById('obd-fields');
+  const pidEl = document.getElementById('f-pid');
+  const statusBadge = document.getElementById('status-badge');
+  const resultEl = document.getElementById('diag-result');
+  const simBadge = document.getElementById('sim-badge');
+
+  function updateArgVisibility() {
+    const service = serviceEl.value;
+    document.querySelectorAll('.uds-arg').forEach((el) => {
+      const services = el.dataset.service.split(' ');
+      el.classList.toggle('d-none', !services.includes(service));
+    });
+  }
+
+  function updateProtocolVisibility() {
+    const isObd = protocolEl.value === 'obd';
+    udsFields.classList.toggle('d-none', isObd);
+    obdFields.classList.toggle('d-none', !isObd);
+    requestIdEl.value = isObd ? '0x7DF' : '0x7E0';
+    responseIdEl.value = '0x7E8';
+  }
+
+  async function loadPids() {
+    try {
+      const res = await fetch('diag/pids');
+      const body = await res.json();
+      pidEl.innerHTML = '';
+      for (const p of (body.pids || [])) {
+        const opt = document.createElement('option');
+        opt.value = '0x' + Number(p.pid).toString(16).toUpperCase().padStart(2, '0');
+        opt.textContent = `0x${Number(p.pid).toString(16).toUpperCase().padStart(2, '0')}: ${p.name} (${p.unit})`;
+        pidEl.appendChild(opt);
+      }
+    } catch (e) {
+      // Router unreachable; the send button will surface the failure.
+    }
+  }
+
+  async function refreshStatus() {
+    const params = new URLSearchParams({
+      channel: channelEl.value || 'can0',
+      backend: backendEl.value || 'socketcan',
+    });
+    try {
+      const res = await fetch('diag/status?' + params.toString());
+      const body = await res.json();
+      const bits = [];
+      bits.push(body.isotp_installed ? 'ISO-TP library present' : 'ISO-TP library missing');
+      bits.push(body.udsoncan_installed ? 'UDS library present' : 'UDS library missing');
+      bits.push(body.uds_available ? 'UDS channel live' : 'UDS channel not live (simulated)');
+      statusBadge.textContent = bits.join(', ');
+    } catch (e) {
+      statusBadge.textContent = 'Could not check channel status.';
+    }
+  }
+
+  function channelBody() {
+    return {
+      channel: channelEl.value || 'can0',
+      backend: backendEl.value || 'socketcan',
+      request_id: requestIdEl.value || '0x7E0',
+      response_id: responseIdEl.value || '0x7E8',
+    };
+  }
+
+  async function postJson(path, body) {
+    const res = await fetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return res.json();
+  }
+
+  async function send() {
+    resultEl.textContent = 'Sending...';
+    simBadge.classList.remove('show');
+    let body;
+    try {
+      if (protocolEl.value === 'obd') {
+        body = await postJson('diag/obd/pid', {
+          channel: channelEl.value || 'can0',
+          backend: backendEl.value || 'socketcan',
+          request_id: requestIdEl.value || '0x7DF',
+          response_id: responseIdEl.value || '0x7E8',
+          pid: pidEl.value,
+        });
+      } else {
+        const service = serviceEl.value;
+        const base = channelBody();
+        if (service === 'session') {
+          body = await postJson('diag/uds/session', { ...base, session: Number(document.getElementById('f-session').value) });
+        } else if (service === 'tester-present') {
+          body = await postJson('diag/uds/tester-present', base);
+        } else if (service === 'read-did') {
+          body = await postJson('diag/uds/read-did', { ...base, did: document.getElementById('f-did').value });
+        } else if (service === 'write-did') {
+          body = await postJson('diag/uds/write-did', {
+            ...base,
+            did: document.getElementById('f-did').value,
+            data: document.getElementById('f-write-data').value,
+          });
+        } else if (service === 'routine') {
+          body = await postJson('diag/uds/routine', {
+            ...base,
+            routine_id: document.getElementById('f-routine-id').value,
+            subfunction: Number(document.getElementById('f-subfunction').value),
+          });
+        } else if (service === 'dtcs') {
+          body = await postJson('diag/uds/dtcs', { ...base, status_mask: document.getElementById('f-status-mask').value });
+        }
+      }
+    } catch (e) {
+      resultEl.textContent = 'Request failed: ' + e;
+      return;
+    }
+    if (body && body.simulated) simBadge.classList.add('show');
+    resultEl.textContent = JSON.stringify(body, null, 2);
+  }
+
+  serviceEl.addEventListener('change', updateArgVisibility);
+  protocolEl.addEventListener('change', updateProtocolVisibility);
+  channelEl.addEventListener('change', refreshStatus);
+  backendEl.addEventListener('change', refreshStatus);
+  document.getElementById('btn-send').addEventListener('click', send);
+
+  updateArgVisibility();
+  updateProtocolVisibility();
+  loadPids();
+  refreshStatus();
+})();
+</script>
+{% endblock %}

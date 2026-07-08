@@ -45,6 +45,8 @@ controller (`streamdeck/requirements.txt`):
 | **python-can** | **LGPL-3.0** | **Weak copyleft** | **See "python-can" below** |
 | cantools | MIT | Permissive | DBC parse + encode/decode (Erik Moqvist) |
 | bitstruct (via cantools) | MIT | Permissive | |
+| can-isotp | MIT | Permissive | ISO-TP (ISO 15765-2) transport (Pier-Yves Lessard) |
+| udsoncan | MIT | Permissive | UDS (ISO 14229) client (Pier-Yves Lessard) |
 | gpiozero | BSD-3-Clause | Permissive | GPIO |
 | lgpio | Unlicense (public domain) | Permissive | GPIO pin backend |
 | streamdeck (python-elgato-streamdeck) | MIT | Permissive | Deck driver |

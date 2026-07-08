@@ -8,6 +8,14 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **A new Diagnostics page.** Send UDS requests (session control, tester
+  present, read/write data by identifier, routine control, read DTCs) or read
+  an OBD-II PID (RPM, speed, coolant temperature, and more) on any CAN
+  channel, and see the decoded response. Without an adapter attached, a
+  request comes back with a clearly marked simulated response instead of
+  failing, so the request/response shapes are still visible. New endpoints
+  under `/diag`.
+
 - **Live CAN bus monitor.** A new Monitor page shows frames arriving on a
   channel in real time (arbitration id, how many times it has been seen, the
   latest data), and decodes them into named signals when you pick one of your

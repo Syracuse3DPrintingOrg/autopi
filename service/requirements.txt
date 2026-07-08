@@ -20,6 +20,13 @@ python-can>=4.3
 # MIT. Optional: importing a DBC needs it, the rest of the app runs without it.
 cantools>=39
 
+# Automotive diagnostics: ISO-TP transport (can-isotp) and a UDS (ISO 14229)
+# client (udsoncan) over it. Both MIT. Optional: service/app/can/diagnostics.py
+# degrades to a simulated response when either is missing or the channel has
+# no hardware. See service/app/can/diagnostics.py and service/app/routers/diagnostics.py.
+can-isotp>=2.0
+udsoncan>=1.22
+
 # GPIO on a Raspberry Pi. gpiozero needs a pin-factory backend to actually
 # drive pins; lgpio is the one that works on current Raspberry Pi OS (Bookworm)
 # and on the Pi 5. Both are harmless elsewhere: with no real GPIO device the
