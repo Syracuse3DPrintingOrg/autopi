@@ -8,6 +8,14 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **Profile Sync (future feature).** A new Profile Sync pane in Settings lets
+  a device point at a central AutoPi server and pull a vehicle's whole setup:
+  its CAN databases, actions, layout, and simulation. Add a server URL and
+  device token, then check for and pull the profiles a server offers; a pull
+  creates or updates the matching local profile and applies its saved setup,
+  the same way recalling a locally captured profile does. There is no server
+  to point at yet, so this pane stays quiet until one exists.
+
 - **Automated test sequences.** A new Tests page lets you build a sequence of
   steps, send a CAN command, assert a specific CAN response arrives within a
   timeout (matched by id and an optional decoded-signal comparison), pause to

@@ -22,6 +22,7 @@ from .routers import network as network_router
 from .routers import profiles as profiles_router
 from .routers import setup as setup_router
 from .routers import streamdeck as streamdeck_router
+from .routers import sync as sync_router
 from .routers import system as system_router
 from .routers import tests as tests_router
 from .routers import ui as ui_router
@@ -88,6 +89,7 @@ app.include_router(logs_router.router)
 app.include_router(tests_router.router)
 app.include_router(profiles_router.router)
 app.include_router(network_router.router)
+app.include_router(sync_router.router)
 
 
 def _data_dir_writable() -> bool:

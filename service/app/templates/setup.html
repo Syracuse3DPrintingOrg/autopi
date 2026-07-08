@@ -77,6 +77,9 @@
           <button class="nav-link d-flex align-items-center" data-bs-toggle="pill" data-bs-target="#pane-home-assistant" type="button">
             <i class="bi bi-house-gear me-2"></i>Home Assistant
           </button>
+          <button class="nav-link d-flex align-items-center" data-bs-toggle="pill" data-bs-target="#pane-profile-sync" type="button">
+            <i class="bi bi-cloud-arrow-down me-2"></i>Profile Sync
+          </button>
           <button class="nav-link d-flex align-items-center" data-bs-toggle="pill" data-bs-target="#pane-can-interfaces" type="button">
             <i class="bi bi-diagram-3 me-2"></i>CAN Interfaces
           </button>
@@ -112,6 +115,7 @@
               ('pane-display','bi-display','Display &amp; Kiosk','On-screen kiosk'),
               ('pane-network','bi-wifi','Network','Hostname and Wi-Fi access point'),
               ('pane-actions','bi-lightning-charge','Actions','Your action library and drivers'),
+              ('pane-profile-sync','bi-cloud-arrow-down','Profile Sync','Pull vehicle profiles from a server'),
               ('pane-can-interfaces','bi-diagram-3','CAN Interfaces','Backends, channels, and bitrates'),
               ('pane-logging','bi-journal-text','Logging','Event journal and retention'),
               ('pane-security','bi-shield-lock','Security','Optional PIN lock'),
@@ -246,6 +250,32 @@
           </div>
         </div>
 
+        <div class="tab-pane fade" id="pane-profile-sync" role="tabpanel" data-title="Profile Sync">
+          <div class="section-title"><i class="bi bi-cloud-arrow-down"></i>Profile Sync</div>
+          <p class="pane-intro">Pull a vehicle's whole setup, databases, actions, layout, and simulation, from a
+            central AutoPi server, so a new device does not need each vehicle built by hand. This is a future
+            feature: it has no effect until a server exists and this device is pointed at it.</p>
+          <div class="section-card">
+            <label class="form-label">Server URL</label>
+            <input type="text" class="form-control" data-setting="sync_server_url" data-type="str"
+                   value="{{ s.sync_server_url }}" placeholder="https://autopi-server.example.com">
+            <label class="form-label mt-3">Device token</label>
+            <input type="password" class="form-control" data-setting="sync_device_token" data-type="str"
+                   value="{{ s.sync_device_token }}" placeholder="Issued by the sync server">
+            <button class="btn btn-primary btn-sm mt-3 save-btn">Save</button>
+            <span class="save-status ms-2 small"></span>
+          </div>
+          <div class="section-card mt-3" id="profile-sync-card">
+            <div class="subsection-title mb-2">Remote profiles</div>
+            <div id="sync-status" class="small text-secondary mb-2">Not configured yet.</div>
+            <button type="button" class="btn btn-outline-primary btn-sm" id="sync-check-btn">
+              <i class="bi bi-arrow-repeat me-1"></i>Check for profiles</button>
+            <div id="sync-profiles-list" class="d-flex flex-column gap-1 mt-3"></div>
+            <div class="form-text mt-2">Pulling a profile creates or updates the matching local profile and makes
+              it the active vehicle.</div>
+          </div>
+        </div>
+
         <div class="tab-pane fade" id="pane-can-interfaces" role="tabpanel" data-title="CAN Interfaces">
           <div class="section-title"><i class="bi bi-diagram-3"></i>CAN Interfaces</div>
           <p class="pane-intro">Tell AutoPi which backend and bitrate to use for each CAN channel.
@@ -365,6 +395,7 @@
 <script src="static/vendor/bootstrap.bundle.min.js"></script>
 <script src="static/js/settings.js"></script>
 <script src="static/js/network.js"></script>
+<script src="static/js/profile-sync.js"></script>
 <script src="static/js/can-interfaces.js"></script>
 </body>
 </html>
