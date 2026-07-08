@@ -19,14 +19,19 @@
 #   CAN_DBITRATE      CAN-FD data-phase bitrate, bit/s (default 2000000)
 #   CAN_FD            "true" to bring the interfaces up in FD mode (default true)
 #   CAN0_INTERRUPT    GPIO the first MCP2518FD's INT line is wired to (default 25)
-#   CAN1_INTERRUPT    GPIO the second MCP2518FD's INT line is wired to (default 24)
+#   CAN1_INTERRUPT    GPIO the second MCP2518FD's INT line is wired to (default 13)
+#
+# The defaults match the Waveshare 2-CH CAN FD HAT in its SPI0 mode (the factory
+# config: spi0-0 interrupt 25, spi0-1 interrupt 13). The board's other mode wires
+# the channels to SPI1 with interrupts 24 and 23; if yours is set that way, see
+# the note printed at the end.
 set -uo pipefail
 
 CAN_BITRATE="${CAN_BITRATE:-500000}"
 CAN_DBITRATE="${CAN_DBITRATE:-2000000}"
 CAN_FD="${CAN_FD:-true}"
 CAN0_INTERRUPT="${CAN0_INTERRUPT:-25}"
-CAN1_INTERRUPT="${CAN1_INTERRUPT:-24}"
+CAN1_INTERRUPT="${CAN1_INTERRUPT:-13}"
 # The MCP2518FD's crystal. The Waveshare 2-Ch CAN-FD HAT uses 40 MHz. This must
 # match the board or the bit timing is wrong: classic CAN may still limp along,
 # but CAN-FD (which needs tight timing) fails. Some board revisions use 20 MHz;
@@ -65,6 +70,9 @@ echo "dtoverlay=mcp251xfd,spi0-0,interrupt=${CAN0_INTERRUPT},oscillator=${CAN_OS
 echo "dtoverlay=mcp251xfd,spi0-1,interrupt=${CAN1_INTERRUPT},oscillator=${CAN_OSCILLATOR}" >> "$CONFIG_TXT"
 
 echo "Writing the CAN link-up service (bitrate ${CAN_BITRATE}, dbitrate ${CAN_DBITRATE}, fd=${CAN_FD})"
+# restart-ms auto-recovers the interface from a bus-off (matches the factory
+# bring-up), so a wiring glitch does not leave the bus down until a manual reset.
+CAN_RESTART_MS="${CAN_RESTART_MS:-1000}"
 FD_ARGS=""
 [ "$CAN_FD" = "true" ] && FD_ARGS="dbitrate ${CAN_DBITRATE} fd on"
 
@@ -80,9 +88,9 @@ for iface in can0 can1; do
     continue
   fi
   ip link set "\$iface" down 2>/dev/null || true
-  if [ -n "${FD_ARGS}" ] && ip link set "\$iface" type can bitrate ${CAN_BITRATE} ${FD_ARGS} 2>/dev/null; then
+  if [ -n "${FD_ARGS}" ] && ip link set "\$iface" type can bitrate ${CAN_BITRATE} restart-ms ${CAN_RESTART_MS} ${FD_ARGS} 2>/dev/null; then
     mode="CAN-FD"
-  elif ip link set "\$iface" type can bitrate ${CAN_BITRATE} 2>/dev/null; then
+  elif ip link set "\$iface" type can bitrate ${CAN_BITRATE} restart-ms ${CAN_RESTART_MS} 2>/dev/null; then
     mode="classic (CAN-FD setup failed; check the CAN_OSCILLATOR value)"
   else
     echo "autopi-can-up: \$iface could not be configured (see: dmesg | grep mcp251)"
@@ -130,10 +138,12 @@ ls -1 /sys/class/net/ 2>/dev/null | grep -E '^can[0-9]+$' | sed 's/^/  /' || ech
 echo "mcp251xfd kernel messages (last 12):"
 dmesg 2>/dev/null | grep -i mcp251 | tail -12 | sed 's/^/  /' || echo "  none"
 echo
-echo "If can1 is missing while can0 works, the second controller did not probe:"
-echo "  - check the dmesg lines above for a probe error on spi0.1,"
-echo "  - confirm the INT pin for can1 (CAN1_INTERRUPT, default ${CAN1_INTERRUPT}); some"
-echo "    board revisions and the Pi 5 differ. Re-run with the right pin, e.g."
-echo "    sudo CAN1_INTERRUPT=23 bash \$0"
+echo "If one channel is missing while the other works, the second controller did not"
+echo "probe (dmesg shows 'Failed to read Oscillator Configuration Register'):"
+echo "  - these defaults are the Waveshare 2-CH CAN FD HAT SPI0 mode (spi0-0 int 25,"
+echo "    spi0-1 int ${CAN1_INTERRUPT}). If the board is jumpered to its SPI1 mode, the channels"
+echo "    are on spi1 with interrupts 24 and 23 (dtoverlay=spi1-3cs); see the Waveshare"
+echo "    wiki 2-CH_CAN_FD_HAT and set CAN0_INTERRUPT/CAN1_INTERRUPT to match."
+echo "  - confirm the HAT is seated and no header pin is bent."
 echo "If CAN-FD will not come up but classic does, the oscillator is likely wrong:"
 echo "  sudo CAN_OSCILLATOR=20000000 bash \$0   # then reboot"

@@ -8,6 +8,15 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Fixed
 
+- **Waveshare 2-CH CAN FD HAT second channel now initializes.** The CAN setup used
+  the wrong interrupt GPIO for the second channel (24, which is the board's SPI1
+  mode), so only the first channel came up. It now uses the factory SPI0-mode pin
+  (spi0-1 interrupt 13, per the Waveshare 2-CH CAN FD HAT wiki), adds the factory
+  restart-ms auto-recovery, and documents the SPI1-mode pins for boards jumpered
+  that way.
+
+### Fixed
+
 - **Updates no longer break when an optional dependency will not build.** The
   container build now installs the core web app (which must succeed) and the
   optional or hardware libraries (python-can, cantools, gpiozero/lgpio, smbus2,
