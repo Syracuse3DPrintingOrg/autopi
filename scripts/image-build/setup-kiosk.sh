@@ -3,14 +3,18 @@
 #
 # On Raspberry Pi OS Lite there is no desktop, so this installs a tiny Wayland
 # kiosk (the cage compositor) plus Chromium and a systemd service that shows the
-# AutoPi start menu full screen on the attached display. Touch input works out
-# of the box. This is deliberately minimal; a richer kiosk (rotation, idle
+# AutoPi operator screen full screen on the attached display. Touch input works
+# out of the box. This is deliberately minimal; a richer kiosk (rotation, idle
 # blanking, on-screen keyboard) can layer on top later.
 #
 # Run as root on a Pi appliance with a display attached.
 set -euo pipefail
 
-URL="${KIOSK_URL:-http://127.0.0.1:9284/start}"
+# /operator is the large-touch bench view (see services/ui_mode.py); the
+# request also comes from loopback on the Pi itself, so it lands there even
+# without the query string, but ?kiosk=1 makes the choice explicit and latches
+# it for any link the operator screen itself points at.
+URL="${KIOSK_URL:-http://127.0.0.1:9284/operator?kiosk=1}"
 RUN_USER="${RUN_USER:-${SUDO_USER:-$(id -un 1000 2>/dev/null || echo pi)}}"
 
 echo "Installing the kiosk display stack (cage + chromium)"

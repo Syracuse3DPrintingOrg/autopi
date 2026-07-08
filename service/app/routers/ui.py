@@ -6,12 +6,37 @@ import math
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from .. import testseq
 from ..actions import registry
 from ..config import settings
 from ..services import layout as layout_svc
+from ..services import profiles as profiles_svc
+from ..services import ui_mode as ui_mode_svc
 from ..templating import templates, theme_context
 
 router = APIRouter(tags=["ui"])
+
+# Session key that latches operator mode once a kiosk browser has visited
+# with ?kiosk=1, so later requests from the same browser (no query string,
+# e.g. a link tap) stay on the operator screen. See services/ui_mode.py.
+_KIOSK_SESSION_KEY = "kiosk_mode"
+
+
+def resolve_ui_mode(request: Request) -> str:
+    """The one place a real ``Request`` is read to pick a UI mode.
+
+    Delegates the actual decision to :func:`ui_mode_svc.decide_ui_mode`,
+    which is pure and unit-tested on its own.
+    """
+    kiosk_param = request.query_params.get("kiosk")
+    if kiosk_param == "1":
+        request.session[_KIOSK_SESSION_KEY] = True
+    elif kiosk_param == "0":
+        request.session[_KIOSK_SESSION_KEY] = False
+    latched = bool(request.session.get(_KIOSK_SESSION_KEY, False))
+    host = request.client.host if request.client else None
+    return ui_mode_svc.decide_ui_mode(
+        host=host, kiosk_latched=latched, ui_mode_setting=settings.ui_mode)
 
 
 def _render_slots(surface: str):
@@ -44,14 +69,43 @@ def _grid_dims(n: int) -> tuple[int, int]:
 
 
 @router.get("/")
-def home():
+def home(request: Request):
+    if resolve_ui_mode(request) == ui_mode_svc.OPERATOR:
+        return RedirectResponse("/operator")
     if settings.start_page_enabled:
         return RedirectResponse("/start")
     return RedirectResponse("/layout-editor")
 
 
+@router.get("/operator", response_class=HTMLResponse)
+def operator_page(request: Request):
+    # Latch kiosk mode (if requested) before rendering, so the page's own
+    # links (which carry no query string) still resolve to operator mode.
+    resolve_ui_mode(request)
+    keys = _render_slots("start")
+    cols, rows = _grid_dims(len(keys))
+    active_id = profiles_svc.get_active_profile_id()
+    profile = profiles_svc.get_profile(active_id) if active_id is not None else None
+    sequences = testseq.list_sequences(active_id) if active_id is not None else testseq.list_sequences()
+    return templates.TemplateResponse(request, "operator.html", theme_context(
+        request, keys=keys, cols=cols, rows=rows,
+        enabled=settings.start_page_enabled, profile=profile, sequences=sequences,
+        vehicle_label=_vehicle_label(profile)))
+
+
+def _vehicle_label(profile: dict | None) -> str:
+    """A short "year make model" string for the operator page header."""
+    if not profile:
+        return ""
+    parts = [str(profile[k]) for k in ("year", "make", "model") if profile.get(k)]
+    return " ".join(parts) or (profile.get("name") or "")
+
+
 @router.get("/start", response_class=HTMLResponse)
 def start_page(request: Request):
+    # A "Builder" link from the operator page can carry ?kiosk=0 to clear the
+    # latch (see resolve_ui_mode); harmless when the param is absent.
+    resolve_ui_mode(request)
     keys = _render_slots("start")
     cols, rows = _grid_dims(len(keys))
     return templates.TemplateResponse(request, "start.html", theme_context(

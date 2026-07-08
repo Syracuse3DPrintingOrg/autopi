@@ -8,6 +8,16 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **A large-touch operator screen for the bench.** A new `/operator` page
+  shows the active vehicle, the key grid from the layout editor, and a
+  full-screen "Run test" launcher that picks one of the vehicle's saved test
+  sequences and walks it live with a big pass/fail/confirm view, plus a
+  compact status strip (recent activity, CAN interface state). A device
+  opening the app from its own screen (or any browser visiting with
+  `?kiosk=1`) lands here by default; a PC on the network still gets the
+  builder. A gear and a Builder link on the operator screen, and a setting
+  under Display & Kiosk, move between the two either way. The kiosk service
+  now points at `/operator` instead of the plain start menu.
 - **Automated test sequences.** A new Tests page lets you build a sequence of
   steps, send a CAN command, assert a specific CAN response arrives within a
   timeout (matched by id and an optional decoded-signal comparison), pause to

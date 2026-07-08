@@ -13,7 +13,7 @@ from typing import Any
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 APP_NAME = "AutoPi"
-APP_VERSION = "0.1.26"
+APP_VERSION = "0.1.27"
 
 # Where the setup page writes persisted settings and where state files live.
 _DEFAULT_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -23,6 +23,7 @@ _SAVEABLE = (
     "theme_mode",
     "kiosk_enabled",
     "start_page_enabled",
+    "ui_mode",
     "streamdeck_enabled",
     "deck_model",
     "deck_rotation",
@@ -47,6 +48,9 @@ class Settings(BaseSettings):
     theme_mode: str = "dark"
     start_page_enabled: bool = True
     kiosk_enabled: bool = False
+    # Which UI a request sees: "auto" (loopback/kiosk -> operator, otherwise
+    # builder), or a forced "operator" / "builder". See services/ui_mode.py.
+    ui_mode: str = "auto"
 
     # Stream Deck
     streamdeck_enabled: bool = False
