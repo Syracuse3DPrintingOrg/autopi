@@ -91,8 +91,8 @@ def parse_data_bytes(raw: str) -> list[int]:
 class CanProvider(ABC):
     """A CAN bus backend for one channel (e.g. ``can0``).
 
-    A concrete provider (``SocketCanProvider`` today; ``pcan``, ``vector``,
-    and ``virtual`` are separate follow-on beads) wraps whatever transport
+    A concrete provider (``SocketCanProvider``, ``PcanProvider``,
+    ``VectorProvider``, ``VirtualProvider``) wraps whatever transport
     python-can supports. A provider that cannot reach its channel, because
     python-can is not installed or the interface does not exist, reports
     ``available`` False and every other method becomes a safe no-op, so a

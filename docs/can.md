@@ -1,10 +1,10 @@
-# CAN bus (Waveshare 2-Channel CAN-FD HAT)
+# CAN bus
 
 AutoPi's CAN support lets an action send a frame onto a vehicle's CAN bus,
 the same way a GPIO action drives a pin or an HTTP action calls another
-application. This page covers getting the hardware recognized; creating and
-running CAN actions works like any other action, through the drag-and-drop
-editor.
+application. This page covers getting the hardware recognized and picking a
+backend; creating and running CAN actions works like any other action,
+through the drag-and-drop editor.
 
 ## Supported hardware
 
@@ -16,8 +16,36 @@ network interface: `can0` and `can1`. AutoPi talks to both through
 means any other adapter that shows up the same way (a USB-CAN dongle, a
 different MCP2518FD carrier board) works too, without any code changes.
 
-Other CAN adapters (PCAN, Vector, a virtual bus for testing without
-hardware) are on the roadmap; this page covers the Waveshare HAT.
+AutoPi also supports other CAN test equipment through python-can's other
+backends, no extra dependency needed:
+
+- **PEAK PCAN-USB** adapters, over the `pcan` backend.
+- **Vector** interfaces (VN1610, VN1630, and similar), over the `vector`
+  backend. These need Vector's XL Driver Library installed on the host.
+- **Virtual**, an in-process loopback bus with no hardware at all, useful
+  for building and testing an action layout before any adapter is plugged
+  in.
+
+Configure which backend, channel, and bitrate each interface uses on the
+**CAN Interfaces** settings page. A channel you never configure there falls
+back to SocketCAN at 500 kbit/s, so the Waveshare HAT keeps working with no
+extra setup.
+
+### Not yet supported: LIN and automotive Ethernet (DoIP)
+
+**LIN** (Local Interconnect Network, the low-speed single-wire bus behind
+things like window and mirror switches) and **DoIP** (Diagnostics over IP,
+used for UDS diagnostic sessions over automotive Ethernet on newer
+vehicles) are not implemented. python-can has no LIN backend at all, and
+DoIP isn't a CAN backend in the first place, so both need a different
+integration than the `CanProvider` used here.
+
+The extension points exist in code as stubs
+(`service/app/can/lin.py`, `service/app/can/doip.py`), always reporting
+unavailable, so where this support will land is visible without hunting
+through the roadmap. A DoIP implementation would most likely use the
+MIT-licensed [doipclient](https://github.com/jacobjrose/doipclient)
+library.
 
 ## Bringing up the HAT
 

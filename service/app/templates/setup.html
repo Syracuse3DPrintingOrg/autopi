@@ -77,6 +77,9 @@
           <button class="nav-link d-flex align-items-center" data-bs-toggle="pill" data-bs-target="#pane-home-assistant" type="button">
             <i class="bi bi-house-gear me-2"></i>Home Assistant
           </button>
+          <button class="nav-link d-flex align-items-center" data-bs-toggle="pill" data-bs-target="#pane-can-interfaces" type="button">
+            <i class="bi bi-diagram-3 me-2"></i>CAN Interfaces
+          </button>
 
           <div class="menu-heading">System</div>
           <button class="nav-link d-flex align-items-center" data-bs-toggle="pill" data-bs-target="#pane-security" type="button">
@@ -106,6 +109,7 @@
               ('pane-display','bi-display','Display &amp; Kiosk','On-screen kiosk'),
               ('pane-network','bi-wifi','Network','Hostname and Wi-Fi access point'),
               ('pane-actions','bi-lightning-charge','Actions','Your action library and drivers'),
+              ('pane-can-interfaces','bi-diagram-3','CAN Interfaces','Backends, channels, and bitrates'),
               ('pane-security','bi-shield-lock','Security','Optional PIN lock'),
               ('pane-updates','bi-cloud-arrow-down','Updates','Version and updating'),
               ('pane-advanced','bi-tools','Advanced','Data dir, health, raw settings') ] %}
@@ -238,6 +242,57 @@
           </div>
         </div>
 
+        <div class="tab-pane fade" id="pane-can-interfaces" role="tabpanel" data-title="CAN Interfaces">
+          <div class="section-title"><i class="bi bi-diagram-3"></i>CAN Interfaces</div>
+          <p class="pane-intro">Tell AutoPi which backend and bitrate to use for each CAN channel.
+            A channel with no configured interface here falls back to SocketCAN at 500 kbit/s.</p>
+          <div class="section-card">
+            <div class="subsection-title mb-2">Configured interfaces</div>
+            <div id="can-if-list" class="d-flex flex-column gap-2">Loading&hellip;</div>
+          </div>
+          <div class="section-card">
+            <div class="subsection-title mb-3" id="can-if-form-title">Add an interface</div>
+            <div class="row g-2">
+              <div class="col-sm-4">
+                <label class="form-label small mb-1">Channel name (id)</label>
+                <input type="text" class="form-control form-control-sm" id="can-if-id" placeholder="can0">
+              </div>
+              <div class="col-sm-4">
+                <label class="form-label small mb-1">Backend</label>
+                <select class="form-select form-select-sm" id="can-if-backend"></select>
+              </div>
+              <div class="col-sm-4">
+                <label class="form-label small mb-1">Backend channel value</label>
+                <input type="text" class="form-control form-control-sm" id="can-if-channel"
+                       placeholder="can0, PCAN_USBBUS1, 0, virtual0…">
+              </div>
+              <div class="col-sm-4">
+                <label class="form-label small mb-1">Bitrate</label>
+                <input type="number" class="form-control form-control-sm" id="can-if-bitrate" value="500000">
+              </div>
+              <div class="col-sm-4">
+                <label class="form-label small mb-1">CAN-FD data bitrate</label>
+                <input type="number" class="form-control form-control-sm" id="can-if-data-bitrate" placeholder="optional">
+              </div>
+              <div class="col-sm-4">
+                <label class="form-label small mb-1">Label</label>
+                <input type="text" class="form-control form-control-sm" id="can-if-label" placeholder="optional">
+              </div>
+              <div class="col-12">
+                <div class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" id="can-if-fd">
+                  <label class="form-check-label" for="can-if-fd">CAN-FD</label>
+                </div>
+              </div>
+            </div>
+            <button type="button" class="btn btn-primary btn-sm mt-3" id="can-if-save-btn">Save interface</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm mt-3 d-none" id="can-if-cancel-btn">Cancel edit</button>
+            <span class="ms-2 small" id="can-if-save-status"></span>
+            <div class="form-text mt-2">LIN and automotive Ethernet (DoIP) are not backends you can select yet;
+              see <code>docs/can.md</code> for where that support will land.</div>
+          </div>
+        </div>
+
         <div class="tab-pane fade" id="pane-security" role="tabpanel" data-title="Security PIN">
           <div class="section-title"><i class="bi bi-shield-lock"></i>Security</div>
           <div class="section-card">
@@ -284,5 +339,6 @@
 <script src="static/vendor/bootstrap.bundle.min.js"></script>
 <script src="static/js/settings.js"></script>
 <script src="static/js/network.js"></script>
+<script src="static/js/can-interfaces.js"></script>
 </body>
 </html>

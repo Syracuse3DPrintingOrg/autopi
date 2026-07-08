@@ -8,6 +8,13 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **Multiple CAN interfaces: PCAN, Vector, and a virtual bus.** Beyond the
+  Waveshare SocketCAN default, AutoPi can now talk to PEAK PCAN and Vector
+  hardware through python-can's backends, and a built-in virtual bus lets you
+  build and test without any hardware. A new CAN Interfaces settings pane
+  configures each channel's backend, bitrate, and CAN-FD data bitrate. LIN and
+  automotive Ethernet (DoIP) have marked extension points for later.
+
 - **Phase 3 start: closing the loop between inputs and CAN, plus more I/O.** A
   logic runtime runs your rules on a live scan loop: inputs (a CAN signal
   decoded from a database, a GPIO pin, or a constant) drive the rules, which
