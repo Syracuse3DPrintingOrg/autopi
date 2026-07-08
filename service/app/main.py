@@ -23,6 +23,7 @@ from .routers import profiles as profiles_router
 from .routers import setup as setup_router
 from .routers import streamdeck as streamdeck_router
 from .routers import system as system_router
+from .routers import tests as tests_router
 from .routers import ui as ui_router
 
 
@@ -84,6 +85,7 @@ app.include_router(can_interfaces_router.router)
 app.include_router(diagnostics_router.router)
 app.include_router(examples_router.router)
 app.include_router(logs_router.router)
+app.include_router(tests_router.router)
 app.include_router(profiles_router.router)
 app.include_router(network_router.router)
 

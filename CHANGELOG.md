@@ -8,6 +8,14 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **Automated test sequences.** A new Tests page lets you build a sequence of
+  steps, send a CAN command, assert a specific CAN response arrives within a
+  timeout (matched by id and an optional decoded-signal comparison), pause to
+  ask the operator to confirm pass/fail, run an action, or delay, and then run it
+  step by step with live status and a final report. Results are recorded to the
+  SD-card log (each step and the overall result), so a run leaves an auditable
+  trail. Sequences are saved and can be tied to a vehicle profile.
+
 - **A logging journal on the device.** A Logs page records what the device
   does (actions run, and later test steps and results) to daily files on the
   SD card, with a live event view, a file list you can download, a clear
