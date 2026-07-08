@@ -22,4 +22,14 @@ done
 ip addr add 192.168.99.1/24 dev wlan0 2>/dev/null || true
 systemctl start hostapd
 systemctl start dnsmasq
+
+# Redirect plain http://192.168.99.1 (port 80) to the app on 9284, so a
+# browser that assumes a bare IP means "the web server" reaches it without
+# typing the port. Idempotent: only added if not already present.
+if command -v iptables >/dev/null 2>&1; then
+  if ! iptables -t nat -C PREROUTING -i wlan0 -p tcp --dport 80 -j REDIRECT --to-port 9284 2>/dev/null; then
+    iptables -t nat -A PREROUTING -i wlan0 -p tcp --dport 80 -j REDIRECT --to-port 9284
+  fi
+fi
+
 touch /run/autopi-ap-active

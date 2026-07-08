@@ -26,6 +26,7 @@ import json
 import os
 import secrets
 import shutil
+import socket
 import subprocess
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -45,7 +46,7 @@ HOST, PORT = "127.0.0.1", 9299
 ALLOW_TOKENLESS = True
 
 # Routes that need no token: nothing a local process could not already learn.
-PUBLIC_GETS = {"/system/health", "/hardware/status", "/health"}
+PUBLIC_GETS = {"/system/health", "/hardware/status", "/health", "/network/status"}
 
 TOKEN = ""
 
@@ -84,8 +85,89 @@ def _detached_restart(unit: str, delay: int = 3, reason: str = "") -> None:
                          start_new_session=True)
 
 
+def _run(cmd: list[str], timeout: float = 15) -> tuple[int, str, str]:
+    """Run a command, never raising. Returns (returncode, stdout, stderr)."""
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        return r.returncode, r.stdout, r.stderr
+    except (OSError, subprocess.SubprocessError) as exc:
+        return -1, "", str(exc)
+
+
+def _have(cmd: str) -> bool:
+    return shutil.which(cmd) is not None
+
+
+# --- pure parsing (importable and testable without root or hardware) --------
+def parse_nmcli_active_ssid(output: str) -> str | None:
+    """Parse `nmcli -t -f active,ssid dev wifi` for the SSID of the active AP."""
+    for line in output.splitlines():
+        parts = line.split(":")
+        if len(parts) >= 2 and parts[0] == "yes" and parts[1]:
+            return parts[1]
+    return None
+
+
+def parse_iw_link_ssid(output: str) -> str | None:
+    """Parse `iw dev wlan0 link` for the connected SSID, as a fallback."""
+    for line in output.splitlines():
+        line = line.strip()
+        if line.startswith("SSID:"):
+            return line.split(":", 1)[1].strip() or None
+    return None
+
+
+def parse_nmcli_scan(output: str) -> list[dict]:
+    """Parse `nmcli -t -f ssid,signal,security dev wifi list` into networks.
+
+    nmcli escapes literal ':' inside a field as '\\:', which this splits on an
+    unescaped colon only. Duplicate SSIDs (seen on more than one channel) keep
+    the strongest signal and drop the rest.
+    """
+    import re
+
+    best: dict[str, dict] = {}
+    for line in output.splitlines():
+        if not line.strip():
+            continue
+        parts = re.split(r"(?<!\\):", line)
+        parts = [p.replace("\\:", ":") for p in parts]
+        ssid = parts[0].strip() if parts else ""
+        if not ssid:
+            continue
+        signal = None
+        if len(parts) > 1 and parts[1].strip().isdigit():
+            signal = int(parts[1].strip())
+        secured = bool(len(parts) > 2 and parts[2].strip() and parts[2].strip() != "--")
+        prev = best.get(ssid)
+        if prev is None or (signal or 0) > (prev["signal"] or 0):
+            best[ssid] = {"ssid": ssid, "signal": signal, "secured": secured}
+    return sorted(best.values(), key=lambda n: n["signal"] or 0, reverse=True)
+
+
+def parse_iw_scan(output: str) -> list[dict]:
+    """Parse `iw dev wlan0 scan` into networks, as a fallback when nmcli is absent."""
+    networks: list[dict] = []
+    seen: set[str] = set()
+    current_signal: float | None = None
+    for raw in output.splitlines():
+        line = raw.strip()
+        if line.startswith("signal:"):
+            try:
+                current_signal = float(line.split(":", 1)[1].strip().split()[0])
+            except (ValueError, IndexError):
+                current_signal = None
+        elif line.startswith("SSID:"):
+            ssid = line.split(":", 1)[1].strip()
+            if ssid and ssid not in seen:
+                seen.add(ssid)
+                networks.append({"ssid": ssid, "signal": current_signal, "secured": None})
+    networks.sort(key=lambda n: n["signal"] if n["signal"] is not None else -999, reverse=True)
+    return networks
+
+
 # --- privileged operations ---------------------------------------------------
-def op_update() -> dict:
+def op_update(_body: dict) -> dict:
     helper = _find_helper("autopi-update")
     if not helper:
         return {"ok": False, "error": "updater not found in checkout"}
@@ -102,17 +184,84 @@ def op_update() -> dict:
     return {"ok": proc.returncode == 0, "detail": (proc.stdout or proc.stderr or "").strip()[-500:]}
 
 
-def op_reboot() -> dict:
+def op_reboot(_body: dict) -> dict:
     subprocess.Popen(["/bin/sh", "-c", "sleep 2; systemctl reboot"], start_new_session=True)
     return {"ok": True, "message": "Rebooting"}
 
 
-def op_streamdeck_restart() -> dict:
+def op_streamdeck_restart(_body: dict) -> dict:
     _detached_restart("autopi-streamdeck.service", reason="app request")
     return {"ok": True, "message": "Reconnecting the Stream Deck…"}
 
 
-def read_health() -> dict:
+def op_network_status(_body: dict) -> dict:
+    """Current SSID (if any), IP address, and hostname."""
+    ssid = None
+    if _have("nmcli"):
+        rc, out, _err = _run(["nmcli", "-t", "-f", "active,ssid", "dev", "wifi"])
+        if rc == 0:
+            ssid = parse_nmcli_active_ssid(out)
+    if ssid is None:
+        rc, out, _err = _run(["iw", "dev", "wlan0", "link"])
+        if rc == 0:
+            ssid = parse_iw_link_ssid(out)
+    ip = None
+    rc, out, _err = _run(["hostname", "-I"])
+    if rc == 0 and out.strip():
+        ip = out.strip().split()[0]
+    return {"ok": True, "ssid": ssid, "ip": ip, "hostname": socket.gethostname()}
+
+
+def op_network_scan(_body: dict) -> dict:
+    """Visible Wi-Fi networks, strongest signal first."""
+    if _have("nmcli"):
+        _run(["nmcli", "device", "wifi", "rescan"], timeout=15)  # best effort; ignore failure
+        rc, out, err = _run(["nmcli", "-t", "-f", "ssid,signal,security", "dev", "wifi", "list"], timeout=20)
+        if rc == 0:
+            return {"ok": True, "networks": parse_nmcli_scan(out)}
+        return {"ok": False, "error": (err or "nmcli scan failed").strip()[:500]}
+    if _have("iw"):
+        rc, out, err = _run(["iw", "dev", "wlan0", "scan"], timeout=20)
+        if rc == 0:
+            return {"ok": True, "networks": parse_iw_scan(out)}
+        return {"ok": False, "error": (err or "iw scan failed").strip()[:500]}
+    return {"ok": False, "error": "no Wi-Fi scanning tool available (need nmcli or iw)"}
+
+
+def op_network_connect(body: dict) -> dict:
+    """Join a Wi-Fi network by SSID, with an optional passphrase."""
+    ssid = (body.get("ssid") or "").strip()
+    psk = body.get("psk") or ""
+    if not ssid:
+        return {"ok": False, "error": "ssid is required"}
+    if _have("nmcli"):
+        cmd = ["nmcli", "device", "wifi", "connect", ssid]
+        if psk:
+            cmd += ["password", psk]
+        rc, out, err = _run(cmd, timeout=30)
+        if rc == 0:
+            return {"ok": True, "message": f"Connected to {ssid}"}
+        return {"ok": False, "error": (err or out or "nmcli connect failed").strip()[:500]}
+    if _have("wpa_cli"):
+        rc, out, _err = _run(["wpa_cli", "-i", "wlan0", "add_network"], timeout=10)
+        net_id = out.strip().splitlines()[-1].strip() if rc == 0 and out.strip() else ""
+        if not net_id.isdigit():
+            return {"ok": False, "error": "could not add a wpa_supplicant network"}
+        _run(["wpa_cli", "-i", "wlan0", "set_network", net_id, "ssid", f'"{ssid}"'], timeout=10)
+        if psk:
+            _run(["wpa_cli", "-i", "wlan0", "set_network", net_id, "psk", f'"{psk}"'], timeout=10)
+        else:
+            _run(["wpa_cli", "-i", "wlan0", "set_network", net_id, "key_mgmt", "NONE"], timeout=10)
+        _run(["wpa_cli", "-i", "wlan0", "enable_network", net_id], timeout=10)
+        rc, out, err = _run(["wpa_cli", "-i", "wlan0", "select_network", net_id], timeout=10)
+        _run(["wpa_cli", "-i", "wlan0", "save_config"], timeout=10)
+        if rc == 0:
+            return {"ok": True, "message": f"Connecting to {ssid}"}
+        return {"ok": False, "error": (err or out or "wpa_cli connect failed").strip()[:500]}
+    return {"ok": False, "error": "no Wi-Fi tool available (need nmcli or wpa_cli)"}
+
+
+def read_health(_body: dict) -> dict:
     """Raw Pi power/thermal/disk read. Every probe degrades to unknown."""
     out: dict = {"throttled": None, "temp_c": None, "disk_percent": None}
     try:
@@ -136,7 +285,7 @@ def read_health() -> dict:
     return out
 
 
-def read_hardware() -> dict:
+def read_hardware(_body: dict) -> dict:
     """Display and Stream Deck presence from sysfs, no privileges required."""
     display = os.path.exists("/dev/dri/card0")
     deck = False
@@ -158,7 +307,10 @@ ROUTES = {
     ("POST", "/streamdeck/restart"): op_streamdeck_restart,
     ("GET", "/system/health"): read_health,
     ("GET", "/hardware/status"): read_hardware,
-    ("GET", "/health"): lambda: {"ok": True, "bridge": "autopi", "ts": time.time()},
+    ("GET", "/network/status"): op_network_status,
+    ("POST", "/network/wifi/scan"): op_network_scan,
+    ("POST", "/network/wifi/connect"): op_network_connect,
+    ("GET", "/health"): lambda _body: {"ok": True, "bridge": "autopi", "ts": time.time()},
 }
 
 
@@ -194,8 +346,21 @@ class Handler(BaseHTTPRequestHandler):
         if not self._authorized(path):
             self._reply(401, {"ok": False, "error": "bad or missing bridge token"})
             return
+        body: dict = {}
+        if method == "POST":
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                length = 0
+            if length:
+                try:
+                    parsed = json.loads(self.rfile.read(length))
+                    if isinstance(parsed, dict):
+                        body = parsed
+                except ValueError:
+                    body = {}
         try:
-            self._reply(200, fn())
+            self._reply(200, fn(body))
         except Exception as exc:  # never crash the bridge on one bad request
             self._reply(500, {"ok": False, "error": str(exc)})
 

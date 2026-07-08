@@ -9,9 +9,12 @@ from starlette.middleware.sessions import SessionMiddleware
 from .config import APP_NAME, APP_VERSION, settings
 from .routers import actions as actions_router
 from .routers import can_dbc as can_dbc_router
+from .routers import can_sim as can_sim_router
 from .routers import db as db_router
 from .routers import layout as layout_router
 from .routers import logic as logic_router
+from .routers import network as network_router
+from .routers import profiles as profiles_router
 from .routers import setup as setup_router
 from .routers import streamdeck as streamdeck_router
 from .routers import system as system_router
@@ -35,6 +38,12 @@ async def lifespan(app: FastAPI):
         init_db()
     except Exception:
         pass
+    # Seed the starter vehicle profiles: same best-effort, never-clobber policy.
+    try:
+        from .services.seed_profiles import seed_profiles_if_empty
+        seed_profiles_if_empty()
+    except Exception:
+        pass
     yield
 
 
@@ -53,6 +62,9 @@ app.include_router(system_router.router)
 app.include_router(db_router.router)
 app.include_router(logic_router.router)
 app.include_router(can_dbc_router.router)
+app.include_router(can_sim_router.router)
+app.include_router(profiles_router.router)
+app.include_router(network_router.router)
 
 
 @app.get("/health")

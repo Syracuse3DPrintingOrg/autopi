@@ -76,3 +76,15 @@ def can_console(request: Request):
 def automation(request: Request):
     # Logic rules and database backup/restore, loaded over the API.
     return templates.TemplateResponse(request, "automation.html", theme_context(request))
+
+
+@router.get("/ui/profiles", response_class=HTMLResponse)
+def profiles_page(request: Request):
+    # Under /ui because /profiles is already the CRUD API's prefix.
+    return templates.TemplateResponse(request, "profiles.html", theme_context(request))
+
+
+@router.get("/ui/can-sim", response_class=HTMLResponse)
+def can_sim_page(request: Request):
+    # The panel loads the transmit list and scheduler status over the API.
+    return templates.TemplateResponse(request, "can_sim.html", theme_context(request))

@@ -53,6 +53,17 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **Vehicles, CAN simulation, and Wi-Fi configuration.** Three more sections of
+  the platform go live. **Vehicles**: create vehicle test profiles (year, make,
+  model, one or more VINs) and pick an active one; Stellantis **Atlantis High**
+  and **Atlantis Mid** are seeded to start from (infotainment focus).
+  **Simulate**: a CAN transmit list of periodic (cyclic) and one-shot frames,
+  each raw hex or encoded from a DBC signal set, with a scheduler you start and
+  stop. **Wi-Fi**: the Network settings pane scans for networks and joins one
+  (on a Pi appliance), and the fallback access point now actually serves the
+  app (a captive redirect sends `http://192.168.99.1` to the app), fixing the
+  hotspot that reached nothing before.
+
 - **The platform is now visible and usable in the app, not just the API.** New
   top-nav sections put the tools one click away: a **CAN** console and an
   **Automation** page. The CAN console lists your imported CAN databases,
