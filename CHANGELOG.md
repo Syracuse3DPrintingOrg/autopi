@@ -6,6 +6,17 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ## [Unreleased]
 
+### Added
+
+- **Signal Finder works on a live bus, with sweep and button reference capture.**
+  Point it at a live channel (can0/can1/...), "Snapshot live bus" to see which
+  arbitration ids are active before you hunt, and record the reference the way you
+  interact with the vehicle: a Sweep slider for a continuous control (a volume
+  knob) or a Button/spacebar press whose timestamps become a pulse the search
+  matches to a toggling bit. The bus and the reference are captured together on
+  the same clock, so they align automatically, then survey and bitsearch run on
+  that live-captured data.
+
 ### Changed
 
 - **Virtual cockpit: pick a gauge's signal from a searchable dropdown.** When you

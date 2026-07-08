@@ -8,14 +8,26 @@ plain lists of frame records and reference points.
 """
 from __future__ import annotations
 
+import time
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from ..can import capture as cap
+from ..can import get_channel
 from ..can import reverse as rev
 from ..db import CanDatabase, session_scope
+from ..services import ref_recorder as rec
 
 router = APIRouter(prefix="/reverse", tags=["can-reverse"])
+
+MAX_LIVE_SECONDS = 30.0
+
+# Remembers whether /reference/start also started an inhale capture, so
+# /reference/stop knows whether to stop and save one. Keyed by nothing (one
+# reference recording at a time, matching ref_recorder's own single-slot
+# state); reset whenever a new recording starts.
+_reference_capture: dict = {"channel": None, "backend": None, "name": None}
 
 
 class ReferencePoint(BaseModel):
@@ -40,6 +52,76 @@ def _frames_by_id(capture: dict) -> dict[int, list[dict]]:
     for frame in capture.get("frames", []):
         grouped.setdefault(frame.get("arbitration_id"), []).append(frame)
     return grouped
+
+
+def _run_live_capture(channel: str, backend: str, seconds: float, name: str = "") -> dict:
+    """Run a short, bounded inhale on a live channel and block until it is
+    saved, so a caller gets a capture_id back in one request instead of
+    needing to poll. Returns ``{"ok": True, "capture": {...}}`` or
+    ``{"ok": False, "error": ...}``; never raises for an unavailable or
+    already-busy channel, since a bench technician driving this from the UI
+    needs an honest message, not a 500.
+    """
+    provider = get_channel(channel, backend=backend)
+    if not provider.available:
+        return {"ok": False, "error": getattr(provider, "last_error", None)
+                or f"Channel {channel!r} is not available. Bring the interface up first."}
+
+    capped_seconds = max(0.5, min(float(seconds), MAX_LIVE_SECONDS))
+    session = cap.get_inhale_session(channel, backend=backend)
+    if not session.start(name, max_duration_s=capped_seconds):
+        return {"ok": False, "error": "A capture is already running on that channel"}
+
+    # InhaleSession only checks its own duration limit right after a frame
+    # arrives, so a silent channel would otherwise run forever; enforce the
+    # bound here regardless of whether any frames showed up.
+    deadline = time.time() + capped_seconds + 1.0
+    while session.is_running() and time.time() < deadline:
+        time.sleep(0.05)
+    saved = session.stop()
+    if saved is None:
+        return {"ok": False, "error": "Capture produced nothing"}
+    return {"ok": True, "capture": saved}
+
+
+class CaptureLiveIn(BaseModel):
+    channel: str
+    backend: str = "socketcan"
+    seconds: float = 5.0
+    name: str = ""
+
+
+@router.post("/capture-live")
+def capture_live_route(body: CaptureLiveIn):
+    """Run the Signal Finder against a live bus without a trip to the CAN
+    console first: capture a few seconds on the given channel and hand back
+    its capture_id, ready to survey or bitsearch."""
+    result = _run_live_capture(body.channel, body.backend, body.seconds, body.name)
+    if not result["ok"]:
+        return result
+    saved = result["capture"]
+    return {"ok": True, "capture_id": saved["id"], "frame_count": len(saved.get("frames", []))}
+
+
+class SnapshotIn(BaseModel):
+    channel: str
+    backend: str = "socketcan"
+    seconds: float = 3.0
+
+
+@router.post("/snapshot")
+def snapshot_route(body: SnapshotIn):
+    """Capture a few seconds live and summarize which arbitration ids are
+    active and which of their bytes are changing, with no reference needed,
+    so a user can see what is on can1/can2 before hunting a specific
+    signal."""
+    result = _run_live_capture(body.channel, body.backend, body.seconds, "snapshot")
+    if not result["ok"]:
+        return result
+    saved = result["capture"]
+    grouped = _frames_by_id(saved)
+    ranked = rev.activity_survey(grouped)
+    return {"ok": True, "capture_id": saved["id"], "ids": ranked}
 
 
 @router.get("/captures")
@@ -139,3 +221,98 @@ def save_route(body: SaveIn):
         s.flush()
         return {"ok": True, "database": database.to_dict(with_messages=True),
                 "candidate": derived}
+
+
+# --------------------------------------------------------------------------
+# Reference recorder: record a reference by interacting with the vehicle
+# --------------------------------------------------------------------------
+
+class ReferenceStartIn(BaseModel):
+    mode: str
+    channel: str | None = None
+    backend: str = "socketcan"
+    capture_name: str = ""
+
+
+@router.post("/reference/start")
+def reference_start(body: ReferenceStartIn):
+    """Begin recording a reference. When ``channel`` is given, also starts an
+    inhale capture on that channel so the bus and the reference record
+    together (marks/events line up with captured frames automatically, since
+    both use the server clock)."""
+    if body.mode not in rec.MODES:
+        raise HTTPException(400, f"mode must be one of {rec.MODES}")
+    try:
+        status = rec.start(body.mode)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+    _reference_capture["channel"] = None
+    _reference_capture["backend"] = None
+    _reference_capture["name"] = None
+    if body.channel:
+        session = cap.get_inhale_session(body.channel, backend=body.backend)
+        started = session.start(body.capture_name)
+        if not started:
+            rec.stop()
+            raise HTTPException(400, "A capture is already running on that channel")
+        _reference_capture["channel"] = body.channel
+        _reference_capture["backend"] = body.backend
+        _reference_capture["name"] = body.capture_name
+    return {"ok": True, "status": status, "capturing": bool(body.channel)}
+
+
+class ReferenceMarkIn(BaseModel):
+    value: float
+
+
+@router.post("/reference/mark")
+def reference_mark(body: ReferenceMarkIn):
+    return rec.mark(body.value)
+
+
+@router.post("/reference/event")
+def reference_event():
+    return rec.event()
+
+
+@router.get("/reference/status")
+def reference_status():
+    return rec.status()
+
+
+@router.post("/reference/stop")
+def reference_stop():
+    """Stop the recorder (and the inhale capture it started, if any, saving
+    it) and hand back a capture id plus a ready-to-use reference series."""
+    raw = rec.get()
+    rec.stop()
+
+    channel = _reference_capture.get("channel")
+    backend = _reference_capture.get("backend") or "socketcan"
+    capture_id = None
+    span = None
+    if channel:
+        session = cap.get_inhale_session(channel, backend=backend)
+        saved = session.stop()
+        if saved is not None:
+            capture_id = saved.get("id")
+            frames = saved.get("frames") or []
+            if frames:
+                timestamps = [f.get("timestamp", 0.0) for f in frames]
+                span = (min(timestamps), max(timestamps))
+        _reference_capture["channel"] = None
+        _reference_capture["backend"] = None
+        _reference_capture["name"] = None
+
+    if raw.get("mode") == "button":
+        reference = rev.reference_from_events(raw.get("events") or [], span=span)
+    else:
+        reference = [{"t": p["t"], "value": p["value"], "available": True} for p in raw.get("points") or []]
+
+    return {"capture_id": capture_id, "mode": raw.get("mode"), "reference": reference}
+
+
+@router.post("/reference/clear")
+def reference_clear():
+    return rec.clear()
