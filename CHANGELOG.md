@@ -8,6 +8,15 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **CAN firewall and inhale/exhale.** Sit between two CAN buses and control
+  traffic in flight: rules match by arbitration id (exact, mask, or range) and an
+  optional decoded-signal comparison, and allow, block, rewrite (change a signal
+  and re-encode with the checksum recomputed), or inject frames, in either
+  direction. Inhale captures a bus into a named recording; exhale replays it to
+  the other side at the original pace, optionally through the same rules. A new
+  Firewall page manages the rules, starts and stops the gateway with a live
+  forwarded/blocked/rewritten count, and runs captures.
+
 - **Virtual cockpit: design your own dashboard.** Upload a photo of your
   dashboard (or any background art) on the new Cockpit page, then place keys
   and gauges directly on top of it: a key runs any action with a tap, a

@@ -188,6 +188,12 @@ def diagnostics_page(request: Request):
     return templates.TemplateResponse(request, "diagnostics.html", theme_context(request))
 
 
+@router.get("/ui/firewall", response_class=HTMLResponse)
+def firewall_page(request: Request):
+    # The panel loads rules, gateway status, and captures over the API.
+    return templates.TemplateResponse(request, "firewall.html", theme_context(request))
+
+
 @router.get("/ui/logs", response_class=HTMLResponse)
 def logs_page(request: Request):
     # The live event table and file list load and poll over the /logs API.

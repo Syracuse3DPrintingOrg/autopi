@@ -26,6 +26,7 @@ from .routers import streamdeck as streamdeck_router
 from .routers import sync as sync_router
 from .routers import system as system_router
 from .routers import tests as tests_router
+from .routers import firewall as firewall_router
 from .routers import ui as ui_router
 
 
@@ -73,6 +74,7 @@ _STATIC_DIR = Path(__file__).resolve().parent / "static"
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
 app.include_router(ui_router.router)
+app.include_router(firewall_router.router)
 app.include_router(actions_router.router)
 app.include_router(layout_router.router)
 app.include_router(setup_router.router)
