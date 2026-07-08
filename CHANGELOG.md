@@ -8,6 +8,19 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **Signal Finder: reverse-engineer an unknown CAN signal automatically.** Capture
+  a bus, note a reference signal over time (sweep a control and record its value),
+  and AutoPi finds the signal for you: a bit-activity survey flags counters and
+  checksums, a correlation pass ranks which CAN ids track your reference, a
+  bitsearch tries every start bit, length, byte order, and sign and scores each by
+  how straight the fit is (preferring the shortest field), and a linear regression
+  derives the scale and offset (rounded to realistic values). Save the result
+  straight into a CAN database and decode it on the Monitor. This is the method
+  from CSS Electronics' AI CAN reverse-engineering write-up, built in as a
+  deterministic, offline tool.
+
+### Added
+
 - **CAN interfaces now show which Waveshare HAT port they are, plus live
   diagnostics.** The detected-interfaces list maps each kernel interface to the
   board's silkscreen port (the Waveshare HAT labels its two ports CAN0 and CAN1,

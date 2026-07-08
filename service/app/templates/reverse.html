@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+{% block title %}Signal Finder: {{ app_name }}{% endblock %}
+{% block body %}
+<div class="container-fluid">
+  <h4 class="mb-1"><i class="bi bi-search me-1"></i>Signal Finder</h4>
+  <p class="small text-secondary">Find an unknown signal in a CAN capture by matching it against a reference you
+    already know. Capture a bus on the CAN console, sweep a control while you note its value, then let AutoPi
+    survey the bus, search the bits, and hand you a decoded signal to save into a database.</p>
+
+  <div class="row g-3">
+    <div class="col-lg-5">
+      <div class="card mb-3"><div class="card-body">
+        <h6 class="mb-2">1. Capture</h6>
+        <select class="form-select form-select-sm mb-2" id="capture"></select>
+        <div class="small text-secondary" id="capture-info"></div>
+      </div></div>
+
+      <div class="card mb-3"><div class="card-body">
+        <h6 class="mb-1">2. Reference signal</h6>
+        <p class="small text-secondary mb-2">One point per line as <code>time, value</code> (time in the same
+          seconds as the capture). Mark a value <code>na</code> to skip a moment the signal was unavailable.
+          A rough sweep across the capture's time range is enough.</p>
+        <textarea class="form-control form-control-sm mono" id="reference" rows="6"
+          placeholder="0.0, 0&#10;2.5, 15&#10;5.0, 40&#10;7.5, 70"></textarea>
+      </div></div>
+
+      <div class="card"><div class="card-body">
+        <h6 class="mb-2">3. Search</h6>
+        <button class="btn btn-primary btn-sm" id="survey-btn"><i class="bi bi-bar-chart me-1"></i>Survey the bus</button>
+        <div class="form-text">Ranks which CAN ids track your reference. Then search one id's bits below.</div>
+        <div id="survey-status" class="small mt-2"></div>
+      </div></div>
+    </div>
+
+    <div class="col-lg-7">
+      <div class="card mb-3"><div class="card-body">
+        <h6 class="mb-2">Candidate CAN ids</h6>
+        <div id="survey-results" class="small text-secondary">Run a survey to rank the ids.</div>
+      </div></div>
+      <div class="card"><div class="card-body">
+        <h6 class="mb-2">Signal candidates</h6>
+        <div id="bitsearch-results" class="small text-secondary">Pick an id above to search its bits.</div>
+      </div></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="save-modal" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+  <div class="modal-body">
+    <h6 class="mb-2">Save signal to a database</h6>
+    <div id="save-summary" class="small text-secondary mb-2"></div>
+    <label class="form-label small mb-1">Name</label>
+    <input type="text" class="form-control form-control-sm mb-2" id="save-name" placeholder="VEHICLE_SPEED">
+    <label class="form-label small mb-1">Database</label>
+    <select class="form-select form-select-sm mb-2" id="save-db"></select>
+    <label class="form-label small mb-1">Unit (optional)</label>
+    <input type="text" class="form-control form-control-sm mb-3" id="save-unit" placeholder="km/h">
+    <button class="btn btn-primary btn-sm" id="save-confirm">Save signal</button>
+    <span id="save-status" class="small ms-2"></span>
+  </div>
+</div></div></div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const captureEl = document.getElementById('capture');
+  const refEl = document.getElementById('reference');
+  const hex = (n) => '0x' + Number(n).toString(16).toUpperCase();
+  let currentCandidate = null;
+
+  function loadCaptures() {
+    fetch('reverse/captures').then((r) => r.json()).then((d) => {
+      const caps = d.captures || [];
+      captureEl.innerHTML = caps.length
+        ? caps.map((c) => '<option value="' + esc(c.id) + '">' + esc(c.name || c.id) + ' (' + (c.frame_count || 0) + ' frames)</option>').join('')
+        : '<option value="">No captures yet. Record one on the CAN console (Inhale).</option>';
+      captureInfo();
+    });
+  }
+  function captureInfo() {
+    document.getElementById('capture-info').textContent = captureEl.value
+      ? 'Capture selected. Enter a reference that spans its time range.' : '';
+  }
+  captureEl.addEventListener('change', captureInfo);
+
+  function reference() {
+    const pts = [];
+    refEl.value.split('\n').forEach((line) => {
+      const parts = line.split(',');
+      if (parts.length < 2) return;
+      const t = parseFloat(parts[0]);
+      const raw = parts[1].trim().toLowerCase();
+      if (isNaN(t)) return;
+      if (raw === 'na' || raw === '') { pts.push({ t, value: 0, available: false }); return; }
+      const v = parseFloat(raw);
+      if (!isNaN(v)) pts.push({ t, value: v, available: true });
+    });
+    return pts;
+  }
+
+  document.getElementById('survey-btn').addEventListener('click', () => {
+    const ref = reference();
+    const st = document.getElementById('survey-status');
+    if (!captureEl.value) { st.textContent = 'Pick a capture first.'; return; }
+    if (ref.length < 3) { st.textContent = 'Enter at least a few reference points.'; return; }
+    st.textContent = 'Surveying…';
+    fetch('reverse/survey', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ capture_id: captureEl.value, reference: ref }) })
+      .then((r) => r.json()).then((d) => {
+        st.textContent = '';
+        const ranked = d.ranked || [];
+        const el = document.getElementById('survey-results');
+        if (!ranked.length) { el.textContent = 'No ids correlated with the reference.'; return; }
+        el.innerHTML = '<table class="table table-sm table-dark align-middle mb-0"><thead><tr>'
+          + '<th>CAN id</th><th>score</th><th>frames</th><th></th></tr></thead><tbody>'
+          + ranked.slice(0, 15).map((r) => '<tr><td class="mono">' + hex(r.arbitration_id) + '</td><td>'
+            + (r.score != null ? r.score.toFixed(3) : '') + '</td><td>' + (r.frame_count || '') + '</td>'
+            + '<td><button class="btn btn-outline-primary btn-sm" data-id="' + r.arbitration_id + '">Search bits</button></td></tr>').join('')
+          + '</tbody></table>';
+        el.querySelectorAll('button[data-id]').forEach((b) =>
+          b.addEventListener('click', () => bitsearch(parseInt(b.getAttribute('data-id'), 10))));
+      }).catch(() => { st.textContent = 'Survey failed.'; });
+  });
+
+  function bitsearch(arbId) {
+    const el = document.getElementById('bitsearch-results');
+    el.textContent = 'Searching the bits of ' + hex(arbId) + '…';
+    fetch('reverse/bitsearch', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ capture_id: captureEl.value, arbitration_id: arbId, reference: reference() }) })
+      .then((r) => r.json()).then((d) => {
+        const cands = d.candidates || [];
+        if (!cands.length) { el.textContent = 'No good fit found on ' + hex(arbId) + '.'; return; }
+        el.innerHTML = '<table class="table table-sm table-dark align-middle mb-0"><thead><tr>'
+          + '<th>bits</th><th>order</th><th>scale</th><th>offset</th><th>fit r²</th><th></th></tr></thead><tbody>'
+          + cands.map((c, i) => '<tr><td class="mono">@' + c.start_bit + ' len ' + c.length + (c.signed ? ' signed' : '') + '</td>'
+            + '<td>' + (c.byte_order === 'little_endian' ? 'Intel' : 'Motorola') + '</td>'
+            + '<td>' + (+c.scale).toPrecision(4) + '</td><td>' + (+c.offset).toPrecision(4) + '</td>'
+            + '<td>' + (+c.r2).toFixed(3) + '</td>'
+            + '<td><button class="btn btn-outline-success btn-sm" data-c="' + i + '">Save</button></td></tr>').join('')
+          + '</tbody></table>';
+        el.querySelectorAll('button[data-c]').forEach((b) =>
+          b.addEventListener('click', () => openSave(cands[parseInt(b.getAttribute('data-c'), 10)])));
+      }).catch(() => { el.textContent = 'Bitsearch failed.'; });
+  }
+
+  function openSave(cand) {
+    currentCandidate = cand;
+    document.getElementById('save-summary').innerHTML = 'On ' + hex(cand.arbitration_id) + ', bit ' + cand.start_bit
+      + ' length ' + cand.length + ', ' + (cand.byte_order === 'little_endian' ? 'Intel' : 'Motorola')
+      + ', scale ' + (+cand.scale).toPrecision(4) + ', offset ' + (+cand.offset).toPrecision(4)
+      + ' (fit r² ' + (+cand.r2).toFixed(3) + ').';
+    fetch('can/databases').then((r) => r.json()).then((d) => {
+      const dbs = (d.databases || []);
+      document.getElementById('save-db').innerHTML = dbs.length
+        ? dbs.map((db) => '<option value="' + db.id + '">' + esc(db.name) + '</option>').join('')
+        : '<option value="">No databases. Create or import one on the CAN page first.</option>';
+    });
+    document.getElementById('save-status').textContent = '';
+    new bootstrap.Modal(document.getElementById('save-modal')).show();
+  }
+
+  document.getElementById('save-confirm').addEventListener('click', () => {
+    const name = document.getElementById('save-name').value.trim();
+    const dbId = parseInt(document.getElementById('save-db').value, 10);
+    const st = document.getElementById('save-status');
+    if (!name) { st.textContent = 'Name it first.'; return; }
+    if (!dbId) { st.textContent = 'Pick a database.'; return; }
+    fetch('reverse/save', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ database_id: dbId, name, candidate: currentCandidate,
+        unit: document.getElementById('save-unit').value.trim() }) })
+      .then((r) => r.json()).then((d) => {
+        st.innerHTML = d.ok === false ? '<span class="text-danger">' + esc(d.error || d.detail || 'Save failed') + '</span>'
+          : '<span class="text-success">Saved. Decode it on the Monitor now.</span>';
+      }).catch(() => { st.textContent = 'Save failed.'; });
+  });
+
+  loadCaptures();
+})();
+</script>
+{% endblock %}

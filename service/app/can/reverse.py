@@ -1,0 +1,697 @@
+"""Signal Finder: deterministic CAN reverse engineering.
+
+Implements the pipeline described in CSS Electronics' write-up on
+statistically reverse engineering CAN signals (no LLM needed to run it): take
+a captured run of frames for one arbitration id plus a reference signal (a
+value you recorded by hand while operating the real control, or an
+already-decoded signal used as ground truth), enumerate plausible bit fields,
+correlate each decoded field against the reference, and rank the candidates
+by fit quality. The winner's scale and offset are derived from a linear fit,
+rounded to an OEM-realistic step when close, and can be saved as a named
+signal onto an existing CAN database.
+
+Every function here is pure and dependency-free (no numpy/scipy): plain
+Python integer and float math only, so the whole pipeline is unit-testable
+without hardware, a database, or a running app. The one exception is
+:func:`add_signal_to_database`, which talks to cantools and a SQLAlchemy
+session to persist a result; the search and statistics that lead up to it
+never touch either.
+
+Bit numbering matches the DBC/cantools convention exactly (verified in
+``tests/test_can_reverse.py`` against cantools' own decode):
+
+- Intel (``little_endian``): ``start_bit`` is the field's least significant
+  bit, numbered as ``byte_index * 8 + bit_index_in_byte`` (bit 0 of byte 0 is
+  the LSB of the whole frame), and the field's more significant bits sit at
+  increasing bit numbers.
+- Motorola (``big_endian``): ``start_bit`` is the field's most significant
+  bit, numbered so that byte 0's bit 7 (its own MSB) is DBC bit 0, byte 0's
+  bit 0 (its own LSB) is DBC bit 7, byte 1's bit 7 is DBC bit 8, and so on;
+  the field then reads towards *decreasing* bit-in-byte positions and wraps
+  into the next byte's bit 7 the same way a normal big-endian integer would.
+"""
+from __future__ import annotations
+
+import bisect
+import math
+from collections import Counter
+from typing import Any, Iterable, Sequence
+
+BYTE_ORDERS = ("little_endian", "big_endian")
+
+# Bit widths worth trying by default. Real OEM signals overwhelmingly land on
+# one of these; searching every width from 1 to 64 would be needlessly slow
+# and would not turn up anything a human would actually choose to encode.
+DEFAULT_LENGTHS = (1, 2, 3, 4, 6, 8, 10, 12, 14, 16, 20, 24, 32)
+
+# "Nice" scale factors an OEM signal is likely to use. A fitted slope close
+# to one of these is snapped to it.
+NICE_SCALES = (1, 0.1, 0.01, 0.001, 0.5, 0.25, 0.125, 0.05, 0.02, 0.2, 2, 5, 10)
+
+
+# --------------------------------------------------------------------------
+# Bit-level field extraction
+# --------------------------------------------------------------------------
+
+def extract_field(data: bytes | Sequence[int], start_bit: int, length: int,
+                   byte_order: str = "little_endian", signed: bool = False) -> int:
+    """Pull one field out of a frame's data bytes.
+
+    ``start_bit``/``length``/``byte_order`` follow the DBC/cantools bit
+    numbering described in the module docstring. Raises ``ValueError`` if the
+    field does not fit inside ``data`` or ``byte_order`` is not recognized.
+    """
+    if length <= 0:
+        raise ValueError("length must be positive")
+    if start_bit < 0:
+        raise ValueError("start_bit must not be negative")
+    raw = bytes(data)
+    n_bits = len(raw) * 8
+    if n_bits == 0:
+        raise ValueError("data has no bytes")
+
+    if byte_order == "little_endian":
+        if start_bit + length > n_bits:
+            raise ValueError("field does not fit in the frame")
+        frame_int = int.from_bytes(raw, "little")
+        value = (frame_int >> start_bit) & ((1 << length) - 1)
+    elif byte_order == "big_endian":
+        phys_start = 8 * (start_bit // 8) + (7 - start_bit % 8)
+        if phys_start < 0 or phys_start + length > n_bits:
+            raise ValueError("field does not fit in the frame")
+        frame_int = int.from_bytes(raw, "big")
+        shift = n_bits - phys_start - length
+        value = (frame_int >> shift) & ((1 << length) - 1)
+    else:
+        raise ValueError(f"unknown byte order: {byte_order!r}")
+
+    if signed and (value >> (length - 1)) & 1:
+        value -= 1 << length
+    return value
+
+
+def _field_get(field: dict, key: str, default: Any = None) -> Any:
+    return field.get(key, default) if isinstance(field, dict) else getattr(field, key, default)
+
+
+def field_series(records: list[dict], field: dict) -> list[tuple[float, int]]:
+    """Decode one field across every frame of an id: ``[(timestamp, raw), ...]``.
+
+    ``field`` is a plain dict (or any object with matching attributes):
+    ``start_bit``, ``length``, ``byte_order`` (default ``"little_endian"``),
+    ``signed`` (default False). A frame too short for the field is skipped
+    rather than raising, since a real capture sometimes mixes DLCs for one id.
+    """
+    start_bit = _field_get(field, "start_bit")
+    length = _field_get(field, "length")
+    byte_order = _field_get(field, "byte_order", "little_endian")
+    signed = _field_get(field, "signed", False)
+    out: list[tuple[float, int]] = []
+    for record in records:
+        data = record.get("data") or []
+        try:
+            value = extract_field(bytes(data), start_bit, length, byte_order, signed)
+        except ValueError:
+            continue
+        out.append((float(record.get("timestamp", 0.0)), value))
+    return out
+
+
+# --------------------------------------------------------------------------
+# Bit activity heatmap and per-byte classification
+# --------------------------------------------------------------------------
+
+def _byte_values(records: list[dict], byte_index: int) -> list[int]:
+    values = []
+    for record in records:
+        data = record.get("data") or []
+        values.append(data[byte_index] if byte_index < len(data) else 0)
+    return values
+
+
+def _bit_flip_rates(records: list[dict], n_bytes: int) -> list[float]:
+    """Per-bit flip rate (fraction of consecutive frame pairs where the bit
+    changed), indexed 0..n_bytes*8-1 in little-endian (Intel) bit numbering,
+    which is the natural numbering for a raw activity heatmap regardless of
+    what byte order the eventual signal turns out to use."""
+    n_bits = n_bytes * 8
+    frames = [record.get("data") or [] for record in records]
+    rates = []
+    for bit in range(n_bits):
+        byte_idx, bit_idx = divmod(bit, 8)
+        series = [
+            (frame[byte_idx] >> bit_idx) & 1 if byte_idx < len(frame) else 0
+            for frame in frames
+        ]
+        if len(series) < 2:
+            rates.append(0.0)
+            continue
+        changes = sum(1 for i in range(1, len(series)) if series[i] != series[i - 1])
+        rates.append(changes / (len(series) - 1))
+    return rates
+
+
+def _shannon_entropy(values: list[int]) -> float:
+    if not values:
+        return 0.0
+    counts = Counter(values)
+    total = len(values)
+    return -sum((n / total) * math.log2(n / total) for n in counts.values())
+
+
+def classify_byte(values: list[int]) -> tuple[str, float]:
+    """Classify one byte's value sequence across a capture.
+
+    Returns ``(label, score)`` where ``label`` is one of ``"static"``
+    (never changes), ``"counter"`` (a regular rolling increment, the low
+    bits of a frame counter or a clock), ``"checksum"`` (high-entropy,
+    non-sequential: a byte that depends on everything else in the frame),
+    or ``"candidate"`` (changes, but not in either of those recognizable
+    ways: worth bitsearching). ``score`` is the confidence behind the
+    classification, roughly 0..1.
+    """
+    if not values:
+        return "static", 0.0
+    if max(values) == min(values):
+        return "static", 1.0
+
+    if len(values) > 1:
+        diffs = [(values[i] - values[i - 1]) % 256 for i in range(1, len(values))]
+        counts = Counter(diffs)
+        common_diff, hits = counts.most_common(1)[0]
+        frac = hits / len(diffs)
+        if common_diff != 0 and frac >= 0.6:
+            return "counter", round(frac, 3)
+
+    entropy = _shannon_entropy(values)
+    total = len(values)
+    max_possible = math.log2(min(256, total)) if total > 1 else 0.0
+    norm_entropy = (entropy / max_possible) if max_possible > 0 else 0.0
+    unique_fraction = len(set(values)) / total
+    if norm_entropy >= 0.8 and unique_fraction >= 0.5:
+        return "checksum", round(norm_entropy, 3)
+    return "candidate", round(norm_entropy, 3)
+
+
+def bit_activity(records: list[dict]) -> dict:
+    """Per-bit flip-rate heatmap and per-byte classification for one
+    arbitration id's frames, shaped for direct UI rendering."""
+    if not records:
+        return {"arbitration_id": None, "length": 0, "frame_count": 0,
+                "bit_activity": [], "bytes": []}
+
+    n_bytes = max(len(record.get("data") or []) for record in records)
+    bit_rates = _bit_flip_rates(records, n_bytes)
+    bytes_info = []
+    for byte_index in range(n_bytes):
+        values = _byte_values(records, byte_index)
+        label, score = classify_byte(values)
+        bytes_info.append({
+            "index": byte_index,
+            "classification": label,
+            "score": score,
+            "min": min(values) if values else 0,
+            "max": max(values) if values else 0,
+            "unique_values": len(set(values)),
+            "bit_activity": [round(r, 3) for r in bit_rates[byte_index * 8:byte_index * 8 + 8]],
+        })
+    return {
+        "arbitration_id": records[0].get("arbitration_id"),
+        "length": n_bytes,
+        "frame_count": len(records),
+        "bit_activity": [round(r, 3) for r in bit_rates],
+        "bytes": bytes_info,
+    }
+
+
+# --------------------------------------------------------------------------
+# Reference alignment
+# --------------------------------------------------------------------------
+
+def _sample_at(timestamps: list[float], values: list[float], target: float, method: str) -> float | None:
+    if not timestamps:
+        return None
+    if target <= timestamps[0]:
+        return values[0]
+    if target >= timestamps[-1]:
+        return values[-1]
+    i = bisect.bisect_left(timestamps, target)
+    if timestamps[i] == target:
+        return values[i]
+    lo, hi = i - 1, i
+    t0, t1 = timestamps[lo], timestamps[hi]
+    v0, v1 = values[lo], values[hi]
+    if method == "linear" and t1 != t0:
+        frac = (target - t0) / (t1 - t0)
+        return v0 + frac * (v1 - v0)
+    return v0 if (target - t0) <= (t1 - target) else v1
+
+
+def resample(series: list[tuple[float, float]], reference: list[dict], *,
+             lags: Iterable[float] | None = None, method: str = "nearest") -> dict:
+    """Align a decoded field series and a reference series onto one timeline.
+
+    ``series`` is ``[(t, value), ...]`` as returned by :func:`field_series`.
+    ``reference`` is a list of ``{"t": ..., "value": ..., "available": bool}``
+    points (a bench technician's manual sweep table, or an already-decoded
+    signal used as ground truth); a point with ``available`` set to False is
+    dropped (the technician could not confirm the state at that moment).
+
+    Each surviving reference point is matched to the decoded series at its
+    own timestamp minus a time lag, using nearest-sample or linear
+    interpolation. When ``lags`` is given (a list of candidate lag values in
+    seconds, positive meaning the decoded signal reacts *after* the
+    reference), every candidate is tried and the one whose aligned pair has
+    the strongest rank correlation is kept, absorbing a human's reaction
+    delay when they typed a "reference true now" row a beat late. With no
+    ``lags`` (the default), a lag of 0 is used.
+
+    Returns ``{"xs": [...decoded...], "ys": [...reference...], "lag": ...}``.
+    """
+    ref_points = [(p["t"], p["value"]) for p in reference if p.get("available", True)]
+    if not series or not ref_points:
+        return {"xs": [], "ys": [], "lag": 0.0}
+
+    sorted_series = sorted(series, key=lambda p: p[0])
+    timestamps = [p[0] for p in sorted_series]
+    values = [p[1] for p in sorted_series]
+
+    candidate_lags = list(lags) if lags is not None else [0.0]
+    best: tuple[float, float, list[float], list[float]] | None = None
+    for lag in candidate_lags:
+        xs: list[float] = []
+        ys: list[float] = []
+        for t, ref_value in ref_points:
+            sampled = _sample_at(timestamps, values, t - lag, method)
+            if sampled is None:
+                continue
+            xs.append(sampled)
+            ys.append(ref_value)
+        if not xs:
+            continue
+        # A lag can only be scored (and so compared against another lag) once
+        # there are at least two aligned points with some spread on both
+        # sides; otherwise keep it as a low-priority fallback so a single
+        # matched point (or a single candidate lag, the common case) still
+        # comes back instead of an empty result.
+        if len(xs) >= 2 and len(set(xs)) > 1 and len(set(ys)) > 1:
+            score = abs(spearman(xs, ys))
+        else:
+            score = -1.0
+        if best is None or score > best[0]:
+            best = (score, lag, xs, ys)
+
+    if best is None:
+        return {"xs": [], "ys": [], "lag": 0.0}
+    _, lag, xs, ys = best
+    return {"xs": xs, "ys": ys, "lag": lag}
+
+
+# --------------------------------------------------------------------------
+# Pure statistics: rank correlation and least-squares fit
+# --------------------------------------------------------------------------
+
+def _ranks(values: list[float]) -> list[float]:
+    n = len(values)
+    order = sorted(range(n), key=lambda i: values[i])
+    ranks = [0.0] * n
+    i = 0
+    while i < n:
+        j = i
+        while j + 1 < n and values[order[j + 1]] == values[order[i]]:
+            j += 1
+        average_rank = (i + j) / 2 + 1  # 1-based, ties share the mean rank
+        for k in range(i, j + 1):
+            ranks[order[k]] = average_rank
+        i = j + 1
+    return ranks
+
+
+def _pearson(xs: list[float], ys: list[float]) -> float:
+    n = len(xs)
+    if n == 0:
+        return 0.0
+    mean_x = sum(xs) / n
+    mean_y = sum(ys) / n
+    var_x = sum((x - mean_x) ** 2 for x in xs)
+    var_y = sum((y - mean_y) ** 2 for y in ys)
+    if var_x == 0 or var_y == 0:
+        return 0.0
+    covariance = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys))
+    return covariance / math.sqrt(var_x * var_y)
+
+
+def spearman(xs: list[float], ys: list[float]) -> float:
+    """Spearman rank correlation, pure Python (ties get the average rank)."""
+    if len(xs) != len(ys) or len(xs) < 2:
+        return 0.0
+    return _pearson(_ranks(xs), _ranks(ys))
+
+
+def linear_fit(xs: list[float], ys: list[float]) -> dict:
+    """Ordinary least-squares fit ``y = slope * x + intercept``, with R^2."""
+    n = len(xs)
+    if n < 2 or len(xs) != len(ys):
+        return {"slope": 0.0, "intercept": 0.0, "r2": 0.0}
+    mean_x = sum(xs) / n
+    mean_y = sum(ys) / n
+    var_x = sum((x - mean_x) ** 2 for x in xs)
+    if var_x == 0:
+        return {"slope": 0.0, "intercept": mean_y, "r2": 0.0}
+    covariance = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys))
+    slope = covariance / var_x
+    intercept = mean_y - slope * mean_x
+    ss_tot = sum((y - mean_y) ** 2 for y in ys)
+    if ss_tot == 0:
+        perfect = all(abs((slope * x + intercept) - y) < 1e-9 for x, y in zip(xs, ys))
+        r2 = 1.0 if perfect else 0.0
+    else:
+        ss_res = sum((y - (slope * x + intercept)) ** 2 for x, y in zip(xs, ys))
+        r2 = 1 - ss_res / ss_tot
+    return {"slope": slope, "intercept": intercept, "r2": r2}
+
+
+# --------------------------------------------------------------------------
+# Search: survey ids, then bitsearch within one id
+# --------------------------------------------------------------------------
+
+def _n_bits_for(records: list[dict]) -> int:
+    if not records:
+        return 0
+    return max(len(record.get("data") or []) for record in records) * 8
+
+
+def _search_lengths(n_bits: int, opts: dict) -> list[int]:
+    lengths = opts.get("lengths") or DEFAULT_LENGTHS
+    return [length for length in lengths if 0 < length <= n_bits]
+
+
+def _search_start_bits(n_bits: int, opts: dict) -> range:
+    if "start_step" in opts:
+        return range(0, n_bits, max(1, int(opts["start_step"])))
+    # A classic 8-byte frame (64 bits) is cheap to search bit by bit. A
+    # CAN-FD frame can be up to 64 bytes (512 bits); step by a nibble there
+    # so the search stays fast without missing byte-aligned signals.
+    step = 1 if n_bits <= 64 else 4
+    return range(0, n_bits, step)
+
+
+def _fits(byte_order: str, start_bit: int, length: int, n_bits: int) -> bool:
+    if byte_order == "little_endian":
+        return start_bit + length <= n_bits
+    phys_start = 8 * (start_bit // 8) + (7 - start_bit % 8)
+    return 0 <= phys_start and phys_start + length <= n_bits
+
+
+def bitsearch(records_for_id: list[dict], reference: list[dict], opts: dict | None = None) -> list[dict]:
+    """Enumerate plausible fields in one id's frames and rank them against a
+    reference signal.
+
+    ``opts`` (all optional): ``lengths`` (bit widths to try, default
+    :data:`DEFAULT_LENGTHS`), ``byte_orders`` (default both), ``signed``
+    (list of bools to try, default both), ``lags`` (candidate time lags
+    passed to :func:`resample`), ``min_score`` (drop weaker candidates,
+    default 0), ``max_candidates`` (cap the ranked list, default 20),
+    ``start_step``/``method`` (advanced tuning).
+
+    Each candidate is ``{arbitration_id, start_bit, length, byte_order,
+    signed, scale, offset, r2, correlation, lag}``. Ranked by fit quality
+    (the stronger of |correlation| and R^2), and on a tie the shorter field
+    wins, since a longer field that happens to score the same usually just
+    dragged in a neighboring static or noisy bit.
+    """
+    opts = opts or {}
+    if not records_for_id:
+        return []
+    arbitration_id = records_for_id[0].get("arbitration_id")
+    n_bits = _n_bits_for(records_for_id)
+    if n_bits == 0:
+        return []
+
+    byte_orders = opts.get("byte_orders") or list(BYTE_ORDERS)
+    signed_options = opts.get("signed", [False, True])
+    lags = opts.get("lags")
+    method = opts.get("method", "nearest")
+    min_score = opts.get("min_score", 0.0)
+    max_candidates = opts.get("max_candidates", 20)
+    lengths = _search_lengths(n_bits, opts)
+    start_bits = _search_start_bits(n_bits, opts)
+
+    candidates = []
+    for byte_order in byte_orders:
+        for length in lengths:
+            for start_bit in start_bits:
+                if not _fits(byte_order, start_bit, length, n_bits):
+                    continue
+                for signed in signed_options:
+                    series = field_series(records_for_id, {
+                        "start_bit": start_bit, "length": length,
+                        "byte_order": byte_order, "signed": signed,
+                    })
+                    if len(series) < 3:
+                        continue
+                    aligned = resample(series, reference, lags=lags, method=method)
+                    xs, ys = aligned["xs"], aligned["ys"]
+                    if len(xs) < 3 or len(set(xs)) < 2:
+                        continue
+                    correlation = spearman(xs, ys)
+                    fit = linear_fit(xs, ys)
+                    raw_score = max(abs(correlation), fit["r2"])
+                    if raw_score < min_score:
+                        continue
+                    candidates.append((raw_score, length, start_bit, {
+                        "arbitration_id": arbitration_id,
+                        "start_bit": start_bit,
+                        "length": length,
+                        "byte_order": byte_order,
+                        "signed": signed,
+                        "scale": fit["slope"],
+                        "offset": fit["intercept"],
+                        "r2": round(fit["r2"], 6),
+                        "correlation": round(correlation, 6),
+                        "lag": aligned["lag"],
+                        "score": round(raw_score, 6),
+                    }))
+
+    # Sort on the un-rounded score first: two candidates that are only
+    # different in, say, the fifth decimal place both round the same way for
+    # display, but that tiny gap is exactly what separates the true field
+    # from a neighboring one that dragged in a stray bit, so the shorter-field
+    # tiebreak below must not be reached before that real difference is
+    # honored.
+    candidates.sort(key=lambda c: (-c[0], c[1], c[2]))
+    return [c[3] for c in candidates[:max_candidates]]
+
+
+def survey(records_by_id: dict[int, list[dict]], reference: list[dict], opts: dict | None = None) -> list[dict]:
+    """Coarse per-byte scan across every arbitration id, ranked by how well
+    any one byte correlates with the reference, so a bitsearch only needs to
+    run on the promising ids.
+    """
+    opts = opts or {}
+    lags = opts.get("lags")
+    method = opts.get("method", "nearest")
+    results = []
+    for arbitration_id, records in records_by_id.items():
+        if not records:
+            continue
+        n_bytes = max(len(record.get("data") or []) for record in records)
+        best_score = 0.0
+        best_byte = None
+        for byte_index in range(n_bytes):
+            series = field_series(records, {"start_bit": byte_index * 8, "length": 8,
+                                            "byte_order": "little_endian", "signed": False})
+            if len(series) < 3:
+                continue
+            aligned = resample(series, reference, lags=lags, method=method)
+            xs, ys = aligned["xs"], aligned["ys"]
+            if len(xs) < 3 or len(set(xs)) < 2:
+                continue
+            score = max(abs(spearman(xs, ys)), linear_fit(xs, ys)["r2"])
+            if score > best_score:
+                best_score = score
+                best_byte = byte_index
+        results.append({
+            "arbitration_id": arbitration_id,
+            "score": round(best_score, 4),
+            "best_byte": best_byte,
+            "frame_count": len(records),
+        })
+    results.sort(key=lambda r: -r["score"])
+    return results
+
+
+# --------------------------------------------------------------------------
+# Scale/offset derivation and DBC export
+# --------------------------------------------------------------------------
+
+def derive_scale_offset(candidate: dict, reference: list[dict] | None = None) -> dict:
+    """Round a fitted slope to an OEM-realistic scale when it is close, and
+    snap a near-zero intercept to exactly zero.
+
+    ``reference`` is accepted but not required today: it is there so a
+    future refinement (checking the fit against a known anchor point, e.g.
+    "0 shown on the dash should decode to 0") has somewhere to look without
+    changing the call signature everywhere else in the pipeline.
+    """
+    slope = candidate.get("scale", 1.0)
+    intercept = candidate.get("offset", 0.0)
+
+    best_scale = slope
+    best_diff = None
+    for nice in NICE_SCALES:
+        if nice == 0:
+            continue
+        diff = abs(slope - nice)
+        relative = diff / abs(nice)
+        if relative < 0.05 and (best_diff is None or diff < best_diff):
+            best_scale = nice
+            best_diff = diff
+
+    rounded_offset = round(intercept, 3)
+    if abs(rounded_offset) < 0.05:
+        rounded_offset = 0.0
+
+    out = dict(candidate)
+    out["scale"] = best_scale
+    out["offset"] = rounded_offset
+    return out
+
+
+def to_dbc_signal(name: str, candidate: dict, *, unit: str = "", comment: str = "") -> dict:
+    """Turn a ranked candidate into a decode definition shaped like
+    :func:`app.can.dbc._signal_to_definition`, ready for
+    :func:`add_signal_to_database`."""
+    return {
+        "name": name,
+        "start": candidate["start_bit"],
+        "length": candidate["length"],
+        "byte_order": candidate.get("byte_order", "little_endian"),
+        "is_signed": bool(candidate.get("signed", False)),
+        "scale": candidate.get("scale", 1),
+        "offset": candidate.get("offset", 0),
+        "minimum": candidate.get("minimum"),
+        "maximum": candidate.get("maximum"),
+        "unit": unit,
+        "is_float": False,
+        "choices": {},
+        "comment": comment,
+        "receivers": [],
+        "is_multiplexer": False,
+        "multiplexer_ids": [],
+    }
+
+
+def _load_cantools_database(dbc_text: str):
+    import cantools
+    from cantools.database.can.database import Database as CanToolsDatabase
+    if dbc_text and dbc_text.strip():
+        try:
+            return cantools.database.load_string(dbc_text, database_format="dbc")
+        except Exception:
+            return cantools.database.load_string(dbc_text, database_format="dbc", strict=False)
+    return CanToolsDatabase()
+
+
+def add_signal_to_database(session, database, arbitration_id: int, signal_name: str,
+                            definition: dict, *, message_name: str | None = None,
+                            frame_length: int = 8):
+    """Add (or replace) one signal on an existing (or brand-new) message in a
+    :class:`~app.db.models.CanDatabase`, regenerating its ``dbc_text`` through
+    cantools so decode/encode keep working exactly as they do for any other
+    imported DBC.
+
+    ``database`` is the ``CanDatabase`` ORM row (already attached to
+    ``session``); its ``dbc_text`` is replaced in place. The matching
+    ``CanMessage``/``CanSignal`` rows are created or updated to match, so the
+    message/signal list view stays in sync without a full re-import.
+    """
+    from cantools.database.can import Message, Signal
+    from cantools.database.conversion import BaseConversion
+    from . import dbc as dbc_mod
+    from ..db.models import CanMessage, CanSignal
+
+    cantools_db = _load_cantools_database(database.dbc_text)
+    existing = None
+    for message in cantools_db.messages:
+        if message.frame_id == arbitration_id:
+            existing = message
+            break
+
+    conversion = BaseConversion.factory(
+        scale=definition.get("scale", 1) or 1,
+        offset=definition.get("offset", 0) or 0,
+    )
+    new_signal = Signal(
+        name=signal_name,
+        start=definition["start"],
+        length=definition["length"],
+        byte_order=definition.get("byte_order", "little_endian"),
+        is_signed=bool(definition.get("is_signed", False)),
+        conversion=conversion,
+        minimum=definition.get("minimum"),
+        maximum=definition.get("maximum"),
+        unit=definition.get("unit") or "",
+        comment=definition.get("comment") or "",
+    )
+
+    if existing is not None:
+        signals = [s for s in existing.signals if s.name != signal_name] + [new_signal]
+        new_message = Message(
+            frame_id=existing.frame_id,
+            name=existing.name,
+            length=existing.length,
+            signals=signals,
+            is_extended_frame=existing.is_extended_frame,
+            is_fd=existing.is_fd,
+            comment=existing.comment,
+            senders=list(existing.senders or []),
+            strict=False,
+        )
+        final_name = existing.name
+        final_is_fd = bool(existing.is_fd)
+        other_messages = [m for m in cantools_db.messages if m.frame_id != arbitration_id]
+    else:
+        final_name = message_name or f"MSG_{arbitration_id:X}"
+        new_message = Message(
+            frame_id=arbitration_id,
+            name=final_name,
+            length=frame_length,
+            signals=[new_signal],
+            strict=False,
+        )
+        final_is_fd = False
+        other_messages = list(cantools_db.messages)
+
+    from cantools.database.can.database import Database as CanToolsDatabase
+    rebuilt = CanToolsDatabase(
+        messages=other_messages + [new_message],
+        nodes=cantools_db.nodes,
+        version=cantools_db.version,
+        strict=False,
+    )
+    database.dbc_text = rebuilt.as_dbc_string()
+
+    message_row = (
+        session.query(CanMessage)
+        .filter_by(database_id=database.id, arbitration_id=arbitration_id)
+        .one_or_none()
+    )
+    if message_row is None:
+        message_row = CanMessage(database_id=database.id, arbitration_id=arbitration_id,
+                                  name=final_name, is_fd=final_is_fd)
+        session.add(message_row)
+        session.flush()
+
+    stored_definition = dbc_mod._signal_to_definition(new_signal)
+    signal_row = (
+        session.query(CanSignal)
+        .filter_by(message_id=message_row.id, name=signal_name)
+        .one_or_none()
+    )
+    if signal_row is None:
+        session.add(CanSignal(message_id=message_row.id, name=signal_name, definition=stored_definition))
+    else:
+        signal_row.definition = stored_definition
+    session.flush()
+    return database
