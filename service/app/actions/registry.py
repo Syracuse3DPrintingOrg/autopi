@@ -21,6 +21,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from ..config import settings
+from ..services import journal
 from ..services.state import StateFile
 from .drivers import DriverResult, get_driver
 
@@ -121,6 +122,19 @@ def delete_action(action_id: str) -> bool:
 
 def run(action_id: str, _depth: int = 0) -> DriverResult:
     """Resolve an action id and perform it."""
+    result = _run(action_id, _depth)
+    # Only journal the top-level call: a macro's member runs are already
+    # summarized in its "steps" data, so logging each nested run() too would
+    # just duplicate the same event under a different id.
+    if _depth == 0:
+        journal.log_event(
+            "action", f"Ran {action_id}: {result.message}",
+            {"action_id": action_id, "ok": result.ok},
+        )
+    return result
+
+
+def _run(action_id: str, _depth: int) -> DriverResult:
     spec = get_action(action_id)
     if spec is None:
         return DriverResult.failure(f"Unknown action: {action_id}")
@@ -136,7 +150,7 @@ def run(action_id: str, _depth: int = 0) -> DriverResult:
             return DriverResult.failure("Macro nested too deep")
         results = []
         for member in spec.members:
-            res = run(member, _depth=_depth + 1)
+            res = _run(member, _depth + 1)
             results.append({"id": member, "ok": res.ok, "message": res.message})
             if not res.ok:
                 return DriverResult.failure(

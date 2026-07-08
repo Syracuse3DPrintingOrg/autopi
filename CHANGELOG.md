@@ -8,6 +8,10 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **A logging journal on the device.** A Logs page records what the device
+  does (actions run, and later test steps and results) to daily files on the
+  SD card, with a live event view, a file list you can download, a clear
+  button, and a retention setting in Settings under Logging.
 - **Live RAM 1500 (2024) sample on a real open-source DBC.** A second example on
   the Vehicles page uses the real chrysler_cusw.dbc from comma.ai's opendbc
   (MIT, vendored with attribution), which covers the RAM 1500 (2019-2024). Its
