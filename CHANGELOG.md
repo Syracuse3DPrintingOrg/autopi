@@ -8,6 +8,16 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **CAN support for more test equipment, not just the Waveshare HAT.** New
+  backends wrap PEAK PCAN-USB adapters and Vector interfaces (VN1610,
+  VN1630, and similar), plus a virtual, hardware-free loopback bus for
+  building and testing a layout before any adapter is plugged in. A new CAN
+  Interfaces settings page lets you add each channel, pick its backend,
+  and set the bitrate (and CAN-FD data bitrate); a channel left
+  unconfigured still falls back to SocketCAN at 500 kbit/s as before. LIN
+  and automotive Ethernet (DoIP) are documented as not-yet-implemented
+  extension points in `docs/can.md`.
+
 - **Live CAN bus monitor.** A new Monitor page shows frames arriving on a
   channel in real time (arbitration id, how many times it has been seen, the
   latest data), and decodes them into named signals when you pick one of your

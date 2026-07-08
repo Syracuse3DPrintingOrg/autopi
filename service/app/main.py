@@ -9,6 +9,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from .config import APP_NAME, APP_VERSION, settings
 from .routers import actions as actions_router
 from .routers import can_dbc as can_dbc_router
+from .routers import can_interfaces as can_interfaces_router
 from .routers import can_monitor as can_monitor_router
 from .routers import can_sim as can_sim_router
 from .routers import db as db_router
@@ -74,6 +75,7 @@ app.include_router(system_router.router)
 app.include_router(db_router.router)
 app.include_router(logic_router.router)
 app.include_router(can_dbc_router.router)
+app.include_router(can_interfaces_router.router)
 app.include_router(can_sim_router.router)
 app.include_router(can_monitor_router.router)
 app.include_router(profiles_router.router)

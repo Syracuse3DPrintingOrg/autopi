@@ -1,21 +1,38 @@
 """Provider registry: open a CAN channel by backend name.
 
-Only ``socketcan`` is implemented (the Waveshare 2-Ch CAN-FD HAT, and every
-other Linux CAN adapter, comes up as a SocketCAN interface). ``pcan``,
-``vector``, and ``virtual`` are separate follow-on beads; register them here
-the same way once they land, nothing else in the app needs to change.
+``socketcan`` (the Waveshare 2-Ch CAN-FD HAT, and every other Linux CAN
+adapter) is the default. ``pcan`` (PEAK PCAN-USB), ``vector`` (Vector
+Informatik interfaces), and ``virtual`` (an in-process loopback bus for
+testing without hardware) wrap the matching python-can backend the same
+way. ``lin`` and ``doip`` are registered as NOT-YET-IMPLEMENTED stubs (see
+``lin.py`` and ``doip.py``) so the extension point is visible in code.
 """
 from __future__ import annotations
 
 from typing import Any
 
 from .base import CanProvider
+from .doip import DoipProvider
+from .lin import LinProvider
+from .pcan import PcanProvider
 from .socketcan import SocketCanProvider
+from .vector import VectorProvider
+from .virtual import VirtualProvider
 
-# backend name -> provider class. Extend here for pcan / vector / virtual.
+# backend name -> provider class.
 PROVIDER_CLASSES: dict[str, type[CanProvider]] = {
     "socketcan": SocketCanProvider,
+    "pcan": PcanProvider,
+    "vector": VectorProvider,
+    "virtual": VirtualProvider,
+    "lin": LinProvider,
+    "doip": DoipProvider,
 }
+
+# Backends a device can actually be configured with today. lin/doip are
+# registered above (so create_provider/get_channel resolve them) but left
+# out of the configurable list since they always report unavailable.
+CONFIGURABLE_BACKENDS = ("socketcan", "pcan", "vector", "virtual")
 
 # One provider instance per (backend, channel), so repeated sends reuse the
 # same open bus instead of reopening it every time, mirroring how the GPIO
@@ -25,6 +42,17 @@ _channels: dict[str, CanProvider] = {}
 
 def register_provider(backend: str, cls: type[CanProvider]) -> None:
     PROVIDER_CLASSES[backend] = cls
+
+
+def list_backends() -> list[dict[str, Any]]:
+    """Describe every configurable backend, for the settings UI."""
+    labels = {
+        "socketcan": "SocketCAN (Linux CAN interface, e.g. the Waveshare HAT)",
+        "pcan": "PEAK PCAN-USB",
+        "vector": "Vector (VN1610, VN1630, and similar)",
+        "virtual": "Virtual (loopback, no hardware needed)",
+    }
+    return [{"backend": b, "label": labels.get(b, b)} for b in CONFIGURABLE_BACKENDS]
 
 
 def create_provider(backend: str, channel: str, **kwargs: Any) -> CanProvider:
