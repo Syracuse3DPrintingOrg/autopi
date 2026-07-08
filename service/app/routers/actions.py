@@ -19,6 +19,7 @@ class ActionIn(BaseModel):
     params: dict = Field(default_factory=dict)
     icon: str = "bi-lightning-charge"
     color: str = "#334155"
+    category: str = "Actions"
     members: list[str] = Field(default_factory=list)
 
 

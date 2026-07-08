@@ -66,6 +66,12 @@ def layout_editor(request: Request):
                                       theme_context(request))
 
 
+@router.get("/ui/actions", response_class=HTMLResponse)
+def actions_page(request: Request):
+    # The library loads drivers, actions, and CAN databases over the API.
+    return templates.TemplateResponse(request, "actions.html", theme_context(request))
+
+
 @router.get("/can", response_class=HTMLResponse)
 def can_console(request: Request):
     # The CAN console loads databases, interfaces, and decode/encode over the API.

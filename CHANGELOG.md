@@ -6,6 +6,19 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ## [Unreleased]
 
+### Added
+
+- **Build and edit actions from the web UI, including vehicle commands.** A
+  new Actions page (nav: Actions) lists every action and lets you create or
+  edit one: pick a driver (GPIO, shell, HTTP, macro, or the new vehicle
+  command), and the form adjusts to that driver's parameters. A new "vehicle
+  command" driver sends a named CAN message: pick an imported database and
+  message and set the signal values you want (for example, Volume Up), and it
+  encodes and sends the frame for you; a raw arbitration id and data bytes
+  still work for a one-off frame with no database. A Test button runs the
+  action once and shows the result before you bind it to a key in the layout
+  editor.
+
 ### Fixed
 
 - **Wi-Fi and other host features no longer show a bare "not found" after an
