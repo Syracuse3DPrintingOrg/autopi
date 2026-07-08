@@ -16,7 +16,47 @@
       </div></div>
 
       <div class="card mb-3"><div class="card-body">
-        <h6 class="mb-1">2. Reference signal</h6>
+        <h6 class="mb-2">2. Record a reference</h6>
+        <p class="small text-secondary mb-2">Interact with the control the way you would in the vehicle and AutoPi
+          records the reference for you, timestamped against the capture automatically.</p>
+        <div class="btn-group btn-group-sm mb-2" role="group" aria-label="Reference mode">
+          <input type="radio" class="btn-check" name="ref-mode" id="ref-mode-sweep" value="sweep" checked>
+          <label class="btn btn-outline-primary" for="ref-mode-sweep">Sweep (knob/slider)</label>
+          <input type="radio" class="btn-check" name="ref-mode" id="ref-mode-button" value="button">
+          <label class="btn btn-outline-primary" for="ref-mode-button">Button (press)</label>
+        </div>
+
+        <div class="row g-2 mb-2">
+          <div class="col-6">
+            <label class="form-label small mb-1">Channel</label>
+            <input type="text" class="form-control form-control-sm" id="ref-channel" placeholder="can0">
+          </div>
+          <div class="col-6">
+            <label class="form-label small mb-1">Capture name</label>
+            <input type="text" class="form-control form-control-sm" id="ref-capture-name" placeholder="optional">
+          </div>
+        </div>
+
+        <div id="ref-sweep-panel">
+          <input type="range" class="form-range" id="ref-slider" min="0" max="100" value="0" disabled>
+          <div class="d-flex align-items-center gap-2 mb-1">
+            <button class="btn btn-outline-secondary btn-sm" id="ref-dec" disabled>-</button>
+            <span class="small mono" id="ref-slider-val">0</span>
+            <button class="btn btn-outline-secondary btn-sm" id="ref-inc" disabled>+</button>
+          </div>
+        </div>
+        <div id="ref-button-panel" class="d-none">
+          <button class="btn btn-outline-primary w-100 mb-1" id="ref-press-btn" disabled>Mark press (or press spacebar)</button>
+        </div>
+        <div class="small text-secondary mb-2" id="ref-count">Not recording.</div>
+
+        <button class="btn btn-primary btn-sm" id="ref-start-btn"><i class="bi bi-record-circle me-1"></i>Start capture + reference</button>
+        <button class="btn btn-outline-danger btn-sm d-none" id="ref-stop-btn">Stop</button>
+        <div class="small mt-2" id="ref-status"></div>
+      </div></div>
+
+      <div class="card mb-3"><div class="card-body">
+        <h6 class="mb-1">Or type a reference by hand</h6>
         <p class="small text-secondary mb-2">One point per line as <code>time, value</code> (time in the same
           seconds as the capture). Mark a value <code>na</code> to skip a moment the signal was unavailable.
           A rough sweep across the capture's time range is enough.</p>
@@ -68,6 +108,8 @@
   const refEl = document.getElementById('reference');
   const hex = (n) => '0x' + Number(n).toString(16).toUpperCase();
   let currentCandidate = null;
+  let recordedReference = null;
+  let recordedMode = null;
 
   function loadCaptures() {
     fetch('reverse/captures').then((r) => r.json()).then((d) => {
@@ -85,6 +127,7 @@
   captureEl.addEventListener('change', captureInfo);
 
   function reference() {
+    if (refEl.value.trim() === '' && recordedReference && recordedReference.length) return recordedReference;
     const pts = [];
     refEl.value.split('\n').forEach((line) => {
       const parts = line.split(',');
@@ -98,6 +141,124 @@
     });
     return pts;
   }
+
+  // -- reference recorder: sweep a control or press a button ---------------
+  (function () {
+    const sweepPanel = document.getElementById('ref-sweep-panel');
+    const buttonPanel = document.getElementById('ref-button-panel');
+    const slider = document.getElementById('ref-slider');
+    const sliderVal = document.getElementById('ref-slider-val');
+    const decBtn = document.getElementById('ref-dec');
+    const incBtn = document.getElementById('ref-inc');
+    const pressBtn = document.getElementById('ref-press-btn');
+    const startBtn = document.getElementById('ref-start-btn');
+    const stopBtn = document.getElementById('ref-stop-btn');
+    const countEl = document.getElementById('ref-count');
+    const statusEl = document.getElementById('ref-status');
+    let recording = false;
+    let markPending = false;
+    let markTimer = null;
+
+    function mode() {
+      return document.querySelector('input[name="ref-mode"]:checked').value;
+    }
+    function syncPanels() {
+      sweepPanel.classList.toggle('d-none', mode() !== 'sweep');
+      buttonPanel.classList.toggle('d-none', mode() !== 'button');
+    }
+    document.querySelectorAll('input[name="ref-mode"]').forEach((r) => r.addEventListener('change', syncPanels));
+    syncPanels();
+
+    function setRecordingUi(on) {
+      recording = on;
+      slider.disabled = !on || mode() !== 'sweep';
+      decBtn.disabled = incBtn.disabled = !on || mode() !== 'sweep';
+      pressBtn.disabled = !on || mode() !== 'button';
+      startBtn.classList.toggle('d-none', on);
+      stopBtn.classList.toggle('d-none', !on);
+      document.getElementById('ref-mode-sweep').disabled = on;
+      document.getElementById('ref-mode-button').disabled = on;
+      if (!on) countEl.textContent = 'Not recording.';
+    }
+    setRecordingUi(false);
+
+    function sendMark(value) {
+      fetch('reverse/reference/mark', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value }) })
+        .then((r) => r.json()).then((s) => { countEl.textContent = (s.count || 0) + ' points recorded.'; });
+    }
+    function debouncedMark(value) {
+      markPending = true;
+      clearTimeout(markTimer);
+      markTimer = setTimeout(() => { if (markPending) { sendMark(value); markPending = false; } }, 120);
+    }
+    slider.addEventListener('input', () => {
+      sliderVal.textContent = slider.value;
+      if (recording) debouncedMark(parseFloat(slider.value));
+    });
+    decBtn.addEventListener('click', () => {
+      slider.value = Math.max(0, parseFloat(slider.value) - 5);
+      sliderVal.textContent = slider.value;
+      if (recording) debouncedMark(parseFloat(slider.value));
+    });
+    incBtn.addEventListener('click', () => {
+      slider.value = Math.min(100, parseFloat(slider.value) + 5);
+      sliderVal.textContent = slider.value;
+      if (recording) debouncedMark(parseFloat(slider.value));
+    });
+
+    function sendEvent() {
+      fetch('reverse/reference/event', { method: 'POST' })
+        .then((r) => r.json()).then((s) => { countEl.textContent = (s.count || 0) + ' presses recorded.'; });
+    }
+    pressBtn.addEventListener('click', () => { if (recording) sendEvent(); });
+    document.addEventListener('keydown', (e) => {
+      if (e.code === 'Space' && recording && mode() === 'button' && document.activeElement.tagName !== 'TEXTAREA') {
+        e.preventDefault();
+        sendEvent();
+      }
+    });
+
+    startBtn.addEventListener('click', () => {
+      const m = mode();
+      const channel = document.getElementById('ref-channel').value.trim();
+      const captureName = document.getElementById('ref-capture-name').value.trim();
+      statusEl.textContent = 'Starting…';
+      fetch('reverse/reference/start', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: m, channel: channel || null, capture_name: captureName }) })
+        .then((r) => r.json()).then((d) => {
+          if (d.ok === false) { statusEl.textContent = d.detail || 'Could not start.'; return; }
+          statusEl.textContent = d.capturing ? 'Recording and capturing on ' + esc(channel) + '…' : 'Recording (no capture channel set)…';
+          setRecordingUi(true);
+        }).catch(() => { statusEl.textContent = 'Could not start.'; });
+    });
+
+    stopBtn.addEventListener('click', () => {
+      statusEl.textContent = 'Stopping…';
+      fetch('reverse/reference/stop', { method: 'POST' })
+        .then((r) => r.json()).then((d) => {
+          setRecordingUi(false);
+          recordedReference = d.reference || [];
+          recordedMode = d.mode;
+          refEl.value = '';
+          const note = recordedMode === 'button'
+            ? ' The found signal is usually a single toggling bit (length 1).' : '';
+          if (d.capture_id) {
+            fetch('reverse/captures').then((r) => r.json()).then((cd) => {
+              const caps = cd.captures || [];
+              captureEl.innerHTML = caps.map((c) => '<option value="' + esc(c.id) + '">' + esc(c.name || c.id)
+                + ' (' + (c.frame_count || 0) + ' frames)</option>').join('');
+              captureEl.value = d.capture_id;
+              captureInfo();
+            });
+            statusEl.textContent = 'Captured and recorded ' + recordedReference.length + ' reference points.' + note
+              + ' Loaded into the search below.';
+          } else {
+            statusEl.textContent = 'Recorded ' + recordedReference.length + ' reference points (no channel set, so no new capture).' + note;
+          }
+        }).catch(() => { statusEl.textContent = 'Could not stop.'; });
+    });
+  })();
 
   document.getElementById('survey-btn').addEventListener('click', () => {
     const ref = reference();

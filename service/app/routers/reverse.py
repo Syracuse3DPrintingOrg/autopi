@@ -14,8 +14,15 @@ from pydantic import BaseModel
 from ..can import capture as cap
 from ..can import reverse as rev
 from ..db import CanDatabase, session_scope
+from ..services import ref_recorder as rec
 
 router = APIRouter(prefix="/reverse", tags=["can-reverse"])
+
+# Remembers whether /reference/start also started an inhale capture, so
+# /reference/stop knows whether to stop and save one. Keyed by nothing (one
+# reference recording at a time, matching ref_recorder's own single-slot
+# state); reset whenever a new recording starts.
+_reference_capture: dict = {"channel": None, "backend": None, "name": None}
 
 
 class ReferencePoint(BaseModel):
@@ -139,3 +146,98 @@ def save_route(body: SaveIn):
         s.flush()
         return {"ok": True, "database": database.to_dict(with_messages=True),
                 "candidate": derived}
+
+
+# --------------------------------------------------------------------------
+# Reference recorder: record a reference by interacting with the vehicle
+# --------------------------------------------------------------------------
+
+class ReferenceStartIn(BaseModel):
+    mode: str
+    channel: str | None = None
+    backend: str = "socketcan"
+    capture_name: str = ""
+
+
+@router.post("/reference/start")
+def reference_start(body: ReferenceStartIn):
+    """Begin recording a reference. When ``channel`` is given, also starts an
+    inhale capture on that channel so the bus and the reference record
+    together (marks/events line up with captured frames automatically, since
+    both use the server clock)."""
+    if body.mode not in rec.MODES:
+        raise HTTPException(400, f"mode must be one of {rec.MODES}")
+    try:
+        status = rec.start(body.mode)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+    _reference_capture["channel"] = None
+    _reference_capture["backend"] = None
+    _reference_capture["name"] = None
+    if body.channel:
+        session = cap.get_inhale_session(body.channel, backend=body.backend)
+        started = session.start(body.capture_name)
+        if not started:
+            rec.stop()
+            raise HTTPException(400, "A capture is already running on that channel")
+        _reference_capture["channel"] = body.channel
+        _reference_capture["backend"] = body.backend
+        _reference_capture["name"] = body.capture_name
+    return {"ok": True, "status": status, "capturing": bool(body.channel)}
+
+
+class ReferenceMarkIn(BaseModel):
+    value: float
+
+
+@router.post("/reference/mark")
+def reference_mark(body: ReferenceMarkIn):
+    return rec.mark(body.value)
+
+
+@router.post("/reference/event")
+def reference_event():
+    return rec.event()
+
+
+@router.get("/reference/status")
+def reference_status():
+    return rec.status()
+
+
+@router.post("/reference/stop")
+def reference_stop():
+    """Stop the recorder (and the inhale capture it started, if any, saving
+    it) and hand back a capture id plus a ready-to-use reference series."""
+    raw = rec.get()
+    rec.stop()
+
+    channel = _reference_capture.get("channel")
+    backend = _reference_capture.get("backend") or "socketcan"
+    capture_id = None
+    span = None
+    if channel:
+        session = cap.get_inhale_session(channel, backend=backend)
+        saved = session.stop()
+        if saved is not None:
+            capture_id = saved.get("id")
+            frames = saved.get("frames") or []
+            if frames:
+                timestamps = [f.get("timestamp", 0.0) for f in frames]
+                span = (min(timestamps), max(timestamps))
+        _reference_capture["channel"] = None
+        _reference_capture["backend"] = None
+        _reference_capture["name"] = None
+
+    if raw.get("mode") == "button":
+        reference = rev.reference_from_events(raw.get("events") or [], span=span)
+    else:
+        reference = [{"t": p["t"], "value": p["value"], "available": True} for p in raw.get("points") or []]
+
+    return {"capture_id": capture_id, "mode": raw.get("mode"), "reference": reference}
+
+
+@router.post("/reference/clear")
+def reference_clear():
+    return rec.clear()

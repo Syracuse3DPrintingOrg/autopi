@@ -307,6 +307,60 @@ def resample(series: list[tuple[float, float]], reference: list[dict], *,
     return {"xs": xs, "ys": ys, "lag": lag}
 
 
+def reference_from_events(event_times: Sequence[float], span: tuple[float, float] | None = None,
+                           window: float = 0.4, high: float = 1.0,
+                           samples: int | None = None) -> list[dict]:
+    """Turn button-press timestamps into a pulse-train reference.
+
+    Each press in ``event_times`` is treated as the control going high for
+    ``window`` seconds (a bench technician holding a button, or just a quick
+    tap the bus needs a moment to register); the reference reads ``high``
+    for that window and ``0`` everywhere else, so the existing bitsearch
+    (which already handles a length-1 field) can find the bit that toggles
+    when the button is pressed.
+
+    ``span`` is the ``(start, end)`` time range to sample across; defaults to
+    the first press minus one window through the last press plus one window
+    when omitted (so a lone press still produces a sensible low-high-low
+    shape). ``samples`` is how many points to emit across the span; defaults
+    to roughly 20 points per second of span (at least 2 points, and at least
+    one point per press so no pulse is skipped by a low sample rate).
+    """
+    events = sorted(float(t) for t in event_times)
+    if not events:
+        return []
+    if span is None:
+        span = (events[0] - window, events[-1] + window)
+    start, end = span
+    if end < start:
+        start, end = end, start
+
+    if samples is None:
+        duration = max(end - start, 0.0)
+        samples = max(2, int(duration * 20), len(events) * 2)
+    samples = max(2, int(samples))
+
+    if end == start:
+        times = [start]
+    else:
+        step = (end - start) / (samples - 1)
+        times = [start + i * step for i in range(samples)]
+
+    # Make sure every pulse actually shows up even if the sample grid steps
+    # over it: add the window's rising/falling edges explicitly.
+    edge_times: list[float] = []
+    for t in events:
+        edge_times.append(max(start, t))
+        edge_times.append(min(end, t + window))
+    all_times = sorted(set(times) | {t for t in edge_times if start <= t <= end})
+
+    out = []
+    for t in all_times:
+        active = any(t0 <= t < t0 + window for t0 in events)
+        out.append({"t": t, "value": high if active else 0.0, "available": True})
+    return out
+
+
 # --------------------------------------------------------------------------
 # Pure statistics: rank correlation and least-squares fit
 # --------------------------------------------------------------------------

@@ -8,6 +8,18 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **Signal Finder now records the reference for you.** Instead of typing a
+  sweep table by hand, interact with the control the way you would in the
+  vehicle: sweep a slider (or use the +/- buttons) for a volume-style knob, or
+  press a button (on screen or the spacebar) for a switch. Start records the
+  reference and begins a bus capture on the channel you pick together, so the
+  two line up automatically (both are timestamped on the server, never the
+  browser); Stop loads the finished capture and reference straight into the
+  survey and bitsearch below. A button recording is turned into a pulse-train
+  reference under the hood, so a pressed control usually turns up as a single
+  toggling bit. The manual "time, value" textarea is still there for a
+  reference recorded some other way.
+
 - **Signal Finder: reverse-engineer an unknown CAN signal automatically.** Capture
   a bus, note a reference signal over time (sweep a control and record its value),
   and AutoPi finds the signal for you: a bit-activity survey flags counters and
