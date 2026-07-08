@@ -8,6 +8,13 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **Kiosk hardening: rotation, idle blanking, and an on-screen keyboard.** The Pi
+  kiosk installer now takes optional settings to rotate the display (90/180/270,
+  for a portrait or inverted mount), blank the screen after a set idle time and
+  wake it on touch, and show an on-screen keyboard for text entry on a touch-only
+  bench. All are off by default, so nothing changes unless you turn them on, and
+  the kiosk still runs if a helper tool is unavailable.
+
 - **Point-and-click rule builder for GPIO and CAN cross-triggering.** The
   Automation page now builds logic rules without writing JSON: name an input (a
   CAN signal via database/message/signal, a GPIO pin, or a constant), pick a
