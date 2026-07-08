@@ -8,15 +8,20 @@ plain lists of frame records and reference points.
 """
 from __future__ import annotations
 
+import time
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from ..can import capture as cap
+from ..can import get_channel
 from ..can import reverse as rev
 from ..db import CanDatabase, session_scope
 from ..services import ref_recorder as rec
 
 router = APIRouter(prefix="/reverse", tags=["can-reverse"])
+
+MAX_LIVE_SECONDS = 30.0
 
 # Remembers whether /reference/start also started an inhale capture, so
 # /reference/stop knows whether to stop and save one. Keyed by nothing (one
@@ -47,6 +52,76 @@ def _frames_by_id(capture: dict) -> dict[int, list[dict]]:
     for frame in capture.get("frames", []):
         grouped.setdefault(frame.get("arbitration_id"), []).append(frame)
     return grouped
+
+
+def _run_live_capture(channel: str, backend: str, seconds: float, name: str = "") -> dict:
+    """Run a short, bounded inhale on a live channel and block until it is
+    saved, so a caller gets a capture_id back in one request instead of
+    needing to poll. Returns ``{"ok": True, "capture": {...}}`` or
+    ``{"ok": False, "error": ...}``; never raises for an unavailable or
+    already-busy channel, since a bench technician driving this from the UI
+    needs an honest message, not a 500.
+    """
+    provider = get_channel(channel, backend=backend)
+    if not provider.available:
+        return {"ok": False, "error": getattr(provider, "last_error", None)
+                or f"Channel {channel!r} is not available. Bring the interface up first."}
+
+    capped_seconds = max(0.5, min(float(seconds), MAX_LIVE_SECONDS))
+    session = cap.get_inhale_session(channel, backend=backend)
+    if not session.start(name, max_duration_s=capped_seconds):
+        return {"ok": False, "error": "A capture is already running on that channel"}
+
+    # InhaleSession only checks its own duration limit right after a frame
+    # arrives, so a silent channel would otherwise run forever; enforce the
+    # bound here regardless of whether any frames showed up.
+    deadline = time.time() + capped_seconds + 1.0
+    while session.is_running() and time.time() < deadline:
+        time.sleep(0.05)
+    saved = session.stop()
+    if saved is None:
+        return {"ok": False, "error": "Capture produced nothing"}
+    return {"ok": True, "capture": saved}
+
+
+class CaptureLiveIn(BaseModel):
+    channel: str
+    backend: str = "socketcan"
+    seconds: float = 5.0
+    name: str = ""
+
+
+@router.post("/capture-live")
+def capture_live_route(body: CaptureLiveIn):
+    """Run the Signal Finder against a live bus without a trip to the CAN
+    console first: capture a few seconds on the given channel and hand back
+    its capture_id, ready to survey or bitsearch."""
+    result = _run_live_capture(body.channel, body.backend, body.seconds, body.name)
+    if not result["ok"]:
+        return result
+    saved = result["capture"]
+    return {"ok": True, "capture_id": saved["id"], "frame_count": len(saved.get("frames", []))}
+
+
+class SnapshotIn(BaseModel):
+    channel: str
+    backend: str = "socketcan"
+    seconds: float = 3.0
+
+
+@router.post("/snapshot")
+def snapshot_route(body: SnapshotIn):
+    """Capture a few seconds live and summarize which arbitration ids are
+    active and which of their bytes are changing, with no reference needed,
+    so a user can see what is on can1/can2 before hunting a specific
+    signal."""
+    result = _run_live_capture(body.channel, body.backend, body.seconds, "snapshot")
+    if not result["ok"]:
+        return result
+    saved = result["capture"]
+    grouped = _frames_by_id(saved)
+    ranked = rev.activity_survey(grouped)
+    return {"ok": True, "capture_id": saved["id"], "ids": ranked}
 
 
 @router.get("/captures")

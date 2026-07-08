@@ -8,6 +8,15 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **Signal Finder works directly on a live bus.** A new "Live bus" panel picks
+  a channel (populated from the detected interfaces, the same as the CAN
+  pages) and a "Snapshot live bus" button captures a few seconds and shows
+  which arbitration ids are actually active and which of their bytes are
+  changing, no reference needed, so you can see what's on can1/can2 before
+  hunting a specific signal. "Search bits" on any id there jumps straight
+  into the bitsearch flow. "Start capture + reference" now captures live too,
+  using the same channel picker.
+
 - **Signal Finder now records the reference for you.** Instead of typing a
   sweep table by hand, interact with the control the way you would in the
   vehicle: sweep a slider (or use the +/- buttons) for a volume-style knob, or

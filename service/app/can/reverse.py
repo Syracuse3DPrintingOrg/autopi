@@ -224,6 +224,35 @@ def bit_activity(records: list[dict]) -> dict:
     }
 
 
+def activity_survey(records_by_id: dict[int, list[dict]]) -> list[dict]:
+    """Reference-free survey of which arbitration ids are actually carrying
+    live data in a short capture, and which of their bytes are changing, so a
+    bench technician can see what is active on a bus and pick an id to
+    bitsearch before they know what signal they are even looking for.
+
+    Ranked with the busiest-looking ids (most changing bytes) first, and on a
+    tie, by arbitration id. Each entry is a per-id :func:`bit_activity`
+    summary plus ``changing_bytes``, the indices of the bytes classified as
+    ``"counter"``, ``"checksum"``, or ``"candidate"`` (anything not
+    ``"static"``).
+    """
+    results = []
+    for arbitration_id, records in records_by_id.items():
+        if not records:
+            continue
+        info = bit_activity(records)
+        changing_bytes = [b["index"] for b in info["bytes"] if b["classification"] != "static"]
+        results.append({
+            "arbitration_id": arbitration_id,
+            "frame_count": info["frame_count"],
+            "length": info["length"],
+            "changing_bytes": changing_bytes,
+            "bytes": info["bytes"],
+        })
+    results.sort(key=lambda r: (-len(r["changing_bytes"]), r["arbitration_id"]))
+    return results
+
+
 # --------------------------------------------------------------------------
 # Reference alignment
 # --------------------------------------------------------------------------
