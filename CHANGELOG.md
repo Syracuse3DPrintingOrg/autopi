@@ -8,6 +8,15 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **A builder overview page.** The builder now opens on a new Overview page
+  instead of dropping you on the key grid: your active vehicle with a quick
+  link to switch, live status for each configured CAN interface, a set of
+  quick-action tiles for the tasks you'll reach for most (Monitor, CAN
+  console, arrange keys, run a test, import a DBC, or switch to the operator
+  screen), and a short tail of recent activity plus your last test result.
+  It's the first item in the nav bar, and the desktop nav has been reordered
+  to follow the order you'd actually set things up in: pick a vehicle, wire
+  up CAN, build keys, then monitor and test.
 - **Two ways to use it: an operator screen and a builder.** The Raspberry Pi
   runs standalone with a simple, large-touch Operator screen (the active vehicle,
   its key grid, and a full-screen test runner with pass/fail confirms), while a

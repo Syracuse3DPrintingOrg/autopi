@@ -67,10 +67,10 @@ def loopback_client():
         yield c
 
 
-def test_home_redirects_to_start_for_remote_client_by_default(client):
+def test_home_redirects_to_overview_for_remote_client_by_default(client):
     resp = client.get("/", follow_redirects=False)
     assert resp.status_code in (302, 307)
-    assert resp.headers["location"] == "/start"
+    assert resp.headers["location"] == "/overview"
 
 
 def test_home_redirects_to_operator_for_loopback_client_by_default(loopback_client):
@@ -79,11 +79,11 @@ def test_home_redirects_to_operator_for_loopback_client_by_default(loopback_clie
     assert resp.headers["location"] == "/operator"
 
 
-def test_home_redirects_to_start_when_forced_builder(loopback_client, monkeypatch):
+def test_home_redirects_to_overview_when_forced_builder(loopback_client, monkeypatch):
     from app.config import settings
     monkeypatch.setattr(settings, "ui_mode", "builder")
     resp = loopback_client.get("/", follow_redirects=False)
-    assert resp.headers["location"] == "/start"
+    assert resp.headers["location"] == "/overview"
 
 
 def test_home_redirects_to_operator_when_forced_operator(client, monkeypatch):
@@ -100,6 +100,48 @@ def test_kiosk_query_param_latches_operator_for_remote_client(client):
     # navigating without the query string still resolves to operator mode).
     resp2 = client.get("/", follow_redirects=False)
     assert resp2.headers["location"] == "/operator"
+
+
+# --- /overview ---------------------------------------------------------------
+
+
+def test_overview_page_renders(client):
+    resp = client.get("/overview")
+    assert resp.status_code == 200
+    assert "Overview" in resp.text
+
+
+def test_overview_page_shows_no_vehicle_selected_by_default(client):
+    resp = client.get("/overview")
+    assert "No vehicle selected" in resp.text
+
+
+def test_overview_page_shows_active_profile(client):
+    from app.db import init_db
+    from app.services import profiles as profiles_svc
+    init_db()
+    profile = profiles_svc.create_profile(name="Bench car", year=2022, make="Ford", model="F-150")
+    profiles_svc.set_active_profile(profile["id"])
+
+    resp = client.get("/overview")
+    assert resp.status_code == 200
+    assert "Bench car" in resp.text
+    assert "2022 Ford F-150" in resp.text
+
+
+def test_overview_page_has_quick_action_links(client):
+    resp = client.get("/overview")
+    assert 'href="ui/can-monitor"' in resp.text
+    assert 'href="can"' in resp.text
+    assert 'href="layout-editor"' in resp.text
+    assert 'href="ui/tests"' in resp.text
+    assert 'href="ui/can-sim"' in resp.text
+    assert 'href="operator"' in resp.text
+
+
+def test_overview_nav_link_present(client):
+    resp = client.get("/overview")
+    assert 'href="overview"' in resp.text
 
 
 def test_operator_page_renders(client):
