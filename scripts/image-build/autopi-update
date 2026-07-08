@@ -87,11 +87,23 @@ if systemctl list-unit-files 2>/dev/null | grep -q '^autopi-streamdeck.service';
 fi
 
 # --- host-bridge (long-running daemon: install file, detached restart) -------
+# The bridge is a daemon: replacing the file on disk does NOT change the running
+# process, so it must be restarted or it keeps serving the old routes (which is
+# why Wi-Fi/health features 404 after an update). Restart it detached so that,
+# when this updater was launched BY the bridge (POST /update), restarting the
+# bridge does not kill the update mid-flight.
 if systemctl list-unit-files 2>/dev/null | grep -q '^autopi-host-bridge.service'; then
   install -m 755 "$REPO_DIR/scripts/image-build/autopi-host-bridge" /usr/local/sbin/autopi-host-bridge 2>/dev/null || true
-  # Detached so restarting the bridge does not kill this updater (its child).
-  systemd-run --collect --on-active=3s --unit="autopi-bridge-restart-$(date +%s)" \
-    systemctl restart autopi-host-bridge.service >&2 2>&1 || true
+  systemctl enable autopi-host-bridge.service >&2 2>&1 || true
+  systemctl reset-failed autopi-host-bridge.service >&2 2>&1 || true
+  if command -v systemd-run >/dev/null 2>&1; then
+    systemd-run --collect --on-active=3s --unit="autopi-bridge-restart-$(date +%s)" \
+      systemctl restart autopi-host-bridge.service >&2 2>&1 \
+      || setsid sh -c 'sleep 3; systemctl restart autopi-host-bridge.service' >/dev/null 2>&1 &
+  else
+    # No systemd-run: detach with setsid so the restart outlives this script.
+    setsid sh -c 'sleep 3; systemctl restart autopi-host-bridge.service' >/dev/null 2>&1 &
+  fi
 fi
 
 if [ "$changed" = "true" ]; then

@@ -8,6 +8,17 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Fixed
 
+- **Wi-Fi and other host features no longer show a bare "not found" after an
+  update.** The host-bridge is a long-running service, so replacing its file on
+  disk during an update does not change the running process; if its restart did
+  not fire, the old bridge kept serving and the new Wi-Fi routes returned 404.
+  The updater now restarts the bridge reliably (with a fallback if systemd-run
+  is unavailable, and it re-enables and clears any failed state), and the app
+  now shows an actionable message ("the host-bridge is out of date, restart it")
+  instead of "not found" when the bridge is behind.
+
+### Fixed
+
 - **Wi-Fi scan (and update, reboot, deck restart) now work on the Pi.** These
   said "Only available on a Raspberry Pi appliance" even on a real Pi, because
   the check ran inside the container, which cannot see the Pi's device-tree.

@@ -72,6 +72,14 @@ def call(method: str, path: str, timeout: float = 30.0, json: Any = None) -> dic
         return {"ok": False, "error": f"host-bridge unreachable: {exc}"}
     if r.status_code == 401:
         _token_cache["value"] = None  # rotated token; re-read next call
+    if r.status_code == 404:
+        # The bridge answered but does not know this route, which almost always
+        # means an older bridge is still running (the update replaced the file
+        # but the process was not restarted). Give an actionable message.
+        return {"ok": False, "stale_bridge": True,
+                "error": "The host-bridge is out of date (it does not have this "
+                         "feature yet). Restart it on the device: "
+                         "sudo systemctl restart autopi-host-bridge"}
     try:
         return r.json()
     except ValueError:
