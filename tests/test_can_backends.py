@@ -295,3 +295,19 @@ def test_router_status_reports_unavailable_without_hardware(client):
     # SocketCAN explains a missing interface (the usual "not detected" case) so
     # the page can tell the user to enable the CAN HAT and reboot.
     assert body["error"] and "can0" in body["error"]
+
+
+def test_get_channel_uses_configured_fd(_clear_channel_cache):
+    """A CAN-FD interface must be opened with fd=True by every caller, or the
+    kernel never delivers its FD frames. get_channel should default fd from the
+    configured interface and rebuild a cached classic provider when it changes."""
+    from app.can import get_channel
+    from app.services import can_interfaces
+    can_interfaces.save_interface({"id": "canfd", "backend": "socketcan",
+                                   "channel": "canfd", "bitrate": 500000,
+                                   "data_bitrate": 2000000, "fd": True})
+    p = get_channel("canfd", backend="socketcan")   # no fd passed
+    assert p.fd is True                              # picked up from the config
+    # An explicit fd=False rebuilds it rather than reusing the FD socket.
+    p2 = get_channel("canfd", backend="socketcan", fd=False)
+    assert p2.fd is False and p2 is not p

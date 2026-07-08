@@ -62,12 +62,48 @@ def create_provider(backend: str, channel: str, **kwargs: Any) -> CanProvider:
     return cls(channel, **kwargs)
 
 
+def _configured_settings(channel: str, backend: str) -> dict[str, Any]:
+    """The fd/bitrate a configured interface uses, so any caller opens the bus
+    the way the user set it up. A CAN-FD bus MUST be opened with fd=True or the
+    kernel never delivers its FD frames to us (a classic socket only sees classic
+    frames), which is why the monitor and diagnostics could show nothing on an FD
+    bus. Best-effort and lazy to avoid an import cycle."""
+    try:
+        from ..services import can_interfaces
+        for entry in can_interfaces.list_interfaces():
+            if entry.get("channel") == channel and entry.get("backend", "socketcan") == backend:
+                out: dict[str, Any] = {"fd": bool(entry.get("fd"))}
+                if entry.get("bitrate"):
+                    out["bitrate"] = entry["bitrate"]
+                if entry.get("data_bitrate"):
+                    out["data_bitrate"] = entry["data_bitrate"]
+                return out
+    except Exception:
+        pass
+    return {}
+
+
 def get_channel(channel: str, backend: str = "socketcan", **kwargs: Any) -> CanProvider:
-    """Return the cached provider for this channel, creating it on first use."""
+    """Return the cached provider for this channel, creating it on first use.
+
+    fd/bitrate default from the channel's configured interface so every caller
+    (monitor, capture, self-test, sniff) opens an FD bus in FD mode, not only the
+    ones that happen to pass fd. If a cached provider was opened with a different
+    fd than we now need, it is rebuilt.
+    """
+    settings = _configured_settings(channel, backend)
+    settings.update({k: v for k, v in kwargs.items() if v is not None})
     key = f"{backend}:{channel}"
     provider = _channels.get(key)
+    if provider is not None and getattr(provider, "fd", None) is not None \
+            and bool(getattr(provider, "fd")) != bool(settings.get("fd", getattr(provider, "fd"))):
+        try:
+            provider.close()
+        except Exception:
+            pass
+        provider = None
     if provider is None:
-        provider = create_provider(backend, channel, **kwargs)
+        provider = create_provider(backend, channel, **settings)
         _channels[key] = provider
     return provider
 

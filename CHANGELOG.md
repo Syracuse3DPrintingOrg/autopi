@@ -6,6 +6,16 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ## [Unreleased]
 
+### Fixed
+
+- **CAN-FD buses now actually receive frames.** A classic SocketCAN socket does
+  not get a bus's CAN-FD frames from the kernel, and most of the app (the Monitor,
+  captures, the Listen diagnostic) was opening channels in classic mode, so an
+  all-FD bus looked silent ("no frames arrived") even when it was healthy and up.
+  Every channel now opens using its configured fd and bitrate, so a CAN-FD
+  interface is opened in FD mode everywhere, and a channel is reopened if its FD
+  setting changes.
+
 ### Added
 
 - **Signal Finder works on a live bus, with sweep and button reference capture.**
