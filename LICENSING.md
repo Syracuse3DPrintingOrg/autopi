@@ -139,3 +139,6 @@ Update the table whenever a dependency is added, removed, or version-bumped in
 dependency, record its SPDX license and flag anything that is not permissive
 (anything GPL/AGPL should be rejected for a closed product; anything LGPL/MPL
 gets a compliance note like the `python-can` section above).
+
+See also `docs/oss-can-libraries.md` for the audit of the open-source CAN stack
+AutoPi leans on and the reasoning behind the license choices.
