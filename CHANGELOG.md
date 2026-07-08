@@ -6,6 +6,17 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ## [Unreleased]
 
+### Added
+
+- **Simulate CAN signals for testing, without a vehicle attached.** A new CAN
+  Sim panel (linked from the top nav) lets you build a transmit list of
+  frames: send raw hex bytes, or pick an imported database and message and
+  fill in signal values to have them encoded for you. Give an entry a repeat
+  interval to send it on a schedule once you start the simulator, or leave it
+  one-shot and fire it by hand. Works the same with or without a CAN adapter
+  attached: with nothing plugged in, sends simply report that no channel is
+  available instead of failing.
+
 ### Fixed
 
 - **The Stream Deck keeps its keys through an update, and recovers on its own.**

@@ -1,0 +1,280 @@
+{% extends "base.html" %}
+{% block title %}CAN signal simulation: {{ app_name }}{% endblock %}
+{% block head %}
+<style>
+  .sim-card { background: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color);
+    border-radius: 0.75rem; padding: 1.5rem; }
+  #sim-table tr.disabled { opacity: 0.55; }
+  #sim-table td { vertical-align: middle; }
+  .sched-badge.on { color: var(--bs-success); }
+  .sched-badge.off { color: var(--bs-secondary-color); }
+  .encode-fields { display: none; }
+  .encode-fields.shown { display: block; }
+</style>
+{% endblock %}
+{% block body %}
+<div class="container-fluid">
+  <div class="d-flex align-items-center gap-2 mb-3">
+    <h5 class="mb-0"><i class="bi bi-broadcast me-1"></i>CAN Signal Simulation</h5>
+    <span id="sched-badge" class="sched-badge off ms-2 small"><i class="bi bi-circle-fill me-1"></i>Scheduler stopped</span>
+    <div class="ms-auto btn-group">
+      <button id="btn-start" class="btn btn-sm btn-outline-success"><i class="bi bi-play-fill me-1"></i>Start scheduler</button>
+      <button id="btn-stop" class="btn btn-sm btn-outline-secondary"><i class="bi bi-stop-fill me-1"></i>Stop scheduler</button>
+    </div>
+  </div>
+
+  <div class="sim-card mb-3">
+    <p class="text-body-secondary small mb-3">
+      Build a transmit list of frames to send on a real or simulated CAN
+      channel. A periodic entry repeats on its own interval once the
+      scheduler is running; a one-shot entry (interval 0) sends only when you
+      press its send button. Send a frame's raw hex bytes, or pick an
+      imported database and message to encode named signal values instead.
+    </p>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle" id="sim-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Channel</th>
+            <th>Arbitration ID</th>
+            <th>Source</th>
+            <th>Interval</th>
+            <th>Enabled</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="sim-rows"></tbody>
+      </table>
+    </div>
+    <div id="sim-empty" class="text-body-secondary small d-none">No transmit entries yet. Add one below.</div>
+  </div>
+
+  <div class="sim-card">
+    <h6 class="mb-3"><i class="bi bi-plus-circle me-1"></i>Add transmit entry</h6>
+    <form id="add-form" class="row g-2">
+      <div class="col-md-3">
+        <label class="form-label small">Name</label>
+        <input type="text" class="form-control form-control-sm" id="f-name" placeholder="Vehicle speed">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small">Channel</label>
+        <input type="text" class="form-control form-control-sm" id="f-channel" value="can0">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small">Arbitration ID</label>
+        <input type="text" class="form-control form-control-sm" id="f-arb" placeholder="0x100" required>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small">Interval (ms, 0 = one-shot)</label>
+        <input type="number" min="0" class="form-control form-control-sm" id="f-period" value="0">
+      </div>
+
+      <div class="col-12">
+        <div class="form-check form-check-inline">
+          <input class="form-check-input" type="radio" name="src" id="src-raw" value="raw" checked>
+          <label class="form-check-label small" for="src-raw">Raw data bytes</label>
+        </div>
+        <div class="form-check form-check-inline">
+          <input class="form-check-input" type="radio" name="src" id="src-dbc" value="dbc">
+          <label class="form-check-label small" for="src-dbc">Encode from a database message</label>
+        </div>
+      </div>
+
+      <div class="col-md-6" id="raw-fields">
+        <label class="form-label small">Data bytes (hex, e.g. "02 01 0C")</label>
+        <input type="text" class="form-control form-control-sm" id="f-data" placeholder="00 00 00 00 00 00 00 00">
+      </div>
+
+      <div class="col-12 encode-fields" id="dbc-fields">
+        <div class="row g-2">
+          <div class="col-md-4">
+            <label class="form-label small">Database</label>
+            <select class="form-select form-select-sm" id="f-database"></select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small">Message name or id</label>
+            <input type="text" class="form-control form-control-sm" id="f-message" placeholder="BRAKE_MODULE">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small">Signals (JSON)</label>
+            <input type="text" class="form-control form-control-sm" id="f-signals" placeholder='{"SPEED": 42}'>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-3">
+        <div class="form-check mt-4">
+          <input class="form-check-input" type="checkbox" id="f-fd">
+          <label class="form-check-label small" for="f-fd">CAN-FD</label>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="form-check mt-4">
+          <input class="form-check-input" type="checkbox" id="f-ext">
+          <label class="form-check-label small" for="f-ext">Extended (29-bit) ID</label>
+        </div>
+      </div>
+
+      <div class="col-12">
+        <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-plus-lg me-1"></i>Add entry</button>
+        <span id="add-error" class="text-danger small ms-2"></span>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  const rowsEl = document.getElementById('sim-rows');
+  const emptyEl = document.getElementById('sim-empty');
+  const schedBadge = document.getElementById('sched-badge');
+  const addForm = document.getElementById('add-form');
+  const addError = document.getElementById('add-error');
+  const databaseSel = document.getElementById('f-database');
+
+  function fmtInterval(ms) {
+    if (!ms) return 'One-shot';
+    if (ms % 1000 === 0) return (ms / 1000) + ' s';
+    return ms + ' ms';
+  }
+
+  function sourceLabel(e) {
+    if (e.database_id && e.message) return 'DBC: ' + e.message;
+    return 'Raw';
+  }
+
+  async function refreshEntries() {
+    const res = await fetch('can/sim');
+    const body = await res.json();
+    const entries = body.entries || [];
+    schedBadge.classList.toggle('on', body.running);
+    schedBadge.classList.toggle('off', !body.running);
+    schedBadge.innerHTML = '<i class="bi bi-circle-fill me-1"></i>' +
+      (body.running ? 'Scheduler running' : 'Scheduler stopped');
+
+    rowsEl.innerHTML = '';
+    emptyEl.classList.toggle('d-none', entries.length > 0);
+    for (const e of entries) {
+      const tr = document.createElement('tr');
+      tr.className = e.enabled ? '' : 'disabled';
+      tr.innerHTML = `
+        <td>${e.name || '(unnamed)'}</td>
+        <td>${e.channel}</td>
+        <td>0x${Number(e.arbitration_id).toString(16).toUpperCase()}</td>
+        <td>${sourceLabel(e)}</td>
+        <td>${fmtInterval(e.period_ms)}</td>
+        <td>
+          <div class="form-check form-switch mb-0">
+            <input class="form-check-input toggle-enabled" type="checkbox" ${e.enabled ? 'checked' : ''} data-id="${e.id}">
+          </div>
+        </td>
+        <td class="text-end">
+          <button class="btn btn-sm btn-outline-primary btn-send" data-id="${e.id}"><i class="bi bi-send"></i></button>
+          <button class="btn btn-sm btn-outline-danger btn-delete" data-id="${e.id}"><i class="bi bi-trash"></i></button>
+        </td>`;
+      rowsEl.appendChild(tr);
+    }
+  }
+
+  async function loadDatabases() {
+    try {
+      const res = await fetch('can/databases');
+      const body = await res.json();
+      databaseSel.innerHTML = '<option value="">(none)</option>';
+      for (const d of (body.databases || [])) {
+        const opt = document.createElement('option');
+        opt.value = d.id;
+        opt.textContent = d.name || ('Database ' + d.id);
+        databaseSel.appendChild(opt);
+      }
+    } catch (e) {
+      // No databases imported yet; the raw-data path still works.
+    }
+  }
+
+  document.querySelectorAll('input[name="src"]').forEach((el) => {
+    el.addEventListener('change', () => {
+      const dbc = document.getElementById('src-dbc').checked;
+      document.getElementById('dbc-fields').classList.toggle('shown', dbc);
+      document.getElementById('raw-fields').classList.toggle('d-none', dbc);
+    });
+  });
+
+  rowsEl.addEventListener('click', async (ev) => {
+    const sendBtn = ev.target.closest('.btn-send');
+    const delBtn = ev.target.closest('.btn-delete');
+    if (sendBtn) {
+      await fetch(`can/sim/${sendBtn.dataset.id}/send`, { method: 'POST' });
+    } else if (delBtn) {
+      if (!confirm('Delete this transmit entry?')) return;
+      await fetch(`can/sim/${delBtn.dataset.id}`, { method: 'DELETE' });
+      refreshEntries();
+    }
+  });
+
+  rowsEl.addEventListener('change', async (ev) => {
+    if (!ev.target.classList.contains('toggle-enabled')) return;
+    const id = ev.target.dataset.id;
+    const path = ev.target.checked ? 'enable' : 'disable';
+    await fetch(`can/sim/${id}/${path}`, { method: 'POST' });
+  });
+
+  document.getElementById('btn-start').addEventListener('click', async () => {
+    await fetch('can/sim/scheduler/start', { method: 'POST' });
+    refreshEntries();
+  });
+  document.getElementById('btn-stop').addEventListener('click', async () => {
+    await fetch('can/sim/scheduler/stop', { method: 'POST' });
+    refreshEntries();
+  });
+
+  addForm.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    addError.textContent = '';
+    const useDbc = document.getElementById('src-dbc').checked;
+    let signals = {};
+    if (useDbc) {
+      const raw = document.getElementById('f-signals').value.trim();
+      try {
+        signals = raw ? JSON.parse(raw) : {};
+      } catch (e) {
+        addError.textContent = 'Signals must be valid JSON';
+        return;
+      }
+    }
+    const payload = {
+      name: document.getElementById('f-name').value,
+      channel: document.getElementById('f-channel').value || 'can0',
+      arbitration_id: document.getElementById('f-arb').value,
+      period_ms: parseInt(document.getElementById('f-period').value || '0', 10),
+      is_fd: document.getElementById('f-fd').checked,
+      is_extended_id: document.getElementById('f-ext').checked,
+      enabled: true,
+      data: useDbc ? '' : document.getElementById('f-data').value,
+      database_id: useDbc && databaseSel.value ? parseInt(databaseSel.value, 10) : null,
+      message: useDbc ? document.getElementById('f-message').value : null,
+      signals: useDbc ? signals : {},
+    };
+    const res = await fetch('can/sim', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      addError.textContent = body.detail || 'Could not add entry';
+      return;
+    }
+    addForm.reset();
+    document.getElementById('f-channel').value = 'can0';
+    refreshEntries();
+  });
+
+  loadDatabases();
+  refreshEntries();
+  setInterval(refreshEntries, 3000);
+})();
+</script>
+{% endblock %}

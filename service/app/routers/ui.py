@@ -64,3 +64,10 @@ def layout_editor(request: Request):
     # The editor loads actions, layout, and deck status over the API itself.
     return templates.TemplateResponse(request, "layout_editor.html",
                                       theme_context(request))
+
+
+@router.get("/ui/can-sim", response_class=HTMLResponse)
+def can_sim_page(request: Request):
+    # The panel loads the transmit list, databases, and scheduler status
+    # over the /can/sim and /can/databases APIs itself.
+    return templates.TemplateResponse(request, "can_sim.html", theme_context(request))
