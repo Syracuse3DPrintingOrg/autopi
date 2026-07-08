@@ -94,3 +94,9 @@ def can_sim_page(request: Request):
 def can_monitor_page(request: Request):
     # The panel loads databases and polls the frame buffer over the API.
     return templates.TemplateResponse(request, "can_monitor.html", theme_context(request))
+
+
+@router.get("/ui/actions", response_class=HTMLResponse)
+def actions_page(request: Request):
+    # The library loads drivers, actions, and CAN databases over the API.
+    return templates.TemplateResponse(request, "actions.html", theme_context(request))

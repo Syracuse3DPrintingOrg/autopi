@@ -40,6 +40,11 @@ class Driver(ABC):
     # {"key", "label", "type", "required", "default", "help"}. Kept as plain
     # data so the web form and the docs can both read it.
     param_schema: list[dict[str, Any]] = []
+    # When True, an action may still be dispatched while the driver is
+    # unavailable, because its execute() reports a useful simulated result
+    # instead of failing. This lets a user test, say, a "Volume Up" CAN key on a
+    # bench with no bus and see what it would send.
+    simulate_when_unavailable: bool = False
 
     @property
     def available(self) -> bool:

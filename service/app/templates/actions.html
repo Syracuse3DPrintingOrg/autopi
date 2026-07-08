@@ -1,0 +1,576 @@
+{% extends "base.html" %}
+{% block title %}Actions: {{ app_name }}{% endblock %}
+{% block head %}
+<style>
+  .editor-card { background: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color);
+    border-radius: 0.75rem; padding: 1.5rem; }
+  .action-row { border: 1px solid var(--bs-border-color); border-radius: 0.6rem;
+    padding: 0.6rem 0.85rem; margin-bottom: 0.5rem; display: flex; align-items: center;
+    gap: 0.75rem; }
+  .action-swatch { width: 2.1rem; height: 2.1rem; border-radius: 0.5rem; display: flex;
+    align-items: center; justify-content: center; color: #fff; flex-shrink: 0; }
+  .action-meta { color: var(--bs-secondary-color); font-size: 0.8rem; }
+  .action-row.builtin { opacity: 0.75; }
+  .kv-row { display: flex; gap: 0.4rem; margin-bottom: 0.4rem; }
+  .kv-row input { flex: 1; }
+  .param-field { margin-bottom: 0.65rem; }
+  #test-result { white-space: pre-wrap; }
+</style>
+{% endblock %}
+{% block body %}
+<div class="container-fluid">
+  <div class="row g-3">
+    <div class="col-lg-5">
+      <div class="editor-card">
+        <div class="d-flex align-items-center gap-2 mb-3">
+          <i class="bi bi-lightning-charge-fill" style="font-size:1.2rem"></i>
+          <h5 class="mb-0">Action library</h5>
+        </div>
+        <p class="small text-secondary">
+          An action is one thing a key can do: flip a GPIO pin, run a command,
+          call another app over HTTP, send a CAN message, or run a macro of
+          other actions. Build one here, then bind it to a key in the
+          <a href="layout-editor">layout editor</a>.
+        </p>
+        <div id="action-list"></div>
+        <div id="empty-msg" class="text-secondary small d-none">No actions yet. Add one with the form.</div>
+      </div>
+    </div>
+
+    <div class="col-lg-7">
+      <div class="editor-card">
+        <div class="fw-semibold mb-3" id="form-title"><i class="bi bi-plus-circle me-1"></i>Add an action</div>
+        <form id="action-form">
+          <div class="row g-2 mb-2">
+            <div class="col-sm-6">
+              <label class="form-label small mb-1">Id</label>
+              <input type="text" class="form-control form-control-sm" id="f-id" required
+                     pattern="[A-Za-z0-9_-]+" placeholder="volume_up">
+              <div class="form-text">Letters, numbers, dashes, and underscores. Cannot change after creating.</div>
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label small mb-1">Label</label>
+              <input type="text" class="form-control form-control-sm" id="f-label" placeholder="Volume Up">
+            </div>
+          </div>
+
+          <div class="row g-2 mb-2">
+            <div class="col-sm-4">
+              <label class="form-label small mb-1">Driver</label>
+              <select class="form-select form-select-sm" id="f-driver"></select>
+            </div>
+            <div class="col-sm-4">
+              <label class="form-label small mb-1">Icon</label>
+              <input type="text" class="form-control form-control-sm" id="f-icon" value="bi-lightning-charge"
+                     placeholder="bi-lightning-charge">
+              <div class="form-text">A <a href="https://icons.getbootstrap.com/" target="_blank" rel="noopener">Bootstrap Icons</a> name.</div>
+            </div>
+            <div class="col-sm-4">
+              <label class="form-label small mb-1">Color</label>
+              <input type="color" class="form-control form-control-sm form-control-color" id="f-color" value="#334155">
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label small mb-1">Category</label>
+            <input type="text" class="form-control form-control-sm" id="f-category" value="Actions">
+            <div class="form-text">Groups keys in the layout editor's key library.</div>
+          </div>
+
+          <div id="driver-help" class="small text-secondary mb-2"></div>
+          <div id="param-fields"></div>
+
+          <div id="macro-fields" class="mb-2 d-none">
+            <label class="form-label small mb-1">Member actions (run in order)</label>
+            <input type="text" class="form-control form-control-sm" id="f-members"
+                   placeholder="comma separated action ids, e.g. lights_on, horn">
+          </div>
+
+          <div class="d-flex gap-2 mt-3">
+            <button type="submit" class="btn btn-primary btn-sm" id="save-btn">
+              <i class="bi bi-check-lg me-1"></i>Save
+            </button>
+            <button type="button" class="btn btn-outline-secondary btn-sm d-none" id="cancel-btn">Cancel edit</button>
+          </div>
+          <div id="form-status" class="small mt-2"></div>
+        </form>
+
+        <hr>
+        <div class="fw-semibold mb-2"><i class="bi bi-play-circle me-1"></i>Test</div>
+        <p class="small text-secondary mb-2">Save the action first, then run it once to see what happens.</p>
+        <button type="button" class="btn btn-outline-primary btn-sm" id="test-btn" disabled>
+          <i class="bi bi-play-fill me-1"></i>Run this action
+        </button>
+        <div id="test-result" class="small mt-2"></div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  const listEl = document.getElementById('action-list');
+  const emptyEl = document.getElementById('empty-msg');
+  const form = document.getElementById('action-form');
+  const formTitle = document.getElementById('form-title');
+  const cancelBtn = document.getElementById('cancel-btn');
+  const statusEl = document.getElementById('form-status');
+  const driverSel = document.getElementById('f-driver');
+  const driverHelp = document.getElementById('driver-help');
+  const paramFields = document.getElementById('param-fields');
+  const macroFields = document.getElementById('macro-fields');
+  const idInput = document.getElementById('f-id');
+  const testBtn = document.getElementById('test-btn');
+  const testResult = document.getElementById('test-result');
+
+  let drivers = [];
+  let actions = [];
+  let databases = [];
+  let editingId = null;
+  let editingParams = {};
+
+  function driverByName(name) {
+    return drivers.find((d) => d.name === name);
+  }
+
+  // -- param field rendering -------------------------------------------------
+
+  function fieldWrap(schemaEntry, control) {
+    const wrap = document.createElement('div');
+    wrap.className = 'param-field';
+    const label = document.createElement('label');
+    label.className = 'form-label small mb-1';
+    label.textContent = schemaEntry.label + (schemaEntry.required ? ' *' : '');
+    wrap.appendChild(label);
+    wrap.appendChild(control);
+    if (schemaEntry.help) {
+      const help = document.createElement('div');
+      help.className = 'form-text';
+      help.textContent = schemaEntry.help;
+      wrap.appendChild(help);
+    }
+    return wrap;
+  }
+
+  function keyvalueControl(key, initial) {
+    const wrap = document.createElement('div');
+    wrap.dataset.kvKey = key;
+    const rows = document.createElement('div');
+    rows.className = 'kv-rows';
+    wrap.appendChild(rows);
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'btn btn-sm btn-outline-secondary';
+    addBtn.innerHTML = '<i class="bi bi-plus"></i> Add value';
+    addBtn.addEventListener('click', () => addKvRow(rows, '', ''));
+    wrap.appendChild(addBtn);
+    const entries = Object.entries(initial || {});
+    if (entries.length) {
+      entries.forEach(([k, v]) => addKvRow(rows, k, v));
+    } else {
+      addKvRow(rows, '', '');
+    }
+    return wrap;
+  }
+
+  function addKvRow(rows, key, value) {
+    const row = document.createElement('div');
+    row.className = 'kv-row';
+    const k = document.createElement('input');
+    k.type = 'text';
+    k.className = 'form-control form-control-sm kv-key';
+    k.placeholder = 'signal name';
+    k.value = key;
+    const v = document.createElement('input');
+    v.type = 'text';
+    v.className = 'form-control form-control-sm kv-val';
+    v.placeholder = 'value';
+    v.value = value === undefined || value === null ? '' : value;
+    const rm = document.createElement('button');
+    rm.type = 'button';
+    rm.className = 'btn btn-sm btn-outline-secondary';
+    rm.innerHTML = '<i class="bi bi-x"></i>';
+    rm.addEventListener('click', () => row.remove());
+    row.appendChild(k);
+    row.appendChild(v);
+    row.appendChild(rm);
+    rows.appendChild(row);
+  }
+
+  function readKeyvalue(wrap) {
+    const out = {};
+    wrap.querySelectorAll('.kv-row').forEach((row) => {
+      const key = row.querySelector('.kv-key').value.trim();
+      if (!key) return;
+      const raw = row.querySelector('.kv-val').value.trim();
+      out[key] = numericIfPossible(raw);
+    });
+    return out;
+  }
+
+  function numericIfPossible(raw) {
+    if (raw === '') return '';
+    if (raw === 'true') return true;
+    if (raw === 'false') return false;
+    const n = Number(raw);
+    return Number.isFinite(n) && raw.trim() !== '' && !Number.isNaN(n) ? n : raw;
+  }
+
+  async function loadDatabases() {
+    try {
+      const res = await fetch('can/databases');
+      const body = await res.json();
+      databases = body.databases || [];
+    } catch (e) {
+      databases = [];
+    }
+  }
+
+  function databaseSelect(initialValue) {
+    const sel = document.createElement('select');
+    sel.className = 'form-select form-select-sm';
+    sel.dataset.paramKey = 'database_id';
+    const none = document.createElement('option');
+    none.value = '';
+    none.textContent = '(none, use a raw frame instead)';
+    sel.appendChild(none);
+    databases.forEach((d) => {
+      const opt = document.createElement('option');
+      opt.value = d.id;
+      opt.textContent = d.name || ('Database ' + d.id);
+      if (String(initialValue) === String(d.id)) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    return sel;
+  }
+
+  async function messageSelect(databaseId, initialValue) {
+    const sel = document.createElement('select');
+    sel.className = 'form-select form-select-sm';
+    sel.dataset.paramKey = 'message';
+    const none = document.createElement('option');
+    none.value = '';
+    none.textContent = '(pick a database first)';
+    sel.appendChild(none);
+    if (databaseId) {
+      try {
+        const res = await fetch('can/databases/' + databaseId);
+        const body = await res.json();
+        (body.messages || []).forEach((m) => {
+          const opt = document.createElement('option');
+          opt.value = m.name;
+          opt.textContent = m.name + ' (0x' + Number(m.arbitration_id).toString(16).toUpperCase() + ')';
+          if (m.name === initialValue) opt.selected = true;
+          sel.appendChild(opt);
+        });
+      } catch (e) {
+        // leave the placeholder option
+      }
+    }
+    return sel;
+  }
+
+  async function signalNamesForMessage(databaseId, messageName) {
+    if (!databaseId || !messageName) return [];
+    try {
+      const res = await fetch('can/databases/' + databaseId);
+      const body = await res.json();
+      const msg = (body.messages || []).find((m) => m.name === messageName);
+      return msg ? (msg.signals || []).map((s) => s.name) : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  async function renderParamFields(driverName, values) {
+    paramFields.innerHTML = '';
+    macroFields.classList.add('d-none');
+    driverHelp.textContent = '';
+
+    if (driverName === 'macro') {
+      macroFields.classList.remove('d-none');
+      document.getElementById('f-members').value = (values.members || []).join(', ');
+      return;
+    }
+
+    const driver = driverByName(driverName);
+    if (!driver) return;
+    if (!driver.available) {
+      driverHelp.innerHTML = '<span class="text-warning"><i class="bi bi-exclamation-triangle me-1"></i>' +
+        driver.label + ' is not available on this host right now, but the action can still be created.</span>';
+    }
+    const params = values.params || {};
+
+    for (const schemaEntry of driver.param_schema) {
+      const key = schemaEntry.key;
+      const current = params[key] !== undefined ? params[key] : schemaEntry.default;
+      let control;
+
+      if (driverName === 'can_command' && key === 'database_id') {
+        control = databaseSelect(current);
+        control.addEventListener('change', () => onCanDatabaseChanged());
+      } else if (driverName === 'can_command' && key === 'message') {
+        control = await messageSelect(params.database_id, current);
+        control.addEventListener('change', () => onCanMessageChanged());
+      } else if (schemaEntry.type === 'keyvalue') {
+        control = keyvalueControl(key, current);
+      } else if (schemaEntry.type === 'bool') {
+        const check = document.createElement('div');
+        check.className = 'form-check form-switch';
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.className = 'form-check-input';
+        input.dataset.paramKey = key;
+        input.checked = Boolean(current);
+        check.appendChild(input);
+        control = check;
+      } else if (schemaEntry.type === 'choice') {
+        const sel = document.createElement('select');
+        sel.className = 'form-select form-select-sm';
+        sel.dataset.paramKey = key;
+        (schemaEntry.choices || []).forEach((choice) => {
+          const opt = document.createElement('option');
+          opt.value = choice;
+          opt.textContent = choice;
+          if (choice === current) opt.selected = true;
+          sel.appendChild(opt);
+        });
+        control = sel;
+      } else if (schemaEntry.type === 'number') {
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.className = 'form-control form-control-sm';
+        input.dataset.paramKey = key;
+        input.value = current === undefined || current === null ? '' : current;
+        control = input;
+      } else {
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'form-control form-control-sm';
+        input.dataset.paramKey = key;
+        input.value = current === undefined || current === null ? '' : current;
+        control = input;
+      }
+
+      paramFields.appendChild(fieldWrap(schemaEntry, control));
+    }
+  }
+
+  async function onCanDatabaseChanged() {
+    const dbSel = paramFields.querySelector('[data-param-key="database_id"]');
+    const databaseId = dbSel ? dbSel.value : '';
+    const oldMsgSel = paramFields.querySelector('[data-param-key="message"]');
+    const newMsgSel = await messageSelect(databaseId, '');
+    if (oldMsgSel) oldMsgSel.replaceWith(newMsgSel);
+    await onCanMessageChanged();
+  }
+
+  async function onCanMessageChanged() {
+    const dbSel = paramFields.querySelector('[data-param-key="database_id"]');
+    const msgSel = paramFields.querySelector('[data-param-key="message"]');
+    const kvWrap = paramFields.querySelector('[data-kv-key="signals"]');
+    if (!kvWrap || !msgSel) return;
+    const names = await signalNamesForMessage(dbSel ? dbSel.value : '', msgSel.value);
+    if (!names.length) return;
+    const rows = kvWrap.querySelector('.kv-rows');
+    const existingKeys = new Set(
+      Array.from(rows.querySelectorAll('.kv-key')).map((el) => el.value.trim()).filter(Boolean));
+    names.forEach((name) => {
+      if (!existingKeys.has(name)) addKvRow(rows, name, '');
+    });
+  }
+
+  function collectParams(driverName) {
+    if (driverName === 'macro') return {};
+    const out = {};
+    paramFields.querySelectorAll('[data-param-key]').forEach((el) => {
+      const key = el.dataset.paramKey;
+      if (el.type === 'checkbox') {
+        out[key] = el.checked;
+      } else if (el.type === 'number') {
+        out[key] = el.value === '' ? undefined : Number(el.value);
+      } else {
+        out[key] = el.value;
+      }
+    });
+    paramFields.querySelectorAll('[data-kv-key]').forEach((wrap) => {
+      out[wrap.dataset.kvKey] = readKeyvalue(wrap);
+    });
+    return out;
+  }
+
+  // -- driver select -----------------------------------------------------
+
+  function populateDriverSelect() {
+    driverSel.innerHTML = '';
+    drivers.forEach((d) => {
+      const opt = document.createElement('option');
+      opt.value = d.name;
+      opt.textContent = d.label + (d.available ? '' : ' (unavailable here)');
+      driverSel.appendChild(opt);
+    });
+    const macroOpt = document.createElement('option');
+    macroOpt.value = 'macro';
+    macroOpt.textContent = 'Macro (run other actions)';
+    driverSel.appendChild(macroOpt);
+  }
+
+  driverSel.addEventListener('change', () => {
+    renderParamFields(driverSel.value, { params: {}, members: [] });
+  });
+
+  // -- list ----------------------------------------------------------------
+
+  function renderRow(a) {
+    const isBuiltin = a.driver === 'builtin';
+    const row = document.createElement('div');
+    row.className = 'action-row' + (isBuiltin ? ' builtin' : '');
+    const swatch = document.createElement('div');
+    swatch.className = 'action-swatch';
+    swatch.style.background = a.color || '#334155';
+    swatch.innerHTML = '<i class="bi ' + (a.icon || 'bi-lightning-charge') + '"></i>';
+    row.appendChild(swatch);
+
+    const details = document.createElement('div');
+    details.className = 'flex-grow-1';
+    const title = document.createElement('div');
+    title.innerHTML = '<strong>' + (a.label || a.id) + '</strong>';
+    details.appendChild(title);
+    const meta = document.createElement('div');
+    meta.className = 'action-meta';
+    meta.textContent = a.id + ' - ' + a.driver + (isBuiltin ? ' - built in' : '');
+    details.appendChild(meta);
+    row.appendChild(details);
+
+    const btns = document.createElement('div');
+    btns.className = 'd-flex gap-1 flex-shrink-0';
+    const runBtn = document.createElement('button');
+    runBtn.className = 'btn btn-sm btn-outline-primary';
+    runBtn.innerHTML = '<i class="bi bi-play-fill"></i>';
+    runBtn.title = 'Test';
+    runBtn.addEventListener('click', () => runAction(a.id));
+    btns.appendChild(runBtn);
+    if (!isBuiltin) {
+      const editBtn = document.createElement('button');
+      editBtn.className = 'btn btn-sm btn-outline-secondary';
+      editBtn.innerHTML = '<i class="bi bi-pencil"></i>';
+      editBtn.addEventListener('click', () => editAction(a));
+      btns.appendChild(editBtn);
+      const delBtn = document.createElement('button');
+      delBtn.className = 'btn btn-sm btn-outline-danger';
+      delBtn.innerHTML = '<i class="bi bi-trash"></i>';
+      delBtn.addEventListener('click', () => deleteAction(a.id));
+      btns.appendChild(delBtn);
+    }
+    row.appendChild(btns);
+    return row;
+  }
+
+  async function load() {
+    const [driversRes, actionsRes] = await Promise.all([fetch('actions/drivers'), fetch('actions')]);
+    drivers = (await driversRes.json()).drivers || [];
+    actions = (await actionsRes.json()).actions || [];
+    populateDriverSelect();
+    listEl.innerHTML = '';
+    if (!actions.length) {
+      emptyEl.classList.remove('d-none');
+    } else {
+      emptyEl.classList.add('d-none');
+      actions.forEach((a) => listEl.appendChild(renderRow(a)));
+    }
+  }
+
+  function resetForm() {
+    editingId = null;
+    editingParams = {};
+    form.reset();
+    idInput.disabled = false;
+    document.getElementById('f-color').value = '#334155';
+    document.getElementById('f-category').value = 'Actions';
+    formTitle.innerHTML = '<i class="bi bi-plus-circle me-1"></i>Add an action';
+    cancelBtn.classList.add('d-none');
+    testBtn.disabled = true;
+    testResult.textContent = '';
+    if (drivers.length) renderParamFields(driverSel.value, { params: {}, members: [] });
+  }
+
+  async function editAction(a) {
+    editingId = a.id;
+    idInput.value = a.id;
+    idInput.disabled = true;
+    document.getElementById('f-label').value = a.label || '';
+    document.getElementById('f-icon').value = a.icon || 'bi-lightning-charge';
+    document.getElementById('f-color').value = a.color || '#334155';
+    document.getElementById('f-category').value = a.category || 'Actions';
+    driverSel.value = a.driver;
+    await renderParamFields(a.driver, { params: a.params || {}, members: a.members || [] });
+    formTitle.innerHTML = '<i class="bi bi-pencil me-1"></i>Edit action';
+    cancelBtn.classList.remove('d-none');
+    testBtn.disabled = false;
+    testResult.textContent = '';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  async function deleteAction(id) {
+    if (!confirm('Delete this action? Any key it is bound to will go blank.')) return;
+    await fetch('actions/' + id, { method: 'DELETE' });
+    if (editingId === id) resetForm();
+    load();
+  }
+
+  async function runAction(id) {
+    testResult.textContent = 'Running...';
+    const res = await fetch('actions/' + id + '/run', { method: 'POST' });
+    const body = await res.json();
+    testResult.textContent = (body.ok ? 'OK: ' : 'Failed: ') + (body.message || '');
+  }
+
+  testBtn.addEventListener('click', () => {
+    if (editingId) runAction(editingId);
+  });
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const driverName = driverSel.value;
+    const body = {
+      id: idInput.value.trim(),
+      label: document.getElementById('f-label').value,
+      driver: driverName,
+      icon: document.getElementById('f-icon').value || 'bi-lightning-charge',
+      color: document.getElementById('f-color').value || '#334155',
+      category: document.getElementById('f-category').value || 'Actions',
+      params: collectParams(driverName),
+      members: driverName === 'macro'
+        ? document.getElementById('f-members').value.split(',').map((v) => v.trim()).filter(Boolean)
+        : [],
+    };
+    statusEl.textContent = 'Saving...';
+    const resp = await fetch('actions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (resp.ok) {
+      statusEl.textContent = 'Saved.';
+      const savedId = body.id;
+      resetForm();
+      await load();
+      const saved = actions.find((a) => a.id === savedId);
+      if (saved) editAction(saved);
+    } else {
+      const errBody = await resp.json().catch(() => ({}));
+      statusEl.textContent = errBody.detail || 'Could not save that action.';
+    }
+  });
+
+  cancelBtn.addEventListener('click', resetForm);
+
+  (async function init() {
+    await loadDatabases();
+    await load();
+    resetForm();
+  })();
+})();
+</script>
+{% endblock %}

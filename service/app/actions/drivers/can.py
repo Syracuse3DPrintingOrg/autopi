@@ -27,6 +27,7 @@ _DEFAULT_CHANNELS = ("can0", "can1")
 class CanDriver(Driver):
     name = "can"
     label = "CAN frame"
+    simulate_when_unavailable = True  # execute() reports a simulated send with no bus
     param_schema = [
         {"key": "channel", "label": "Interface", "type": "text", "required": True,
          "default": "can0"},

@@ -146,7 +146,7 @@ def run(action_id: str, _depth: int = 0) -> DriverResult:
     driver = get_driver(spec.driver)
     if driver is None:
         return DriverResult.failure(f"No driver named {spec.driver}")
-    if not driver.available:
+    if not driver.available and not getattr(driver, "simulate_when_unavailable", False):
         return DriverResult.failure(
             f"The {driver.label} driver is not available on this host")
     return driver.execute(spec.params)
