@@ -26,3 +26,8 @@ cantools>=39
 # driver reports itself unavailable and the app still runs (simulated).
 gpiozero>=2.0
 lgpio>=0.2.2.0
+
+# Phase 3 I/O drivers (optional at runtime; the drivers simulate when absent).
+# I2C via smbus2 (MIT); Modbus TCP via pymodbus (BSD-3).
+smbus2>=0.4
+pymodbus>=3.5

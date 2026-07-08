@@ -8,6 +8,17 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **Phase 3 start: closing the loop between inputs and CAN, plus more I/O.** A
+  logic runtime runs your rules on a live scan loop: inputs (a CAN signal
+  decoded from a database, a GPIO pin, or a constant) drive the rules, which
+  fire actions. So a CAN signal can switch an output, or a physical input can
+  send a vehicle CAN command. Start, stop, and single-step it from the
+  Automation page. Three new I/O drivers join the action library: a relay-board
+  driver (active-low by default, for relay HATs), an I2C device driver
+  (read/write a register), and a Modbus TCP driver (read/write coils and
+  registers). Each simulates when its hardware or library is absent, so keys are
+  buildable and testable on a bench.
+
 - **Live CAN bus monitor.** A new Monitor page shows frames arriving on a
   channel in real time (arbitration id, how many times it has been seen, the
   latest data), and decodes them into named signals when you pick one of your

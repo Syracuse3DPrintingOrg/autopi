@@ -16,8 +16,21 @@
         <p class="small text-secondary">Rules run on a scan cycle: a condition (a signal comparison,
           an edge, an on/off-delay timer, a set-reset latch, combined with AND/OR/NOT) fires actions.</p>
         <div id="rules"><div class="text-secondary small">Loading…</div></div>
-        <div class="form-text">A visual rule builder and live inputs (CAN signals, GPIO) are on the roadmap;
-          this lists the rules currently defined.</div>
+        <div class="form-text">A visual rule builder is on the roadmap; this lists the rules currently defined.</div>
+      </div></div>
+
+      <div class="card"><div class="card-body">
+        <h6><i class="bi bi-arrow-repeat me-1"></i>Logic runtime</h6>
+        <p class="small text-secondary">Run the rules on a live scan loop: inputs (CAN signals decoded
+          from a database, GPIO pins, constants) drive the rules, which fire actions. This closes the
+          loop, a CAN signal can drive an output, or an input can trigger a CAN command.</p>
+        <div class="d-flex gap-2 align-items-center mb-2">
+          <button class="btn btn-sm btn-success" id="rt-start"><i class="bi bi-play-fill"></i> Start</button>
+          <button class="btn btn-sm btn-outline-secondary" id="rt-stop"><i class="bi bi-stop-fill"></i> Stop</button>
+          <button class="btn btn-sm btn-outline-primary" id="rt-scan">Scan once</button>
+          <span id="rt-status" class="small text-secondary"></span>
+        </div>
+        <pre id="rt-result" class="bg-body-secondary rounded p-2 small mb-0" style="max-height:12rem;overflow:auto"></pre>
       </div></div>
     </div>
     <div class="col-lg-5">
@@ -54,6 +67,21 @@
            <span class="text-secondary mono">${esc(JSON.stringify(r.condition || r.definition || {}).slice(0, 80))}</span></li>`).join('') + '</ul>'
       : '<div class="text-secondary small">No rules defined yet.</div>';
   }).catch(() => { document.getElementById('rules').innerHTML = '<div class="text-secondary small">Logic API unavailable.</div>'; });
+
+  // Logic runtime controls.
+  const rtStatus = document.getElementById('rt-status');
+  const rtResult = document.getElementById('rt-result');
+  function loadRuntime() {
+    fetch('logic/runtime').then((r) => r.json()).then((d) => {
+      rtStatus.textContent = d.running ? 'running' : 'stopped';
+      rtStatus.className = 'small ' + (d.running ? 'text-success' : 'text-secondary');
+      if (d.last_result && Object.keys(d.last_result).length) rtResult.textContent = JSON.stringify(d.last_result, null, 2);
+    }).catch(() => {});
+  }
+  document.getElementById('rt-start').addEventListener('click', () => fetch('logic/runtime/start', { method: 'POST' }).then(loadRuntime));
+  document.getElementById('rt-stop').addEventListener('click', () => fetch('logic/runtime/stop', { method: 'POST' }).then(loadRuntime));
+  document.getElementById('rt-scan').addEventListener('click', () => fetch('logic/runtime/scan-once', { method: 'POST' }).then((r) => r.json()).then((d) => { rtResult.textContent = JSON.stringify(d.result, null, 2); }));
+  loadRuntime();
 
   document.getElementById('restore-form').addEventListener('submit', async (e) => {
     e.preventDefault();
