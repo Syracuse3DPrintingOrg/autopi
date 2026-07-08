@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Cockpit editor: {{ app_name }}{% endblock %}
+{% block head %}
+<style>
+  .cp-card { background: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color);
+    border-radius: 0.75rem; padding: 1.25rem; }
+  .cp-canvas-wrap { position: relative; width: 100%; max-width: 60rem; margin: 0 auto;
+    background: repeating-conic-gradient(var(--bs-tertiary-bg) 0% 25%, var(--bs-secondary-bg) 0% 50%) 50% / 2rem 2rem;
+    border: 1px solid var(--bs-border-color); border-radius: 0.5rem; overflow: hidden; }
+  .cp-canvas-img { display: block; width: 100%; height: auto; }
+  .cp-canvas-empty { display: flex; align-items: center; justify-content: center;
+    aspect-ratio: 16 / 9; color: var(--bs-secondary-color); text-align: center; padding: 2rem; }
+  .cp-el { position: absolute; border: 2px solid rgba(255,255,255,0.5); border-radius: 0.4rem;
+    display: flex; align-items: center; justify-content: center; text-align: center;
+    color: #fff; font-size: 0.75rem; font-weight: 600; cursor: move; user-select: none;
+    overflow: hidden; padding: 0.2rem; }
+  .cp-el.selected { outline: 2px solid var(--bs-warning); outline-offset: 1px; }
+  .cp-el.type-gauge, .cp-el.type-indicator { border-style: dashed; }
+  .cp-el-label { pointer-events: none; }
+  .cp-panel { min-height: 20rem; }
+</style>
+{% endblock %}
+{% block body %}
+<div class="container-fluid">
+  <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+    <h5 class="mb-0"><i class="bi bi-speedometer2 me-1"></i>Cockpit Editor</h5>
+    <select class="form-select form-select-sm w-auto" id="f-cockpit"></select>
+    <button class="btn btn-sm btn-outline-primary" id="btn-new-cockpit"><i class="bi bi-plus-lg me-1"></i>New cockpit</button>
+    <button class="btn btn-sm btn-outline-danger" id="btn-delete-cockpit"><i class="bi bi-trash me-1"></i>Delete</button>
+    <a class="btn btn-sm btn-outline-secondary ms-auto" id="btn-open-operate" href="#" target="_blank">
+      <i class="bi bi-box-arrow-up-right me-1"></i>Open operate view</a>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-8">
+      <div class="cp-card mb-3">
+        <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+          <label class="form-label small mb-0">Background image</label>
+          <input type="file" class="form-control form-control-sm w-auto" id="f-image" accept=".png,.jpg,.jpeg,.webp,.gif">
+          <button class="btn btn-sm btn-outline-primary" id="btn-upload-image"><i class="bi bi-upload me-1"></i>Upload</button>
+          <span class="small text-body-secondary">PNG, JPEG, WEBP, or GIF, up to 8 MB.</span>
+        </div>
+        <div class="cp-canvas-wrap" id="canvas-wrap">
+          <div class="cp-canvas-empty" id="canvas-empty">
+            <div><i class="bi bi-image" style="font-size:2.5rem; opacity:0.5"></i>
+              <p class="mb-0 mt-2">Upload a background image, then add keys and gauges on top of it.</p></div>
+          </div>
+        </div>
+        <div class="d-flex gap-2 mt-3">
+          <button class="btn btn-sm btn-outline-success" id="btn-add-key"><i class="bi bi-lightning-charge me-1"></i>Add key</button>
+          <button class="btn btn-sm btn-outline-info" id="btn-add-gauge"><i class="bi bi-speedometer me-1"></i>Add gauge</button>
+          <button class="btn btn-sm btn-outline-warning" id="btn-add-indicator"><i class="bi bi-circle-fill me-1"></i>Add indicator</button>
+        </div>
+        <p class="small text-body-secondary mt-2 mb-0">Drag an element to reposition it. Select one to bind and size it in the panel on the right.</p>
+      </div>
+    </div>
+
+    <div class="col-lg-4">
+      <div class="cp-card cp-panel" id="element-panel">
+        <p class="text-body-secondary small mb-0">Select an element on the canvas to edit it.</p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="static/js/cockpit-editor.js"></script>
+{% endblock %}
