@@ -56,13 +56,16 @@ controller (`streamdeck/requirements.txt`):
 | websockets | BSD-3-Clause | Permissive | Deck kiosk control |
 
 The Chrysler counter/checksum algorithm in `service/app/can/checksum.py` is
-reproduced from opendbc (MIT). The FCA Giorgio J1850 CRC checksum is likewise from opendbc (MIT).
+reproduced from opendbc (MIT). The FCA Giorgio J1850 CRC checksum is likewise from opendbc (MIT), as are the Toyota, Honda, and Hyundai CAN FD checksum algorithms.
 
 Bundled data:
 
 | Data | License | Notes |
 |---|---|---|
 | opendbc DBC files (comma.ai) | MIT | Imported on demand, not vendored in the repo. Keep attribution. |
+| toyota_nodsu_pt_generated.dbc (vendored, opendbc) | MIT | Toyota RAV4 sample; opendbc |
+| honda_civic_ex_2022_can_generated.dbc (vendored, opendbc) | MIT | Honda Civic sample; opendbc |
+| hyundai_canfd.dbc (vendored, opendbc) | MIT | Hyundai Elantra sample; opendbc |
 | ford_lincoln_base_pt.dbc (vendored, opendbc) | MIT | Bundled for the Ford F-150 sample; opendbc |
 | fca_giorgio.dbc (vendored, opendbc) | MIT | Bundled for the Alfa Romeo Giulia sample; opendbc |
 | chrysler_cusw.dbc (vendored, opendbc) | MIT | Bundled for the RAM 1500 sample; see service/app/examples/data/NOTICE.md |

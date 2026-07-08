@@ -140,8 +140,13 @@ def encode(dbc_text: str, message: str | int, signals: dict[str, Any],
     in the message.
 
     When ``counter`` is given and the message has a COUNTER signal, it is set to
-    that value; when ``checksum`` names an algorithm (e.g. "chrysler"), the
-    checksum byte is recomputed so a real module accepts the frame.
+    that value (wrapped to the signal's own bit width); when ``checksum`` names
+    an algorithm (e.g. "chrysler"), the checksum is recomputed so a real module
+    accepts the frame. Byte-oriented algorithms (Chrysler, FCA Giorgio, Toyota)
+    overwrite the trailing checksum byte directly; signal-oriented ones (Honda,
+    Hyundai CAN FD), whose checksum is not a whole trailing byte, are written
+    through the DBC's own ``CHECKSUM`` signal so cantools places the bits
+    correctly.
     """
     from . import checksum as checksum_mod
     db = _load_cached(dbc_text)
@@ -151,8 +156,9 @@ def encode(dbc_text: str, message: str | int, signals: dict[str, Any],
     unknown = set(full) - signal_names
     if unknown:
         raise KeyError(f"Unknown signal(s) for {msg.name}: {', '.join(sorted(unknown))}")
-    if counter is not None and "COUNTER" in signal_names:
-        full["COUNTER"] = int(counter) % 16
+    counter_sig = next((s for s in msg.signals if s.name == "COUNTER"), None)
+    if counter is not None and counter_sig is not None:
+        full["COUNTER"] = int(counter) % (1 << counter_sig.length)
     for sig in msg.signals:
         if sig.name not in full:
             # Fill an unset signal so its raw value is 0 (an empty frame for
@@ -162,4 +168,10 @@ def encode(dbc_text: str, message: str | int, signals: dict[str, Any],
     # strict=False: real DBCs (e.g. opendbc) often carry placeholder [0|1]
     # signal ranges that would wrongly reject a valid physical value.
     data = list(bytes(db.encode_message(msg.frame_id, full, strict=False)))
+    if checksum in checksum_mod.SIGNAL_ORIENTED:
+        checksum_sig = next((s for s in msg.signals if s.name == "CHECKSUM"), None)
+        if checksum_sig is None:
+            return data  # message has no named CHECKSUM signal; nothing safe to write
+        full["CHECKSUM"] = checksum_mod.compute(checksum, msg.frame_id, data)
+        return list(bytes(db.encode_message(msg.frame_id, full, strict=False)))
     return checksum_mod.finalize(checksum, data, address=msg.frame_id)

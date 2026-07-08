@@ -8,6 +8,15 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **Toyota, Honda, and Hyundai samples on real open-source DBCs.** Three more
+  vehicle examples built on real opendbc data (MIT): a 2024 Toyota RAV4
+  (toyota_nodsu_pt), a 2022 Honda Civic (honda_civic_ex), and a 2024 Hyundai
+  Elantra (hyundai_canfd, the shared Hyundai/Kia/Genesis CAN FD database).
+  Monitoring is fully real, and each OEM checksum is computed and verified
+  against a reference (Toyota's trailing byte, Honda's shared nibble, and
+  Hyundai CAN FD's CRC-16), so their checksum-protected messages send valid
+  frames a real module accepts.
+
 - **Ford F-150 (2024) sample on the real Ford CAN-FD DBC.** A fourth vehicle
   example uses the real ford_lincoln_base_pt.dbc from opendbc (MIT), which covers
   the modern Ford CAN-FD platform (F-150, Mustang Mach-E, Explorer, Bronco Sport,
