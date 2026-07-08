@@ -32,6 +32,7 @@ class SocketCanProvider(CanProvider):
         self.receive_own_messages = receive_own_messages
         self._bus: Any = None
         self._open_failed = False
+        self.last_error: str | None = None
 
     @property
     def available(self) -> bool:
@@ -39,7 +40,19 @@ class SocketCanProvider(CanProvider):
             return True
         if self._open_failed:
             return False
-        return self._module_importable() and self._interface_present()
+        if not self._module_importable():
+            self.last_error = "python-can is not installed."
+            return False
+        if not self._interface_present():
+            self.last_error = (
+                f"{self.channel} is not present. If a Waveshare CAN-FD HAT is installed, "
+                "enable it and reboot: run 'sudo bash "
+                "/opt/autopi-src/scripts/image-build/setup-can-waveshare.sh' then 'sudo reboot'. "
+                "After the reboot bring the interface up here."
+            )
+            return False
+        self.last_error = None
+        return True
 
     @staticmethod
     def _module_importable() -> bool:

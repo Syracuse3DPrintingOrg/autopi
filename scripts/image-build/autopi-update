@@ -92,6 +92,8 @@ fi
 # why Wi-Fi/health features 404 after an update). Restart it detached so that,
 # when this updater was launched BY the bridge (POST /update), restarting the
 # bridge does not kill the update mid-flight.
+# Keep the updater available as a command for next time (sudo autopi-update).
+install -m 755 "$REPO_DIR/scripts/image-build/autopi-update" /usr/local/sbin/autopi-update 2>/dev/null || true
 if systemctl list-unit-files 2>/dev/null | grep -q '^autopi-host-bridge.service'; then
   install -m 755 "$REPO_DIR/scripts/image-build/autopi-host-bridge" /usr/local/sbin/autopi-host-bridge 2>/dev/null || true
   systemctl enable autopi-host-bridge.service >&2 2>&1 || true

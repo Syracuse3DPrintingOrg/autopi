@@ -1,0 +1,21 @@
+# Optional/hardware dependencies. Every one of these degrades gracefully at
+# runtime: the matching feature reports itself unavailable (or simulates) when
+# the library is absent, and the app still runs. The Docker build installs them
+# best-effort with prebuilt wheels only, so a library that has no wheel for this
+# board (or would need a compiler) never fails the whole image build or an
+# update. Install any you want by hand later with pip.
+
+# CAN bus support (python-can, socketcan and other backends). LGPL-3.0; see LICENSING.md.
+python-can>=4.3
+# DBC parse + frame encode/decode (MIT).
+cantools>=39
+# GPIO on a Raspberry Pi. lgpio is a C extension and is the usual reason a naive
+# build fails on the Pi, so it lives here as best-effort.
+gpiozero>=2.0
+lgpio>=0.2.2.0
+# Phase 3 I/O drivers: I2C via smbus2 (MIT), Modbus TCP via pymodbus (BSD-3).
+smbus2>=0.4
+pymodbus>=3.5
+# Automotive diagnostics: ISO-TP (can-isotp) + UDS client (udsoncan), both MIT.
+can-isotp>=2.0
+udsoncan>=1.22

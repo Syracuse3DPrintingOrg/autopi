@@ -8,6 +8,33 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Fixed
 
+- **Updates no longer break when an optional dependency will not build.** The
+  container build now installs the core web app (which must succeed) and the
+  optional or hardware libraries (python-can, cantools, gpiozero/lgpio, smbus2,
+  pymodbus, and the diagnostics libs) best-effort with prebuilt wheels, so one
+  package that has no wheel for the board (lgpio is the usual culprit) can no
+  longer fail the whole image build or an on-device update. Each already degrades
+  gracefully at runtime.
+- **The Waveshare CAN-FD HAT is now enabled by the installer.** A Pi appliance
+  install now runs the CAN HAT setup (the mcp251xfd overlay for can0/can1), which
+  it did not before, so the interfaces exist after a reboot instead of showing as
+  not detected. The setup also declares the oscillator explicitly (needed for
+  CAN-FD timing), falls back to classic CAN if FD will not come up, and prints
+  diagnostics; a "not detected" SocketCAN interface now explains how to enable the
+  HAT and reboot.
+- **Host-bridge update path.** Re-running the bridge installer now restarts the
+  running daemon (so an update actually takes effect), and the out-of-date message
+  points to the device update rather than only a restart.
+
+### Added
+
+- **Update from the Settings page.** The Updates pane now has an Update now button
+  (and shows the host-helper version and whether it is out of date), so a device
+  can be updated without SSH. The updater is also installed as a command, so
+  'sudo autopi-update' works on the device.
+
+### Fixed
+
 - **PEAK PCAN (and Vector) now say why they will not connect.** Picking the pcan
   or vector backend used to show the interface as available even when it could
   not open, then fail a self-test with a generic error. The status and self-test

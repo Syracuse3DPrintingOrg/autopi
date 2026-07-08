@@ -397,12 +397,46 @@
           <div class="section-title"><i class="bi bi-cloud-arrow-down"></i>Updates</div>
           <div class="section-card">
             <div class="d-flex justify-content-between"><span class="text-secondary">Installed version</span><span>v{{ app_version }}</span></div>
+            <div id="upd-bridge" class="small text-secondary mt-1">Checking the host helper&hellip;</div>
             <hr>
-            <p class="mb-2">To update a device, run the updater on it over SSH:</p>
-            <pre class="bg-body-secondary rounded p-2 small mb-2">sudo /opt/autopi-src/scripts/image-build/autopi-update</pre>
-            <div class="form-text">It pulls the latest source, rebuilds the stack, and refreshes the Stream Deck
-              controller. Updating from this page is on the roadmap.</div>
+            <button type="button" class="btn btn-primary btn-sm" id="upd-now"><i class="bi bi-cloud-arrow-down me-1"></i>Update now</button>
+            <span id="upd-status" class="small ms-2"></span>
+            <div class="form-text mt-2">Update pulls the latest, rebuilds the stack, and reinstalls and restarts
+              the host helper and Stream Deck controller. It can take a few minutes and the app may restart.</div>
+            <hr>
+            <p class="small mb-1">Prefer SSH? On the device run:</p>
+            <pre class="bg-body-secondary rounded p-2 small mb-0">sudo /opt/autopi-src/scripts/image-build/autopi-update</pre>
           </div>
+          <script>
+          (function () {
+            var b = document.getElementById('upd-bridge');
+            var btn = document.getElementById('upd-now');
+            var st = document.getElementById('upd-status');
+            fetch('system/bridge').then(function (r) { return r.json(); }).then(function (d) {
+              if (!d.bridge) {
+                b.textContent = 'Host helper not reachable. Updating from here needs the Pi appliance host helper; on a plain server, use git and docker compose.';
+                if (btn) btn.disabled = true;
+                return;
+              }
+              b.innerHTML = 'Host helper v' + (d.version || '?') +
+                (d.stale ? ' <span class="badge text-bg-warning">out of date, run Update to refresh</span>'
+                         : ' <span class="badge text-bg-success">current</span>');
+            }).catch(function () { b.textContent = ''; });
+            if (btn) btn.addEventListener('click', function () {
+              if (!confirm('Update the device now? It pulls the latest, rebuilds, and may restart the app.')) return;
+              btn.disabled = true; st.textContent = 'Updating, this can take a few minutes…';
+              fetch('system/update', { method: 'POST' }).then(function (r) { return r.json(); }).then(function (d) {
+                st.textContent = (d.ok === false)
+                  ? ('Update failed: ' + (d.error || d.detail || 'unknown'))
+                  : ('Update done: ' + (d.detail || d.result || 'ok') + '. The app may restart.');
+                btn.disabled = false;
+              }).catch(function (e) {
+                st.textContent = 'Update request ended (the app may be restarting): ' + e;
+                btn.disabled = false;
+              });
+            });
+          })();
+          </script>
         </div>
 
         <div class="tab-pane fade" id="pane-advanced" role="tabpanel" data-title="Advanced">

@@ -292,6 +292,6 @@ def test_router_status_reports_unavailable_without_hardware(client):
     assert resp.status_code == 200
     body = resp.json()
     assert body["id"] == "can0" and body["available"] is False
-    # SocketCAN has no last_error attribute, so error is null here; PEAK/Vector
-    # fill it with the reason they would not connect.
-    assert body["error"] is None
+    # SocketCAN explains a missing interface (the usual "not detected" case) so
+    # the page can tell the user to enable the CAN HAT and reboot.
+    assert body["error"] and "can0" in body["error"]

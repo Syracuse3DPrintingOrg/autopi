@@ -27,6 +27,11 @@ CAN_DBITRATE="${CAN_DBITRATE:-2000000}"
 CAN_FD="${CAN_FD:-true}"
 CAN0_INTERRUPT="${CAN0_INTERRUPT:-25}"
 CAN1_INTERRUPT="${CAN1_INTERRUPT:-24}"
+# The MCP2518FD's crystal. The Waveshare 2-Ch CAN-FD HAT uses 40 MHz. This must
+# match the board or the bit timing is wrong: classic CAN may still limp along,
+# but CAN-FD (which needs tight timing) fails. Some board revisions use 20 MHz;
+# set CAN_OSCILLATOR=20000000 if FD will not come up.
+CAN_OSCILLATOR="${CAN_OSCILLATOR:-40000000}"
 
 is_pi=false
 for f in /proc/device-tree/model /sys/firmware/devicetree/base/model; do
@@ -53,8 +58,11 @@ add_config_line() {
 
 echo "Enabling SPI and the mcp251xfd overlay in ${CONFIG_TXT}"
 add_config_line "dtparam=spi=on"
-add_config_line "dtoverlay=mcp251xfd,spi0-0,interrupt=${CAN0_INTERRUPT}"
-add_config_line "dtoverlay=mcp251xfd,spi0-1,interrupt=${CAN1_INTERRUPT}"
+# Replace any prior mcp251xfd lines so re-running updates the oscillator or the
+# interrupt pins cleanly instead of leaving stale, conflicting overlays behind.
+sed -i '/^dtoverlay=mcp251xfd/d' "$CONFIG_TXT"
+echo "dtoverlay=mcp251xfd,spi0-0,interrupt=${CAN0_INTERRUPT},oscillator=${CAN_OSCILLATOR}" >> "$CONFIG_TXT"
+echo "dtoverlay=mcp251xfd,spi0-1,interrupt=${CAN1_INTERRUPT},oscillator=${CAN_OSCILLATOR}" >> "$CONFIG_TXT"
 
 echo "Writing the CAN link-up service (bitrate ${CAN_BITRATE}, dbitrate ${CAN_DBITRATE}, fd=${CAN_FD})"
 FD_ARGS=""
@@ -72,9 +80,15 @@ for iface in can0 can1; do
     continue
   fi
   ip link set "\$iface" down 2>/dev/null || true
-  ip link set "\$iface" type can bitrate ${CAN_BITRATE} ${FD_ARGS}
-  ip link set "\$iface" up
-  echo "autopi-can-up: \$iface up (bitrate ${CAN_BITRATE}${FD_ARGS:+, }${FD_ARGS})"
+  if [ -n "${FD_ARGS}" ] && ip link set "\$iface" type can bitrate ${CAN_BITRATE} ${FD_ARGS} 2>/dev/null; then
+    mode="CAN-FD"
+  elif ip link set "\$iface" type can bitrate ${CAN_BITRATE} 2>/dev/null; then
+    mode="classic (CAN-FD setup failed; check the CAN_OSCILLATOR value)"
+  else
+    echo "autopi-can-up: \$iface could not be configured (see: dmesg | grep mcp251)"
+    continue
+  fi
+  ip link set "\$iface" up && echo "autopi-can-up: \$iface up, \$mode, bitrate ${CAN_BITRATE}"
 done
 EOF
 chmod 755 /usr/local/sbin/autopi-can-up
@@ -106,3 +120,20 @@ else
 fi
 
 echo "CAN setup complete. A reboot is required if this is the first run."
+
+echo
+echo "--- CAN diagnostics ---"
+echo "config.txt overlay lines:"
+grep -E '^dtparam=spi|^dtoverlay=mcp251xfd' "$CONFIG_TXT" | sed 's/^/  /'
+echo "CAN interfaces present:"
+ls -1 /sys/class/net/ 2>/dev/null | grep -E '^can[0-9]+$' | sed 's/^/  /' || echo "  none yet (reboot needed)"
+echo "mcp251xfd kernel messages (last 12):"
+dmesg 2>/dev/null | grep -i mcp251 | tail -12 | sed 's/^/  /' || echo "  none"
+echo
+echo "If can1 is missing while can0 works, the second controller did not probe:"
+echo "  - check the dmesg lines above for a probe error on spi0.1,"
+echo "  - confirm the INT pin for can1 (CAN1_INTERRUPT, default ${CAN1_INTERRUPT}); some"
+echo "    board revisions and the Pi 5 differ. Re-run with the right pin, e.g."
+echo "    sudo CAN1_INTERRUPT=23 bash \$0"
+echo "If CAN-FD will not come up but classic does, the oscillator is likely wrong:"
+echo "  sudo CAN_OSCILLATOR=20000000 bash \$0   # then reboot"

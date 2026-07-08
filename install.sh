@@ -136,6 +136,9 @@ DEPLOYMENT_MODE="${DEPLOYMENT_MODE:-}"
 ENABLE_KIOSK="${ENABLE_KIOSK:-}"
 ENABLE_STREAMDECK="${ENABLE_STREAMDECK:-}"
 ENABLE_AP="${ENABLE_AP:-}"
+# The Waveshare 2-Ch CAN-FD HAT is the default AutoPi hardware, so enabling the
+# mcp251xfd overlay (can0/can1) is on by default on a Pi appliance.
+ENABLE_CAN="${ENABLE_CAN:-}"
 HOSTNAME_CHOICE="${HOSTNAME:-$(hostname 2>/dev/null || echo autopi)}"
 
 banner() {
@@ -170,8 +173,9 @@ resolve_config() {
     [ -z "$ENABLE_KIOSK" ]      && ENABLE_KIOSK="$([ "$HAS_DISPLAY" = true ] && echo true || echo false)"
     [ -z "$ENABLE_STREAMDECK" ] && ENABLE_STREAMDECK="$([ "$HAS_DECK" = true ] && echo true || echo false)"
     [ -z "$ENABLE_AP" ]         && ENABLE_AP="true"
+    [ -z "$ENABLE_CAN" ]        && ENABLE_CAN="true"
   else
-    ENABLE_KIOSK=false; ENABLE_STREAMDECK=false; ENABLE_AP=false
+    ENABLE_KIOSK=false; ENABLE_STREAMDECK=false; ENABLE_AP=false; ENABLE_CAN=false
   fi
 }
 
@@ -243,6 +247,11 @@ provision_appliance() {
   # and Stream Deck restarts. Install it first so those work from the UI.
   say "Installing the host-bridge"
   $SUDO bash "$ib/setup-host-bridge.sh" "$REPO_DIR" || warn "Host-bridge setup failed; skipping."
+  if [ "$(yesno "$ENABLE_CAN")" = true ]; then
+    say "Enabling the Waveshare CAN-FD HAT (can0/can1)"
+    $SUDO bash "$ib/setup-can-waveshare.sh" || warn "CAN HAT setup failed; skipping."
+    NEEDS_REBOOT_FOR_CAN=true
+  fi
   if [ "$(yesno "$ENABLE_AP")" = true ]; then
     say "Installing the Wi-Fi fallback access point"
     $SUDO bash "$ib/setup-wifi-ap.sh" || warn "Wi-Fi AP setup failed; skipping."
@@ -265,6 +274,12 @@ print_done() {
   say "(If .local doesn't resolve, use the device IP instead.)"
   [ "$(yesno "$ENABLE_STREAMDECK")" = true ] && say "A Stream Deck will pick up the layout you build in the editor."
   [ "$(yesno "$ENABLE_AP")" = true ] && say "With no network, the device serves a Wi-Fi hotspot named AutoPi."
+  if [ "${NEEDS_REBOOT_FOR_CAN:-false}" = true ] && ! ip link show can0 >/dev/null 2>&1; then
+    hr
+    warn "The CAN-FD HAT overlay was just enabled. Reboot for can0/can1 to appear:"
+    printf '    %ssudo reboot%s\n' "$C_GREEN" "$C_OFF"
+    say "After the reboot, the CAN Interfaces page will detect can0/can1."
+  fi
   hr
 }
 

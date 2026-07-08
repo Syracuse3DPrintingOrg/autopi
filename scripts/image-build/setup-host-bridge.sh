@@ -12,6 +12,9 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 TOKEN_PATH="${REPO_DIR}/service/data/bridge-token"
 
 install -m 755 "${HERE}/autopi-host-bridge" /usr/local/sbin/autopi-host-bridge
+# Also install the updater as a command, so 'sudo autopi-update' works and not
+# only the full path under /opt/autopi-src. The copy re-execs the repo version.
+install -m 755 "${HERE}/autopi-update" /usr/local/sbin/autopi-update 2>/dev/null || true
 mkdir -p "$(dirname "${TOKEN_PATH}")"
 
 cat > /etc/systemd/system/autopi-host-bridge.service <<EOF
