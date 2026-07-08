@@ -73,7 +73,19 @@ def _normalize(entry: dict) -> dict:
         "data_bitrate": int(entry["data_bitrate"]) if entry.get("data_bitrate") else None,
         "purpose": purpose,
         "label": entry.get("label") or "",
+        # Optional bit-timing sample points (0..1). Left None so the driver
+        # auto-picks, matched to a bus that needs a specific sample point.
+        "sample_point": _sp(entry.get("sample_point")),
+        "data_sample_point": _sp(entry.get("data_sample_point")),
     }
+
+
+def _sp(value):
+    try:
+        sp = float(value)
+    except (TypeError, ValueError):
+        return None
+    return sp if 0.0 < sp < 1.0 else None
 
 
 def display_label(entry: dict) -> str:

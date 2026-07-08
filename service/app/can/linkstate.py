@@ -80,3 +80,29 @@ def classify_health(link: dict) -> dict:
     if state in HEALTHY_STATES or (up and not state):
         return {"status": "ok", "message": "Bus is up with no errors."}
     return {"status": "unknown", "message": f"Unrecognized bus state: {state}."}
+
+
+# The CAN error-counter line from `ip -s -details link show <iface>`:
+#   re-started bus-errors arbit-lost error-warn error-pass bus-off
+#   0          0          0          590        1126       0
+_CAN_STAT_FIELDS = ("restarts", "bus_errors", "arbit_lost", "error_warn", "error_pass", "bus_off")
+
+
+def parse_can_stats(text: str) -> dict:
+    """Pull the CAN error counters out of `ip -s -d link show` text.
+
+    Returns a dict with restarts/bus_errors/arbit_lost/error_warn/error_pass/
+    bus_off (ints), or an empty dict if the counters are not present. Pure and
+    testable; the counters climbing over time is how we show a live error rate.
+    """
+    if not text:
+        return {}
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        if "error-warn" in line and "error-pass" in line:
+            for follow in lines[i + 1:]:
+                nums = follow.split()
+                if len(nums) >= 6 and all(n.lstrip("-").isdigit() for n in nums[:6]):
+                    return {field: int(nums[j]) for j, field in enumerate(_CAN_STAT_FIELDS)}
+            break
+    return {}

@@ -44,7 +44,7 @@ HOST, PORT = "127.0.0.1", 9299
 # the version it expects and tells the user to restart a stale bridge (a
 # restart is what actually loads a newly-installed bridge file). 2 = network
 # (Wi-Fi) routes added. 3 = CAN interface up/down/status routes added.
-BRIDGE_VERSION = 3
+BRIDGE_VERSION = 4
 
 # Grace: allow a tokenless request for this release so a bridge that updates
 # ahead of the app does not lock the fleet out mid-update. Flip to False one
@@ -309,14 +309,29 @@ def op_can_up(body: dict) -> dict:
         return {"ok": False, "error": "bitrate must be a number"}
     fd = bool(body.get("fd"))
     data_bitrate = body.get("data_bitrate")
+
+    def _sp(key):
+        try:
+            v = float(body.get(key))
+        except (TypeError, ValueError):
+            return None
+        return v if 0.0 < v < 1.0 else None
+
     _run(["ip", "link", "set", interface, "down"], timeout=5)  # best effort; may already be down
     type_cmd = ["ip", "link", "set", interface, "type", "can", "bitrate", str(bitrate)]
+    sp = _sp("sample_point")
+    if sp is not None:
+        type_cmd += ["sample-point", str(sp)]
     if fd:
         try:
             data_bitrate = int(data_bitrate) if data_bitrate else bitrate
         except (TypeError, ValueError):
             return {"ok": False, "error": "data_bitrate must be a number"}
-        type_cmd += ["dbitrate", str(data_bitrate), "fd", "on"]
+        type_cmd += ["dbitrate", str(data_bitrate)]
+        dsp = _sp("data_sample_point")
+        if dsp is not None:
+            type_cmd += ["dsample-point", str(dsp)]
+        type_cmd += ["fd", "on"]
     rc, _out, err = _run(type_cmd, timeout=10)
     if rc != 0:
         return {"ok": False, "error": (err or "could not configure the interface").strip()[:500]}
@@ -343,6 +358,18 @@ def op_can_status(body: dict) -> dict:
     if not is_valid_can_interface(interface):
         return {"ok": False, "error": "invalid interface name"}
     return _ip_link_show(interface)
+
+
+def op_can_stats(body: dict) -> dict:
+    """Return `ip -s -details link show <iface>` text so the app can read the
+    CAN error counters (error-warn/error-pass/bus-off) for a live error meter."""
+    interface = str(body.get("interface") or "").strip()
+    if not is_valid_can_interface(interface):
+        return {"ok": False, "error": "invalid interface name"}
+    rc, out, err = _run(["ip", "-s", "-details", "link", "show", interface], timeout=8)
+    if rc != 0:
+        return {"ok": False, "error": (err or "could not read interface stats").strip()[:500]}
+    return {"ok": True, "text": out}
 
 
 def read_health(_body: dict) -> dict:
@@ -397,6 +424,7 @@ ROUTES = {
     ("POST", "/can/up"): op_can_up,
     ("POST", "/can/down"): op_can_down,
     ("POST", "/can/status"): op_can_status,
+    ("POST", "/can/stats"): op_can_stats,
     ("GET", "/health"): lambda _body: {"ok": True, "bridge": "autopi",
                                        "version": BRIDGE_VERSION, "ts": time.time()},
 }

@@ -55,7 +55,7 @@ def _token() -> str:
 # The bridge version this build of the app expects. When the running bridge
 # reports an older version, it was updated on disk but not restarted, so it is
 # missing newer routes; the app tells the user to restart it.
-EXPECTED_BRIDGE_VERSION = 3
+EXPECTED_BRIDGE_VERSION = 4
 
 
 def health_check() -> dict:

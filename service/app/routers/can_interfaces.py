@@ -34,8 +34,12 @@ _NO_BRIDGE = ("The host-bridge is not reachable, so AutoPi cannot bring this int
 def _manual_up_command(entry: dict) -> str:
     cmd = f"sudo ip link set {entry['channel']} down; " \
           f"sudo ip link set {entry['channel']} type can bitrate {entry['bitrate']}"
+    if entry.get("sample_point"):
+        cmd += f" sample-point {entry['sample_point']}"
     if entry.get("fd"):
         cmd += f" dbitrate {entry.get('data_bitrate') or entry['bitrate']} fd on"
+        if entry.get("data_sample_point"):
+            cmd += f" dsample-point {entry['data_sample_point']}"
     cmd += f"; sudo ip link set {entry['channel']} up"
     return cmd
 
@@ -47,6 +51,8 @@ class InterfaceIn(BaseModel):
     bitrate: int = can_interfaces.DEFAULT_BITRATE
     fd: bool = False
     data_bitrate: int | None = None
+    sample_point: float | None = None
+    data_sample_point: float | None = None
     purpose: str = ""
     label: str = ""
 
@@ -124,6 +130,10 @@ def bring_up(interface_id: str):
     body = {"interface": entry["channel"], "bitrate": entry["bitrate"], "fd": entry["fd"]}
     if entry.get("data_bitrate"):
         body["data_bitrate"] = entry["data_bitrate"]
+    if entry.get("sample_point"):
+        body["sample_point"] = entry["sample_point"]
+    if entry.get("data_sample_point"):
+        body["data_sample_point"] = entry["data_sample_point"]
     result = bridge.call("POST", "/can/up", timeout=15, json=body)
     if result.get("link") is not None:
         result["state"] = parse_link_show(result["link"])
@@ -153,6 +163,20 @@ def link_status(interface_id: str):
     if not result.get("ok"):
         return result
     return {"ok": True, "state": parse_link_show(result.get("link"))}
+
+
+@router.get("/config/{interface_id}/errors")
+def error_counters(interface_id: str):
+    """Live CAN error counters (error-warn/error-pass/bus-off, and restarts),
+    so the UI can show whether errors are still climbing while tuning timing."""
+    entry = _require_link_backed(interface_id)
+    if not bridge.available():
+        return {"ok": False, "error": _NO_BRIDGE + f"ip -s -d link show {entry['channel']}"}
+    result = bridge.call("POST", "/can/stats", timeout=8, json={"interface": entry["channel"]})
+    if not result.get("ok"):
+        return result
+    from ..can.linkstate import parse_can_stats
+    return {"ok": True, "counters": parse_can_stats(result.get("text") or "")}
 
 
 @router.get("/config/{interface_id}/health")

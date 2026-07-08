@@ -6,6 +6,16 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ## [Unreleased]
 
+### Added
+
+- **CAN bit-timing sample points, and a live error meter.** Each interface can now
+  set a nominal and CAN-FD data sample point, applied by both the app's Bring up
+  and the boot-time bring-up, so you can match a bus that needs a specific timing
+  and have it persist across reboots (the driver default no longer keeps coming
+  back). A new "Error meter" button on each interface watches the CAN error
+  counters live and shows whether error-warn/error-pass are still climbing, so you
+  can tune timing or termination and see the effect without SSH.
+
 ### Fixed
 
 - **CAN-FD buses now actually receive frames.** A classic SocketCAN socket does

@@ -12,6 +12,8 @@
   const channelInput = document.getElementById('can-if-channel');
   const bitrateInput = document.getElementById('can-if-bitrate');
   const dataBitrateInput = document.getElementById('can-if-data-bitrate');
+  const samplePointInput = document.getElementById('can-if-sample-point');
+  const dataSamplePointInput = document.getElementById('can-if-data-sample-point');
   const purposeSel = document.getElementById('can-if-purpose');
   const labelInput = document.getElementById('can-if-label');
   const labelWrap = document.getElementById('can-if-label-wrap');
@@ -38,6 +40,8 @@
     channelInput.value = '';
     bitrateInput.value = 500000;
     dataBitrateInput.value = '';
+    if (samplePointInput) samplePointInput.value = '';
+    if (dataSamplePointInput) dataSamplePointInput.value = '';
     purposeSel.value = '';
     labelInput.value = '';
     fdInput.checked = false;
@@ -102,6 +106,41 @@
         resultEl.textContent = 'Request failed';
         resultEl.className = 'small mt-1 text-danger';
       });
+  }
+
+  const errorMeters = {};
+  function toggleErrorMeter(iface, row, btn) {
+    const resultEl = row.querySelector('[data-op-result="' + iface.id + '"]');
+    if (errorMeters[iface.id]) {
+      clearInterval(errorMeters[iface.id].timer);
+      delete errorMeters[iface.id];
+      if (btn) btn.textContent = 'Error meter';
+      return;
+    }
+    if (btn) btn.textContent = 'Stop meter';
+    let base = null;
+    let startedAt = Date.now();
+    function poll() {
+      fetch('can/interfaces/config/' + encodeURIComponent(iface.id) + '/errors')
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.ok === false) { resultEl.textContent = d.error || 'Error meter unavailable'; resultEl.className = 'small mt-1 text-danger'; return; }
+          const c = d.counters || {};
+          if (c.error_pass == null) { resultEl.textContent = 'No CAN error counters reported for this interface.'; return; }
+          if (base === null) base = c;
+          const secs = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
+          const dPass = c.error_pass - base.error_pass;
+          const dWarn = c.error_warn - base.error_warn;
+          const clean = dPass === 0 && dWarn === 0;
+          resultEl.innerHTML = '<span class="' + (clean ? 'text-success' : 'text-warning') + '">'
+            + (clean ? 'No new errors' : 'error-warn +' + dWarn + ', error-pass +' + dPass)
+            + '</span> over ' + secs + 's'
+            + (c.bus_off ? ', bus-off ' + c.bus_off : '') + '. (state now: warn ' + c.error_warn + ' / pass ' + c.error_pass + ')';
+          resultEl.className = 'small mt-1';
+        }).catch(() => {});
+    }
+    poll();
+    errorMeters[iface.id] = { timer: setInterval(poll, 1500) };
   }
 
   function runSniff(iface, row) {
@@ -202,6 +241,7 @@
             '<button type="button" class="btn btn-outline-primary btn-sm" data-selftest="' + iface.id + '">Run self-test</button>' +
             '<button type="button" class="btn btn-outline-primary btn-sm" data-testframe="' + iface.id + '">Send test frame</button>' +
             '<button type="button" class="btn btn-outline-info btn-sm" data-sniff="' + iface.id + '">Listen 3s</button>' +
+            '<button type="button" class="btn btn-outline-warning btn-sm" data-errmeter="' + iface.id + '">Error meter</button>' +
             '<span data-linkstate="' + iface.id + '"></span>' +
             '</div>' +
             '<div class="small mt-1" data-op-result="' + iface.id + '"></div>'
@@ -232,6 +272,7 @@
         row.querySelector('[data-selftest]').addEventListener('click', () => runSelfTest(iface, row));
         row.querySelector('[data-testframe]').addEventListener('click', () => sendTestFrame(iface, row));
         row.querySelector('[data-sniff]').addEventListener('click', () => runSniff(iface, row));
+        row.querySelector('[data-errmeter]').addEventListener('click', (e) => toggleErrorMeter(iface, row, e.target));
         refreshLinkState(iface, row);
       }
     });
@@ -250,6 +291,8 @@
     channelInput.value = iface.channel;
     bitrateInput.value = iface.bitrate;
     dataBitrateInput.value = iface.data_bitrate || '';
+    if (samplePointInput) samplePointInput.value = iface.sample_point || '';
+    if (dataSamplePointInput) dataSamplePointInput.value = iface.data_sample_point || '';
     purposeSel.value = iface.purpose || '';
     labelInput.value = iface.label || '';
     fdInput.checked = !!iface.fd;
@@ -278,6 +321,8 @@
       bitrate: parseInt(bitrateInput.value, 10) || 500000,
       fd: fdInput.checked,
       data_bitrate: dataBitrateInput.value ? parseInt(dataBitrateInput.value, 10) : null,
+      sample_point: samplePointInput && samplePointInput.value ? parseFloat(samplePointInput.value) : null,
+      data_sample_point: dataSamplePointInput && dataSamplePointInput.value ? parseFloat(dataSamplePointInput.value) : null,
       purpose: purposeSel.value,
       label: labelInput.value.trim(),
     };

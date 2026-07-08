@@ -46,6 +46,10 @@ fi
 # but CAN-FD (which needs tight timing) fails. Some board revisions use 20 MHz;
 # set CAN_OSCILLATOR=20000000 if FD will not come up.
 CAN_OSCILLATOR="${CAN_OSCILLATOR:-40000000}"
+# Optional bit-timing sample points (0..1), to match a bus that needs a specific
+# one. Empty lets the driver auto-pick.
+CAN_SAMPLE_POINT="${CAN_SAMPLE_POINT:-}"
+CAN_DSAMPLE_POINT="${CAN_DSAMPLE_POINT:-}"
 
 is_pi=false
 for f in /proc/device-tree/model /sys/firmware/devicetree/base/model; do
@@ -89,8 +93,14 @@ echo "Writing the CAN link-up service (bitrate ${CAN_BITRATE}, dbitrate ${CAN_DB
 # restart-ms auto-recovers the interface from a bus-off (matches the factory
 # bring-up), so a wiring glitch does not leave the bus down until a manual reset.
 CAN_RESTART_MS="${CAN_RESTART_MS:-1000}"
+SP_ARG=""
+[ -n "$CAN_SAMPLE_POINT" ] && SP_ARG="sample-point ${CAN_SAMPLE_POINT}"
 FD_ARGS=""
-[ "$CAN_FD" = "true" ] && FD_ARGS="dbitrate ${CAN_DBITRATE} fd on"
+if [ "$CAN_FD" = "true" ]; then
+  FD_ARGS="dbitrate ${CAN_DBITRATE}"
+  [ -n "$CAN_DSAMPLE_POINT" ] && FD_ARGS="${FD_ARGS} dsample-point ${CAN_DSAMPLE_POINT}"
+  FD_ARGS="${FD_ARGS} fd on"
+fi
 
 cat > /usr/local/sbin/autopi-can-up <<EOF
 #!/usr/bin/env bash
@@ -104,9 +114,9 @@ for iface in can0 can1; do
     continue
   fi
   ip link set "\$iface" down 2>/dev/null || true
-  if [ -n "${FD_ARGS}" ] && ip link set "\$iface" type can bitrate ${CAN_BITRATE} restart-ms ${CAN_RESTART_MS} ${FD_ARGS} 2>/dev/null; then
+  if [ -n "${FD_ARGS}" ] && ip link set "\$iface" type can bitrate ${CAN_BITRATE} ${SP_ARG} restart-ms ${CAN_RESTART_MS} ${FD_ARGS} 2>/dev/null; then
     mode="CAN-FD"
-  elif ip link set "\$iface" type can bitrate ${CAN_BITRATE} restart-ms ${CAN_RESTART_MS} 2>/dev/null; then
+  elif ip link set "\$iface" type can bitrate ${CAN_BITRATE} ${SP_ARG} restart-ms ${CAN_RESTART_MS} 2>/dev/null; then
     mode="classic (CAN-FD setup failed; check the CAN_OSCILLATOR value)"
   else
     echo "autopi-can-up: \$iface could not be configured (see: dmesg | grep mcp251)"
