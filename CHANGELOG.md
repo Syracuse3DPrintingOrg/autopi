@@ -8,6 +8,21 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **Visual rule builder for cross-triggering GPIO and CAN.** The Automation
+  page now builds WHEN/THEN logic rules by pointing and clicking instead of
+  hand-writing JSON. Name the inputs a rule can read (a decoded CAN signal,
+  a GPIO pin, or a constant), then build a condition (compare to a value,
+  on/off, a rising or falling edge, an on/off-delay timer, or a set-reset
+  latch) and pick the actions to run when it fires, including a CAN command,
+  a relay, an I2C device, or a Modbus register. Rules can be reordered,
+  enabled or disabled, and deleted, and a raw-JSON toggle is there for
+  anyone who wants to hand-edit a condition. The two headline moves: drive
+  an output when a CAN signal crosses a threshold, or send a CAN command
+  when a physical input pin changes. The logic runtime now keeps its scan
+  state (timers, edges, latches, rising/falling memory) alive between scans
+  instead of losing it every cycle, so those condition types actually work
+  on the live scan loop.
+
 - **CAN firewall and inhale/exhale.** Sit between two CAN buses and control
   traffic in flight: rules match by arbitration id (exact, mask, or range) and an
   optional decoded-signal comparison, and allow, block, rewrite (change a signal
