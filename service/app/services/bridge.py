@@ -52,12 +52,36 @@ def _token() -> str:
     return tok
 
 
+# The bridge version this build of the app expects. When the running bridge
+# reports an older version, it was updated on disk but not restarted, so it is
+# missing newer routes; the app tells the user to restart it.
+EXPECTED_BRIDGE_VERSION = 2
+
+
+def health_check() -> dict:
+    """Return the bridge's /health JSON (with its version), or {} if unreachable."""
+    try:
+        r = httpx.get(f"{BRIDGE_URL}/health", timeout=2)
+        if r.status_code == 200:
+            return r.json()
+    except (httpx.HTTPError, ValueError):
+        pass
+    return {}
+
+
 def available() -> bool:
     """Is a host-bridge answering right now?"""
-    try:
-        return httpx.get(f"{BRIDGE_URL}/health", timeout=2).status_code == 200
-    except httpx.HTTPError:
-        return False
+    return bool(health_check())
+
+
+def stale() -> bool:
+    """True when a bridge answers but is older than this app expects.
+
+    That means an update replaced the bridge file but the daemon was not
+    restarted, so it is still serving the old routes.
+    """
+    h = health_check()
+    return bool(h) and int(h.get("version", 0)) < EXPECTED_BRIDGE_VERSION
 
 
 def call(method: str, path: str, timeout: float = 30.0, json: Any = None) -> dict:

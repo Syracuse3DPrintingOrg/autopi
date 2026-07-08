@@ -6,6 +6,15 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ## [Unreleased]
 
+### Added
+
+- **The app now warns when the host-bridge is out of date.** The bridge reports
+  a version; the app compares it and, if the running bridge is older than
+  expected (updated on disk but not restarted, which broke Wi-Fi with a cryptic
+  error), shows a clear banner in Network settings telling you to run
+  `sudo systemctl restart autopi-host-bridge`. `GET /system/bridge` reports the
+  running and expected versions.
+
 ### Fixed
 
 - **Wi-Fi and other host features no longer show a bare "not found" after an

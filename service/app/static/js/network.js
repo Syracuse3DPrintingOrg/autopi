@@ -27,7 +27,28 @@
     fetch('network/status').then((r) => r.json()).then(renderStatus)
       .catch(() => { statusEl.textContent = 'Could not read network status.'; });
   }
+
+  // Warn up front when the host-bridge is reachable but out of date (updated on
+  // disk but not restarted), so Wi-Fi features are not just cryptically broken.
+  function checkBridge() {
+    fetch('system/bridge').then((r) => r.json()).then((d) => {
+      if (d && d.stale) {
+        const card = document.getElementById('wifi-card');
+        if (card && !document.getElementById('bridge-stale')) {
+          const b = document.createElement('div');
+          b.id = 'bridge-stale';
+          b.className = 'alert alert-warning py-2 small mt-2 mb-0';
+          b.innerHTML = 'The host-bridge is out of date (running v' + (d.version || '?') +
+            ', need v' + d.expected + '). Restart it on the device: ' +
+            '<code>sudo systemctl restart autopi-host-bridge</code>';
+          card.appendChild(b);
+        }
+      }
+    }).catch(() => {});
+  }
+
   loadStatus();
+  checkBridge();
 
   function selectNetwork(ssid) {
     ssidInput.value = ssid;

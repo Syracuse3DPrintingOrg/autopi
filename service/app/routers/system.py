@@ -28,8 +28,17 @@ def system_health():
 
 @router.get("/bridge")
 def bridge_status():
-    """Whether a host-bridge is reachable (drives the Updates UI)."""
-    return {"pi": bridge.is_raspberry_pi(), "bridge": bridge.available()}
+    """Host-bridge reachability and version, so the UI can flag a stale bridge."""
+    h = bridge.health_check()
+    is_stale = bridge.stale()
+    return {
+        "pi": bridge.is_raspberry_pi(),
+        "bridge": bool(h),
+        "version": h.get("version"),
+        "expected": bridge.EXPECTED_BRIDGE_VERSION,
+        "stale": is_stale,
+        "restart_hint": "sudo systemctl restart autopi-host-bridge" if is_stale else None,
+    }
 
 
 @router.post("/update")

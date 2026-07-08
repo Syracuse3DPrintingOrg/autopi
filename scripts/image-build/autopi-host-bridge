@@ -40,6 +40,12 @@ TOKEN_PATH = os.environ.get("AUTOPI_BRIDGE_TOKEN_PATH",
                             os.path.join(REPO_DIR, "service", "data", "bridge-token"))
 HOST, PORT = "127.0.0.1", 9299
 
+# Bump this whenever the bridge gains or changes routes. The app compares it to
+# the version it expects and tells the user to restart a stale bridge (a
+# restart is what actually loads a newly-installed bridge file). 2 = network
+# (Wi-Fi) routes added.
+BRIDGE_VERSION = 2
+
 # Grace: allow a tokenless request for this release so a bridge that updates
 # ahead of the app does not lock the fleet out mid-update. Flip to False one
 # release after every caller ships the token header.
@@ -310,7 +316,8 @@ ROUTES = {
     ("GET", "/network/status"): op_network_status,
     ("POST", "/network/wifi/scan"): op_network_scan,
     ("POST", "/network/wifi/connect"): op_network_connect,
-    ("GET", "/health"): lambda _body: {"ok": True, "bridge": "autopi", "ts": time.time()},
+    ("GET", "/health"): lambda _body: {"ok": True, "bridge": "autopi",
+                                       "version": BRIDGE_VERSION, "ts": time.time()},
 }
 
 
