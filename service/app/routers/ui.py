@@ -9,6 +9,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from .. import testseq
 from ..actions import registry
 from ..config import settings
+from ..services import can_interfaces, journal
 from ..services import layout as layout_svc
 from ..services import profiles as profiles_svc
 from ..services import ui_mode as ui_mode_svc
@@ -72,9 +73,7 @@ def _grid_dims(n: int) -> tuple[int, int]:
 def home(request: Request):
     if resolve_ui_mode(request) == ui_mode_svc.OPERATOR:
         return RedirectResponse("/operator")
-    if settings.start_page_enabled:
-        return RedirectResponse("/start")
-    return RedirectResponse("/layout-editor")
+    return RedirectResponse("/overview")
 
 
 @router.get("/operator", response_class=HTMLResponse)
@@ -99,6 +98,32 @@ def _vehicle_label(profile: dict | None) -> str:
         return ""
     parts = [str(profile[k]) for k in ("year", "make", "model") if profile.get(k)]
     return " ".join(parts) or (profile.get("name") or "")
+
+
+def _last_test_result() -> dict | None:
+    """The most recent (or in-progress) test run, if any sequence has been
+    run since the app started. Reads the module-level active runner, which
+    stays set after a run finishes so its report survives until the next
+    run replaces it."""
+    runner = testseq.get_active()
+    if runner is None:
+        return None
+    return runner.report()
+
+
+@router.get("/overview", response_class=HTMLResponse)
+def overview(request: Request):
+    """The builder's home base: orients a new user to what's set up and what
+    to do next, instead of dropping them straight on the key grid."""
+    active_id = profiles_svc.get_active_profile_id()
+    profile = profiles_svc.get_profile(active_id) if active_id is not None else None
+    interfaces = can_interfaces.list_interfaces()
+    recent_events = journal.recent(limit=8)
+    last_result = _last_test_result()
+    return templates.TemplateResponse(request, "overview.html", theme_context(
+        request, profile=profile, vehicle_label=_vehicle_label(profile),
+        interfaces=interfaces, recent_events=recent_events,
+        last_result=last_result, start_page_enabled=settings.start_page_enabled))
 
 
 @router.get("/start", response_class=HTMLResponse)

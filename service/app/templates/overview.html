@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+{% block title %}Overview: {{ app_name }}{% endblock %}
+{% block head %}
+<style>
+  .card { background: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color); margin-bottom: 1rem; }
+  .ov-tile { display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 0.5rem; padding: 1.4rem 0.75rem; border-radius: 0.75rem; border: 1px solid var(--bs-border-color);
+    background: var(--bs-tertiary-bg); color: var(--bs-body-color); text-align: center; height: 100%; }
+  .ov-tile:hover { filter: brightness(1.1); border-color: var(--bs-primary); text-decoration: none; color: var(--bs-body-color); }
+  .ov-tile .bi { font-size: 2rem; opacity: 0.9; }
+  .ov-tile .ov-tile-label { font-weight: 600; }
+  .ov-tile .ov-tile-sub { font-size: 0.78rem; color: var(--bs-secondary-color); }
+  .ov-dot { width: 0.6rem; height: 0.6rem; border-radius: 50%; display: inline-block; margin-right: 0.4rem; }
+  .ov-dot.up { background: var(--bs-success); }
+  .ov-dot.down { background: var(--bs-danger); }
+  .ov-dot.unknown { background: var(--bs-secondary-color); }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+</style>
+{% endblock %}
+{% block body %}
+<div class="container-fluid">
+  <h4 class="mb-3"><i class="bi bi-house-door me-1"></i>Overview</h4>
+
+  <div class="row">
+    <div class="col-lg-6">
+      <div class="card"><div class="card-body">
+        <h6><i class="bi bi-car-front me-1"></i>Active vehicle</h6>
+        {% if profile %}
+        <div class="fs-5 fw-semibold">{{ profile.name or vehicle_label or 'Vehicle' }}</div>
+        <div class="text-secondary small mb-2">
+          {{ vehicle_label }}{% if profile.vin %} &bull; VIN {{ profile.vin }}{% endif %}
+        </div>
+        {% else %}
+        <div class="text-secondary mb-2">No vehicle selected. Pick one to tie your CAN databases,
+          keys, and test sequences to it.</div>
+        {% endif %}
+        <div class="d-flex gap-2 flex-wrap">
+          <a class="btn btn-sm btn-outline-primary" href="ui/profiles">
+            <i class="bi bi-car-front me-1"></i>{% if profile %}Switch vehicle{% else %}Pick a vehicle{% endif %}</a>
+          <a class="btn btn-sm btn-outline-secondary" href="can">
+            <i class="bi bi-diagram-3 me-1"></i>Open CAN databases</a>
+        </div>
+      </div></div>
+    </div>
+
+    <div class="col-lg-6">
+      <div class="card"><div class="card-body">
+        <h6><i class="bi bi-hdd-network me-1"></i>CAN interfaces</h6>
+        <p class="small text-secondary mb-2">Live status of the channels configured on the CAN page.</p>
+        <div id="ov-interfaces">
+          {% if interfaces %}
+          <div class="d-flex flex-column gap-2">
+            {% for iface in interfaces %}
+            <div class="d-flex align-items-center justify-content-between">
+              <div>
+                <span class="ov-dot unknown" data-ov-status="{{ iface.id }}"></span>
+                <span class="fw-semibold">{{ iface.label or iface.id }}</span>
+                <span class="text-secondary small">&middot; {{ iface.id }} &middot; {{ iface.backend }}</span>
+              </div>
+              <span class="small text-secondary" data-ov-status-text="{{ iface.id }}">checking&hellip;</span>
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <div class="text-secondary small">No CAN interfaces configured yet.</div>
+          {% endif %}
+        </div>
+        <a class="btn btn-sm btn-outline-secondary mt-2" href="can">
+          <i class="bi bi-gear me-1"></i>Set up interfaces</a>
+      </div></div>
+    </div>
+  </div>
+
+  <div class="card"><div class="card-body">
+    <h6 class="mb-3"><i class="bi bi-grid-3x3-gap me-1"></i>What do you want to do?</h6>
+    <div class="row g-3">
+      <div class="col-6 col-md-4 col-lg-2">
+        <a class="ov-tile" href="ui/can-monitor">
+          <i class="bi bi-activity"></i>
+          <span class="ov-tile-label">Monitor</span>
+          <span class="ov-tile-sub">Watch live CAN traffic</span>
+        </a>
+      </div>
+      <div class="col-6 col-md-4 col-lg-2">
+        <a class="ov-tile" href="can">
+          <i class="bi bi-diagram-3"></i>
+          <span class="ov-tile-label">CAN console</span>
+          <span class="ov-tile-sub">Databases, send &amp; decode</span>
+        </a>
+      </div>
+      <div class="col-6 col-md-4 col-lg-2">
+        <a class="ov-tile" href="layout-editor">
+          <i class="bi bi-columns-gap"></i>
+          <span class="ov-tile-label">Arrange keys</span>
+          <span class="ov-tile-sub">Layout editor</span>
+        </a>
+      </div>
+      <div class="col-6 col-md-4 col-lg-2">
+        <a class="ov-tile" href="ui/tests">
+          <i class="bi bi-list-check"></i>
+          <span class="ov-tile-label">Run a test</span>
+          <span class="ov-tile-sub">Build or run a sequence</span>
+        </a>
+      </div>
+      <div class="col-6 col-md-4 col-lg-2">
+        <a class="ov-tile" href="ui/can-sim">
+          <i class="bi bi-broadcast"></i>
+          <span class="ov-tile-label">Import a DBC</span>
+          <span class="ov-tile-sub">Databases &amp; simulate</span>
+        </a>
+      </div>
+      <div class="col-6 col-md-4 col-lg-2">
+        <a class="ov-tile" href="operator">
+          <i class="bi bi-hand-index-thumb"></i>
+          <span class="ov-tile-label">Operator screen</span>
+          <span class="ov-tile-sub">Switch to the touch screen</span>
+        </a>
+      </div>
+    </div>
+  </div></div>
+
+  <div class="row">
+    <div class="col-lg-7">
+      <div class="card"><div class="card-body">
+        <h6><i class="bi bi-journal-text me-1"></i>Recent activity</h6>
+        {% if recent_events %}
+        <ul class="list-group list-group-flush">
+          {% for ev in recent_events %}
+          <li class="list-group-item bg-transparent px-0 small">
+            <span class="text-secondary mono">{{ ev.ts }}</span>
+            <span class="ms-2">{{ ev.message }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <div class="text-secondary small">Nothing logged yet. Actions, CAN traffic of interest, and test
+          runs will show up here.</div>
+        {% endif %}
+        <a class="btn btn-sm btn-outline-secondary mt-2" href="ui/logs">
+          <i class="bi bi-journal-text me-1"></i>Full log</a>
+      </div></div>
+    </div>
+
+    <div class="col-lg-5">
+      <div class="card"><div class="card-body">
+        <h6><i class="bi bi-clipboard2-check me-1"></i>Last test result</h6>
+        {% if last_result %}
+        <div class="d-flex align-items-center gap-2 mb-2">
+          {% if last_result.state == 'done' and last_result.failed == 0 %}
+          <i class="bi bi-check-circle-fill text-success fs-4"></i>
+          <span class="fw-semibold">Passed</span>
+          {% elif last_result.state == 'done' %}
+          <i class="bi bi-x-circle-fill text-danger fs-4"></i>
+          <span class="fw-semibold">Failed</span>
+          {% else %}
+          <i class="bi bi-hourglass-split text-warning fs-4"></i>
+          <span class="fw-semibold">In progress</span>
+          {% endif %}
+        </div>
+        <div class="small">{{ last_result.sequence_name or 'Unnamed sequence' }}</div>
+        <div class="small text-secondary">{{ last_result.passed }} passed, {{ last_result.failed }} failed,
+          {{ last_result.skipped }} skipped of {{ last_result.total }} steps</div>
+        {% else %}
+        <div class="text-secondary small">No test has been run yet.</div>
+        {% endif %}
+        <a class="btn btn-sm btn-outline-primary mt-2" href="ui/tests">
+          <i class="bi bi-play-fill me-1"></i>Run a test</a>
+      </div></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  // Live availability for each configured CAN interface: reuses the same
+  // per-interface status endpoint the CAN page's interface editor uses.
+  document.querySelectorAll('[data-ov-status]').forEach((dot) => {
+    const id = dot.getAttribute('data-ov-status');
+    const label = document.querySelector('[data-ov-status-text="' + id + '"]');
+    fetch('can/interfaces/config/' + encodeURIComponent(id) + '/status')
+      .then((r) => r.json())
+      .then((d) => {
+        dot.className = 'ov-dot ' + (d.available ? 'up' : 'down');
+        if (label) label.textContent = d.available ? 'up' : 'down';
+      })
+      .catch(() => {
+        dot.className = 'ov-dot down';
+        if (label) label.textContent = 'unavailable';
+      });
+  });
+</script>
+{% endblock %}

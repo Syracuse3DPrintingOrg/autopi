@@ -8,6 +8,12 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **A builder overview dashboard.** Opening the app on a computer now lands on an
+  overview that orients you: the active vehicle, your CAN interfaces and their
+  status, quick tiles for the main jobs (monitor, console, arrange keys, run a
+  test, import a DBC, operator screen), and recent activity with the last test
+  result. The navigation was tidied to follow the setup flow.
+
 - **Alfa Romeo Giulia (2024) sample on a real open-source DBC.** A third vehicle
   example uses the real fca_giorgio.dbc from opendbc (MIT), covering the
   Stellantis Giorgio platform (Alfa Romeo Giulia and Stelvio, Maserati Grecale).
