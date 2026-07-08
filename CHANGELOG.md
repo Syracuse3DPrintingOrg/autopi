@@ -8,6 +8,16 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Fixed
 
+- **Waveshare 2-CH CAN FD HAT second channel: use the correct SPI bus (Mode A).**
+  Per the factory wiki, the HAT's default Mode A puts the two channels on two
+  independent SPI buses: channel 0 on SPI0-0 (interrupt 25) and channel 1 on
+  SPI1-0 (interrupt 24) with spi1-3cs. The setup had the second controller on
+  spi0-1, where no chip exists in Mode A, so it read all zeros and never probed.
+  The setup now configures Mode A by default (and a CAN_MODE=b option for boards
+  with the resistors moved to single-SPI mode).
+
+### Fixed
+
 - **Waveshare 2-CH CAN FD HAT second channel now initializes.** The CAN setup used
   the wrong interrupt GPIO for the second channel (24, which is the board's SPI1
   mode), so only the first channel came up. It now uses the factory SPI0-mode pin

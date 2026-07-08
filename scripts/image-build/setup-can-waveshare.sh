@@ -18,20 +18,29 @@
 #   CAN_BITRATE       arbitration-phase bitrate, bit/s (default 500000)
 #   CAN_DBITRATE      CAN-FD data-phase bitrate, bit/s (default 2000000)
 #   CAN_FD            "true" to bring the interfaces up in FD mode (default true)
+#   CAN_MODE          Waveshare board mode: "a" (factory default) or "b"
 #   CAN0_INTERRUPT    GPIO the first MCP2518FD's INT line is wired to (default 25)
-#   CAN1_INTERRUPT    GPIO the second MCP2518FD's INT line is wired to (default 13)
+#   CAN1_INTERRUPT    GPIO the second MCP2518FD's INT line is wired to
 #
-# The defaults match the Waveshare 2-CH CAN FD HAT in its SPI0 mode (the factory
-# config: spi0-0 interrupt 25, spi0-1 interrupt 13). The board's other mode wires
-# the channels to SPI1 with interrupts 24 and 23; if yours is set that way, see
-# the note printed at the end.
+# Per the Waveshare 2-CH CAN FD HAT wiki, Mode A is the factory default and the
+# two channels use two independent SPI buses: channel 0 on SPI0-0 (interrupt 25)
+# and channel 1 on SPI1-0 (interrupt 24), with spi1-3cs enabling SPI1. Mode B
+# (needs the board's 0-ohm resistors moved) puts both on SPI0: spi0-0 (25) and
+# spi0-1 (13). This script defaults to Mode A. If the second channel does not
+# appear, the board is likely in the other mode; set CAN_MODE accordingly.
 set -uo pipefail
 
+CAN_MODE="${CAN_MODE:-a}"
 CAN_BITRATE="${CAN_BITRATE:-500000}"
 CAN_DBITRATE="${CAN_DBITRATE:-2000000}"
 CAN_FD="${CAN_FD:-true}"
 CAN0_INTERRUPT="${CAN0_INTERRUPT:-25}"
-CAN1_INTERRUPT="${CAN1_INTERRUPT:-13}"
+# Channel 1's default interrupt depends on the mode: SPI1-0 uses 24, spi0-1 uses 13.
+if [ "$CAN_MODE" = "b" ]; then
+  CAN1_INTERRUPT="${CAN1_INTERRUPT:-13}"
+else
+  CAN1_INTERRUPT="${CAN1_INTERRUPT:-24}"
+fi
 # The MCP2518FD's crystal. The Waveshare 2-Ch CAN-FD HAT uses 40 MHz. This must
 # match the board or the bit timing is wrong: classic CAN may still limp along,
 # but CAN-FD (which needs tight timing) fails. Some board revisions use 20 MHz;
@@ -61,13 +70,20 @@ add_config_line() {
   grep -qxF "$line" "$CONFIG_TXT" || echo "$line" >> "$CONFIG_TXT"
 }
 
-echo "Enabling SPI and the mcp251xfd overlay in ${CONFIG_TXT}"
+echo "Enabling SPI and the mcp251xfd overlay in ${CONFIG_TXT} (mode ${CAN_MODE})"
 add_config_line "dtparam=spi=on"
-# Replace any prior mcp251xfd lines so re-running updates the oscillator or the
-# interrupt pins cleanly instead of leaving stale, conflicting overlays behind.
-sed -i '/^dtoverlay=mcp251xfd/d' "$CONFIG_TXT"
+# Replace any prior mcp251xfd/spi1 lines so re-running switches mode or pins
+# cleanly instead of leaving stale, conflicting overlays behind.
+sed -i '/^dtoverlay=mcp251xfd/d; /^dtoverlay=spi1-3cs/d' "$CONFIG_TXT"
 echo "dtoverlay=mcp251xfd,spi0-0,interrupt=${CAN0_INTERRUPT},oscillator=${CAN_OSCILLATOR}" >> "$CONFIG_TXT"
-echo "dtoverlay=mcp251xfd,spi0-1,interrupt=${CAN1_INTERRUPT},oscillator=${CAN_OSCILLATOR}" >> "$CONFIG_TXT"
+if [ "$CAN_MODE" = "b" ]; then
+  # Mode B: both controllers on SPI0 (needs the board's 0-ohm resistors moved).
+  echo "dtoverlay=mcp251xfd,spi0-1,interrupt=${CAN1_INTERRUPT},oscillator=${CAN_OSCILLATOR}" >> "$CONFIG_TXT"
+else
+  # Mode A (factory default): the second controller is on SPI1, so enable SPI1.
+  add_config_line "dtoverlay=spi1-3cs"
+  echo "dtoverlay=mcp251xfd,spi1-0,interrupt=${CAN1_INTERRUPT},oscillator=${CAN_OSCILLATOR}" >> "$CONFIG_TXT"
+fi
 
 echo "Writing the CAN link-up service (bitrate ${CAN_BITRATE}, dbitrate ${CAN_DBITRATE}, fd=${CAN_FD})"
 # restart-ms auto-recovers the interface from a bus-off (matches the factory
@@ -132,7 +148,7 @@ echo "CAN setup complete. A reboot is required if this is the first run."
 echo
 echo "--- CAN diagnostics ---"
 echo "config.txt overlay lines:"
-grep -E '^dtparam=spi|^dtoverlay=mcp251xfd' "$CONFIG_TXT" | sed 's/^/  /'
+grep -E '^dtparam=spi|^dtoverlay=(mcp251xfd|spi1-3cs)' "$CONFIG_TXT" | sed 's/^/  /'
 echo "CAN interfaces present:"
 ls -1 /sys/class/net/ 2>/dev/null | grep -E '^can[0-9]+$' | sed 's/^/  /' || echo "  none yet (reboot needed)"
 echo "mcp251xfd kernel messages (last 12):"
@@ -140,10 +156,11 @@ dmesg 2>/dev/null | grep -i mcp251 | tail -12 | sed 's/^/  /' || echo "  none"
 echo
 echo "If one channel is missing while the other works, the second controller did not"
 echo "probe (dmesg shows 'Failed to read Oscillator Configuration Register'):"
-echo "  - these defaults are the Waveshare 2-CH CAN FD HAT SPI0 mode (spi0-0 int 25,"
-echo "    spi0-1 int ${CAN1_INTERRUPT}). If the board is jumpered to its SPI1 mode, the channels"
-echo "    are on spi1 with interrupts 24 and 23 (dtoverlay=spi1-3cs); see the Waveshare"
-echo "    wiki 2-CH_CAN_FD_HAT and set CAN0_INTERRUPT/CAN1_INTERRUPT to match."
+echo "  - this ran in mode ${CAN_MODE}. Mode A (factory default) puts channel 1 on SPI1"
+echo "    (spi1-0, int 24, with spi1-3cs); Mode B puts it on SPI0 (spi0-1, int 13) and"
+echo "    needs the board's 0-ohm resistors moved. If the second channel is absent, the"
+echo "    board is likely in the other mode: re-run with the opposite CAN_MODE, e.g."
+echo "    sudo CAN_MODE=$([ "$CAN_MODE" = a ] && echo b || echo a) bash \$0   # then reboot"
 echo "  - confirm the HAT is seated and no header pin is bent."
 echo "If CAN-FD will not come up but classic does, the oscillator is likely wrong:"
 echo "  sudo CAN_OSCILLATOR=20000000 bash \$0   # then reboot"
