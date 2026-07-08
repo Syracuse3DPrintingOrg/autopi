@@ -162,4 +162,4 @@ def encode(dbc_text: str, message: str | int, signals: dict[str, Any],
     # strict=False: real DBCs (e.g. opendbc) often carry placeholder [0|1]
     # signal ranges that would wrongly reject a valid physical value.
     data = list(bytes(db.encode_message(msg.frame_id, full, strict=False)))
-    return checksum_mod.finalize(checksum, data)
+    return checksum_mod.finalize(checksum, data, address=msg.frame_id)

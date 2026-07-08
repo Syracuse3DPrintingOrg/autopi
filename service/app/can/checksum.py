@@ -58,18 +58,54 @@ def chrysler_checksum(data: bytes) -> int:
     return (~checksum) & 0xFF
 
 
-def finalize(algorithm: str, data: list[int]) -> list[int]:
+def _gen_crc8_table(poly: int) -> list[int]:
+    table = []
+    for i in range(256):
+        crc = i
+        for _ in range(8):
+            crc = ((crc << 1) ^ poly) & 0xFF if crc & 0x80 else (crc << 1) & 0xFF
+        table.append(crc)
+    return table
+
+
+# SAE J1850 CRC-8 lookup (poly 0x1D), matching opendbc's CRC8J1850.
+CRC8J1850 = _gen_crc8_table(0x1D)
+
+# Per-address final XOR for the FCA Giorgio checksum (opendbc fca_giorgio_checksum):
+# the three special addresses are the EPS messages (0xDE/0x106/0x122), all else 0x0A.
+_GIORGIO_XOR = {0xDE: 0x10, 0x106: 0xF6, 0x122: 0xF1}
+
+
+def fca_giorgio_checksum(address: int, data: bytes) -> int:
+    """FCA Giorgio checksum (opendbc fca_giorgio_checksum), MIT.
+
+    A J1850 CRC-8 over all bytes except the last (the checksum byte), then a
+    final XOR that depends on the message's arbitration id. Alfa Romeo Giulia /
+    Stelvio and Maserati Grecale (the Giorgio platform) use this.
+    """
+    crc = 0
+    for i in range(len(data) - 1):
+        crc ^= data[i]
+        crc = CRC8J1850[crc]
+    return crc ^ _GIORGIO_XOR.get(address, 0x0A)
+
+
+def finalize(algorithm: str, data: list[int], address: int | None = None) -> list[int]:
     """Apply a checksum algorithm to a frame's bytes in place (returns it).
 
     The counter, if any, must already be set in ``data`` (encode does that from
-    the COUNTER signal). This only recomputes the checksum byte.
+    the COUNTER signal). This only recomputes the checksum byte. ``address`` is
+    the message arbitration id, needed by algorithms whose result depends on it
+    (fca_giorgio).
     """
     if not algorithm or not data:
         return data
     out = list(data)
     if algorithm == "chrysler":
         out[-1] = chrysler_checksum(bytes(out))
+    elif algorithm == "fca_giorgio":
+        out[-1] = fca_giorgio_checksum(int(address or 0), bytes(out))
     return out
 
 
-SUPPORTED = ("chrysler",)
+SUPPORTED = ("chrysler", "fca_giorgio")

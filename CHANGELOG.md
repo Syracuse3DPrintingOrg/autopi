@@ -8,6 +8,14 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **Alfa Romeo Giulia (2024) sample on a real open-source DBC.** A third vehicle
+  example uses the real fca_giorgio.dbc from opendbc (MIT), covering the
+  Stellantis Giorgio platform (Alfa Romeo Giulia and Stelvio, Maserati Grecale).
+  Monitoring is fully real: connect over the HAT and the actual wheel speeds,
+  steering angle, engine RPM, and ACC HUD speed decode from the bus. Its
+  checksum-protected messages send a valid J1850 counter and checksum so a real
+  module accepts them.
+
 - **Two ways to use it: an operator screen and a builder.** The Raspberry Pi
   runs standalone with a simple, large-touch Operator screen (the active vehicle,
   its key grid, and a full-screen test runner with pass/fail confirms), while a
