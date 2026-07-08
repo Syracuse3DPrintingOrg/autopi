@@ -13,6 +13,8 @@ from .routers import can_interfaces as can_interfaces_router
 from .routers import can_monitor as can_monitor_router
 from .routers import can_sim as can_sim_router
 from .routers import db as db_router
+from .routers import diagnostics as diagnostics_router
+from .routers import examples as examples_router
 from .routers import layout as layout_router
 from .routers import logic as logic_router
 from .routers import network as network_router
@@ -78,6 +80,8 @@ app.include_router(can_dbc_router.router)
 app.include_router(can_sim_router.router)
 app.include_router(can_monitor_router.router)
 app.include_router(can_interfaces_router.router)
+app.include_router(diagnostics_router.router)
+app.include_router(examples_router.router)
 app.include_router(profiles_router.router)
 app.include_router(network_router.router)
 

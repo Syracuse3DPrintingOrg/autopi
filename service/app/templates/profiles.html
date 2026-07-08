@@ -15,6 +15,11 @@
 {% endblock %}
 {% block body %}
 <div class="container-fluid">
+  <div id="examples" class="editor-card mb-3 d-none">
+    <div class="fw-semibold mb-2"><i class="bi bi-box-seam me-1"></i>Example test benches</div>
+    <div id="examples-list" class="d-flex flex-column gap-2"></div>
+    <div id="examples-status" class="small mt-2 text-secondary"></div>
+  </div>
   <div class="row g-3">
     <div class="col-lg-7">
       <div class="editor-card">
@@ -160,6 +165,22 @@
     activateBtn.addEventListener('click', () => setActive(p.id));
     actions.appendChild(activateBtn);
 
+    if (p.has_bundle) {
+      const recallBtn = document.createElement('button');
+      recallBtn.className = 'btn btn-sm btn-outline-success';
+      recallBtn.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i>Recall';
+      recallBtn.title = "Recall this vehicle's saved setup: databases, keys, layout, and simulation";
+      recallBtn.addEventListener('click', () => applyProfile(p.id));
+      actions.appendChild(recallBtn);
+    }
+
+    const saveBtn = document.createElement('button');
+    saveBtn.className = 'btn btn-sm btn-outline-secondary';
+    saveBtn.innerHTML = '<i class="bi bi-save"></i>';
+    saveBtn.title = 'Save the current setup (databases, keys, layout, simulation) into this profile';
+    saveBtn.addEventListener('click', () => captureProfile(p.id));
+    actions.appendChild(saveBtn);
+
     const editBtn = document.createElement('button');
     editBtn.className = 'btn btn-sm btn-outline-secondary';
     editBtn.innerHTML = '<i class="bi bi-pencil"></i>';
@@ -176,6 +197,20 @@
     return row;
   }
 
+  async function applyProfile(id) {
+    statusEl.textContent = 'Recalling this vehicle setup…';
+    const r = await fetch('/profiles/' + id + '/apply', { method: 'POST' });
+    const d = await r.json();
+    statusEl.textContent = d.message || d.error || 'Recalled.';
+    load();
+  }
+  async function captureProfile(id) {
+    const r = await fetch('/profiles/' + id + '/capture', { method: 'POST' });
+    const d = await r.json();
+    statusEl.textContent = d.ok ? ('Saved setup to this profile: ' + JSON.stringify(d.counts)) : 'Save failed';
+    load();
+  }
+
   async function load() {
     const resp = await fetch('/profiles');
     const data = await resp.json();
@@ -186,6 +221,9 @@
       return;
     }
     emptyEl.classList.add('d-none');
+    // Enrich each profile with whether it has a saved bundle to recall.
+    await Promise.all(data.profiles.map((p) =>
+      fetch('/profiles/' + p.id + '/bundle').then((r) => r.json()).then((b) => { p.has_bundle = b.has_bundle; }).catch(() => {})));
     data.profiles.forEach((p) => listEl.appendChild(renderRow(p)));
   }
 
@@ -234,7 +272,36 @@
 
   cancelBtn.addEventListener('click', resetForm);
 
+  async function loadExamples() {
+    try {
+      const d = await (await fetch('/examples')).json();
+      const wrap = document.getElementById('examples');
+      const list = document.getElementById('examples-list');
+      if (!d.examples || !d.examples.length) return;
+      wrap.classList.remove('d-none');
+      list.innerHTML = '';
+      d.examples.forEach((ex) => {
+        const row = document.createElement('div');
+        row.className = 'd-flex justify-content-between align-items-center gap-2';
+        row.innerHTML = '<div><strong>' + ex.name + '</strong><div class="small text-secondary">' + ex.description + '</div></div>';
+        const btn = document.createElement('button');
+        btn.className = 'btn btn-sm btn-primary flex-shrink-0';
+        btn.textContent = ex.loaded ? 'Reload' : 'Load';
+        btn.addEventListener('click', async () => {
+          document.getElementById('examples-status').textContent = 'Loading ' + ex.name + '…';
+          const r = await fetch('/examples/' + ex.key + '/load', { method: 'POST' });
+          const res = await r.json();
+          document.getElementById('examples-status').textContent = res.message || (res.detail || 'Loaded.');
+          load(); loadExamples();
+        });
+        row.appendChild(btn);
+        list.appendChild(row);
+      });
+    } catch (e) { /* examples are optional */ }
+  }
+
   load();
+  loadExamples();
 })();
 </script>
 {% endblock %}

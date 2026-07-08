@@ -100,3 +100,9 @@ def can_monitor_page(request: Request):
 def actions_page(request: Request):
     # The library loads drivers, actions, and CAN databases over the API.
     return templates.TemplateResponse(request, "actions.html", theme_context(request))
+
+
+@router.get("/ui/diagnostics", response_class=HTMLResponse)
+def diagnostics_page(request: Request):
+    # UDS and OBD-II reads, sent and decoded over the /diag API.
+    return templates.TemplateResponse(request, "diagnostics.html", theme_context(request))

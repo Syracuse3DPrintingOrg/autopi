@@ -88,3 +88,27 @@ def set_active_profile(body: ActiveIn):
     except ValueError as exc:
         raise HTTPException(404, str(exc))
     return {"active_id": body.profile_id, "profile": profile}
+
+
+@router.get("/{profile_id}/bundle")
+def profile_bundle_status(profile_id: int):
+    from ..services import profile_bundle
+    return {"has_bundle": profile_bundle.has_bundle(profile_id)}
+
+
+@router.post("/{profile_id}/capture")
+def profile_capture(profile_id: int):
+    """Save the current setup (databases, actions, layout, simulation) to this profile."""
+    from ..services import profile_bundle
+    if profiles_svc.get_profile(profile_id) is None:
+        raise HTTPException(404, "No such profile")
+    return profile_bundle.capture(profile_id)
+
+
+@router.post("/{profile_id}/apply")
+def profile_apply(profile_id: int):
+    """Recall this profile's saved setup and make it the active vehicle."""
+    from ..services import profile_bundle
+    if profiles_svc.get_profile(profile_id) is None:
+        raise HTTPException(404, "No such profile")
+    return profile_bundle.apply(profile_id)

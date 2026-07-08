@@ -8,6 +8,23 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **DT15 case study: a full RAM DT bench you can load in one click.** A complete
+  worked example on the Vehicles page loads the DT15 profile (2025 RAM DT, VIN,
+  Atlantis High) with media/ICS keys, steering-wheel media keys, an adjustable
+  vehicle-speed signal, a PNDL (P/R/N/D/L) selector, an ignition (Off/Accy/Run/
+  Start) selector, a Stream Deck/start layout, and a running instrument-cluster
+  simulation. The selectors update the live periodic broadcast, so a connected
+  cluster follows the gear, ignition, and speed you pick. See
+  docs/case-study-dt15.md.
+- **A vehicle is a recallable test bench.** Save the whole current setup
+  (databases, keys, layout, and simulation) into a profile, and recall it in one
+  click from the Vehicles page. Switch vehicles by recalling; the databases are
+  matched by name and remapped so keys keep working.
+- **Automotive diagnostics (ISO-TP, UDS, OBD-II).** A Diagnostics page runs UDS
+  services (session, tester present, read/write DID, routine control, read DTCs)
+  and OBD-II PID reads over ISO-TP, built on the MIT libraries can-isotp and
+  udsoncan, simulating when no bus is present.
+
 - **Multiple CAN interfaces: PCAN, Vector, and a virtual bus.** Beyond the
   Waveshare SocketCAN default, AutoPi can now talk to PEAK PCAN and Vector
   hardware through python-can's backends, and a built-in virtual bus lets you

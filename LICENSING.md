@@ -48,6 +48,8 @@ controller (`streamdeck/requirements.txt`):
 | gpiozero | BSD-3-Clause | Permissive | GPIO |
 | smbus2 | MIT | Permissive | I2C device driver (Phase 3) |
 | pymodbus | BSD-3-Clause | Permissive | Modbus TCP driver (Phase 3) |
+| can-isotp | MIT | Permissive | ISO-TP transport (diagnostics) |
+| udsoncan | MIT | Permissive | UDS client (diagnostics) |
 | lgpio | Unlicense (public domain) | Permissive | GPIO pin backend |
 | streamdeck (python-elgato-streamdeck) | MIT | Permissive | Deck driver |
 | Pillow | MIT-CMU (HPND) | Permissive | Key image rendering |
