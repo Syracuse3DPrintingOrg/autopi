@@ -225,13 +225,19 @@ def sniff(interface_id: str, seconds: float = 3.0):
     entry = can_interfaces.get_interface(interface_id)
     if entry is None:
         raise HTTPException(404, "No such configured interface")
-    from ..can import get_channel
+    from ..can import open_channel
 
     kwargs = {"bitrate": entry["bitrate"], "fd": entry["fd"]}
     if entry.get("data_bitrate"):
         kwargs["data_bitrate"] = entry["data_bitrate"]
-    provider = get_channel(entry["channel"], backend=entry["backend"], **kwargs)
+    # A dedicated socket, so a short listen never competes with the live Monitor
+    # over one shared socket and never inherits a socket left stale by a down/up.
+    provider = open_channel(entry["channel"], backend=entry["backend"], **kwargs)
     if not provider.available:
+        try:
+            provider.close()
+        except Exception:
+            pass
         return {"ok": False, "error": getattr(provider, "last_error", None)
                 or "Interface is not available. Bring it up first."}
     seconds = max(0.5, min(float(seconds), 10.0))
@@ -239,15 +245,21 @@ def sniff(interface_id: str, seconds: float = 3.0):
     count = 0
     ids: dict[str, int] = {}
     samples: list[str] = []
-    while time.monotonic() < deadline:
-        frame = provider.recv(timeout=0.3)
-        if frame is None:
-            continue
-        count += 1
-        key = hex(frame.arbitration_id)
-        ids[key] = ids.get(key, 0) + 1
-        if len(samples) < 8:
-            samples.append(frame.format())
+    try:
+        while time.monotonic() < deadline:
+            frame = provider.recv(timeout=0.3)
+            if frame is None:
+                continue
+            count += 1
+            key = hex(frame.arbitration_id)
+            ids[key] = ids.get(key, 0) + 1
+            if len(samples) < 8:
+                samples.append(frame.format())
+    finally:
+        try:
+            provider.close()
+        except Exception:
+            pass
     return {"ok": True, "channel": entry["channel"], "seconds": seconds,
             "frames": count, "unique_ids": len(ids),
             "ids": sorted(ids.keys())[:32], "samples": samples}

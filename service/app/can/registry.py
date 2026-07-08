@@ -108,6 +108,18 @@ def get_channel(channel: str, backend: str = "socketcan", **kwargs: Any) -> CanP
     return provider
 
 
+def open_channel(channel: str, backend: str = "socketcan", **kwargs: Any) -> CanProvider:
+    """A fresh, un-cached provider with its own socket, resolving fd/bitrate from
+    the configured interface like get_channel. Use this for a short read (Listen,
+    Snapshot, a one-off capture) so it never competes with the live Monitor over
+    one shared socket, and never inherits a socket left stale by an interface
+    down/up. SocketCAN delivers every frame to each open socket, so a dedicated
+    socket always sees the traffic. The caller MUST close it when done."""
+    settings = _configured_settings(channel, backend)
+    settings.update({k: v for k, v in kwargs.items() if v is not None})
+    return create_provider(backend, channel, **settings)
+
+
 def reset_channels() -> None:
     """Close and drop every cached provider. Mainly for tests."""
     for provider in _channels.values():

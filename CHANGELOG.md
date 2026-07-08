@@ -6,6 +6,15 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Listen and Signal Finder no longer intermittently see "no frames" on a busy
+  bus.** The Monitor, the Listen diagnostic, and captures were sharing one socket
+  per channel, so a short read could come back empty when the Monitor was open or
+  after the interface had been brought down and up. Each short read and each
+  capture now uses its own dedicated socket (SocketCAN delivers every frame to
+  each open socket), so they always see the traffic and never compete.
+
 ### Added
 
 - **CAN bit-timing sample points, and a live error meter.** Each interface can now

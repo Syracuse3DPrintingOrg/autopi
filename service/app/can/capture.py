@@ -25,7 +25,7 @@ from typing import Any, Callable
 from ..config import settings
 from ..services.state import StateFile
 from .base import Frame, parse_data_bytes
-from .registry import get_channel
+from .registry import get_channel, open_channel
 
 log = logging.getLogger(__name__)
 
@@ -150,7 +150,10 @@ class InhaleSession:
                  channel_factory: Callable[..., Any] | None = None) -> None:
         self.channel = channel
         self.backend = backend
-        self._get_channel = channel_factory or get_channel
+        # A dedicated socket per inhale, so a capture never competes with the
+        # live Monitor over one shared socket (SocketCAN copies every frame to
+        # each open socket). Closed when the loop ends.
+        self._get_channel = channel_factory or open_channel
         self._lock = threading.Lock()
         self._thread: threading.Thread | None = None
         self._running = False
@@ -212,6 +215,15 @@ class InhaleSession:
 
     def _loop(self) -> None:
         provider = self._get_channel(self.channel, backend=self.backend)
+        try:
+            self._run_capture(provider)
+        finally:
+            try:
+                provider.close()
+            except Exception:
+                pass
+
+    def _run_capture(self, provider) -> None:
         while self._running:
             try:
                 frame = provider.recv(timeout=RECV_TIMEOUT)

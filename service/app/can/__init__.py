@@ -17,6 +17,7 @@ from .pcan import PcanProvider
 from .registry import (
     create_provider,
     get_channel,
+    open_channel,
     list_backends,
     register_provider,
     reset_channels,
@@ -39,6 +40,7 @@ __all__ = [
     "build_frame",
     "create_provider",
     "get_channel",
+    "open_channel",
     "list_backends",
     "parse_arbitration_id",
     "parse_data_bytes",
