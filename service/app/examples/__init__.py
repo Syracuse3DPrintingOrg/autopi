@@ -2,6 +2,9 @@
 from . import dt15  # noqa: F401
 from . import ram1500  # noqa: F401
 from . import giorgio  # noqa: F401
+from . import toyota_rav4  # noqa: F401
+from . import honda_civic  # noqa: F401
+from . import hyundai_elantra  # noqa: F401
 
 EXAMPLES = {
     "dt15": {
@@ -21,5 +24,23 @@ EXAMPLES = {
         "description": giorgio.DESCRIPTION,
         "load": giorgio.load,
         "is_loaded": giorgio.is_loaded,
+    },
+    "toyota_rav4": {
+        "name": toyota_rav4.NAME,
+        "description": toyota_rav4.DESCRIPTION,
+        "load": toyota_rav4.load,
+        "is_loaded": toyota_rav4.is_loaded,
+    },
+    "honda_civic": {
+        "name": honda_civic.NAME,
+        "description": honda_civic.DESCRIPTION,
+        "load": honda_civic.load,
+        "is_loaded": honda_civic.is_loaded,
+    },
+    "hyundai_elantra": {
+        "name": hyundai_elantra.NAME,
+        "description": hyundai_elantra.DESCRIPTION,
+        "load": hyundai_elantra.load,
+        "is_loaded": hyundai_elantra.is_loaded,
     },
 }

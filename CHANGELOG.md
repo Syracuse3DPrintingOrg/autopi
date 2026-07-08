@@ -8,6 +8,17 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **Toyota, Honda, and Hyundai samples on real open-source DBCs.** Three more
+  vehicle examples: a Toyota RAV4 on toyota_nodsu_pt_generated.dbc, a Honda
+  Civic on honda_civic_ex_2022_can_generated.dbc, and a Hyundai Elantra on the
+  shared Hyundai/Kia CAN FD database, all from opendbc (MIT). Monitoring is
+  fully real for all three: connect over the HAT and the actual wheel speeds,
+  vehicle speed, steering angle, and gear decode from the bus. Sending is
+  checksum'd and verified for all three: Toyota's whole-byte checksum, Honda's
+  counter-and-nibble checksum, and Hyundai CAN FD's 16-bit CRC (which lives in
+  the first two bytes of the frame, not the last), so a real module accepts
+  the frames these samples send.
+
 - **A builder overview dashboard.** Opening the app on a computer now lands on an
   overview that orients you: the active vehicle, your CAN interfaces and their
   status, quick tiles for the main jobs (monitor, console, arrange keys, run a
