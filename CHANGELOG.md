@@ -8,6 +8,15 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Fixed
 
+- **Stream Deck and start settings save reliably now.** Settings are re-read
+  from disk on every request, so a saved rotation, brightness, model, or the
+  start-page toggle no longer appears to revert (the settings object was loaded
+  once at startup, so a second worker process could serve stale values). The
+  health page now also reports the data directory and whether it is writable, to
+  make a stuck save easy to diagnose.
+
+### Fixed
+
 - **The Stream Deck keeps its keys through an update, and recovers on its own.**
   The controller now reads its key layout straight from the app's data files on
   the device, so a deck no longer blanks or loses its keys while the app

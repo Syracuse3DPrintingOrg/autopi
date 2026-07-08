@@ -50,6 +50,17 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title=APP_NAME, version=APP_VERSION, lifespan=lifespan)
 app.add_middleware(SessionMiddleware, secret_key=secrets.token_hex(32))
 
+
+@app.middleware("http")
+async def _refresh_settings(request, call_next):
+    # Re-read settings.json from disk before handling each request. The settings
+    # object is a module-level singleton loaded once at import, so without this a
+    # second uvicorn worker (or a process that did not do the write) would serve
+    # stale values and saved settings would appear not to stick. The file is
+    # tiny and load_saved degrades silently if it is missing or unreadable.
+    settings.load_saved()
+    return await call_next(request)
+
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
 app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
@@ -67,6 +78,25 @@ app.include_router(profiles_router.router)
 app.include_router(network_router.router)
 
 
+def _data_dir_writable() -> bool:
+    try:
+        settings.data_dir.mkdir(parents=True, exist_ok=True)
+        probe = settings.data_dir / ".write-probe"
+        probe.write_text("ok")
+        probe.unlink()
+        return True
+    except OSError:
+        return False
+
+
 @app.get("/health")
 def health():
-    return {"app": "autopi", "version": APP_VERSION, "mode": settings.deployment_mode}
+    # data_dir_writable is here on purpose: if settings and layouts appear not
+    # to save on a device, this shows whether the data directory can be written.
+    return {
+        "app": "autopi",
+        "version": APP_VERSION,
+        "mode": settings.deployment_mode,
+        "data_dir": str(settings.data_dir),
+        "data_dir_writable": _data_dir_writable(),
+    }
