@@ -8,6 +8,18 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **Two ways to use it: an operator screen and a builder.** The Raspberry Pi
+  runs standalone with a simple, large-touch Operator screen (the active vehicle,
+  its key grid, and a full-screen test runner with pass/fail confirms), while a
+  browser on a PC gets the full builder. The app picks the right one by context:
+  on the device it opens the operator screen, a remote browser opens the builder,
+  and either is one tap from the other. Set a fixed preference under Settings >
+  Display & Kiosk if you want.
+- **Profile sync from a server (groundwork).** A Profile Sync settings pane lets
+  a device point at a central server and pull vehicle profiles (with their
+  databases, keys, layout, simulation, and sequences). This is future-facing: it
+  stays quiet until you have a server to point it at.
+
 - **Automated test sequences.** A new Tests page lets you build a sequence of
   steps, send a CAN command, assert a specific CAN response arrives within a
   timeout (matched by id and an optional decoded-signal comparison), pause to

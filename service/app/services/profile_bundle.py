@@ -31,6 +31,17 @@ def has_bundle(profile_id: int) -> bool:
     return str(profile_id) in _store().read().get("bundles", {})
 
 
+def store_bundle(profile_id: int, bundle: dict) -> None:
+    """Save a bundle (e.g. one pulled from a sync server) as this profile's
+    saved setup, without applying it. ``capture`` is the same operation for a
+    bundle built from this device's current setup; ``apply`` restores whatever
+    was last stored here, from either source."""
+    store = _store()
+    doc = store.read()
+    doc.setdefault("bundles", {})[str(profile_id)] = bundle
+    store.write(doc)
+
+
 def _export_databases() -> list[dict[str, Any]]:
     with session_scope() as s:
         return [{"old_id": d.id, "name": d.name, "source": d.source, "license": d.license,
@@ -46,10 +57,7 @@ def capture(profile_id: int) -> dict:
         "layout": layout_svc.get_all(),
         "simulation": simulation.list_entries(),
     }
-    store = _store()
-    doc = store.read()
-    doc.setdefault("bundles", {})[str(profile_id)] = bundle
-    store.write(doc)
+    store_bundle(profile_id, bundle)
     return {"ok": True, "counts": {
         "databases": len(bundle["databases"]), "actions": len(bundle["actions"]),
         "simulation": len(bundle["simulation"])}}

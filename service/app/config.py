@@ -13,7 +13,7 @@ from typing import Any
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 APP_NAME = "AutoPi"
-APP_VERSION = "0.1.26"
+APP_VERSION = "0.1.27"
 
 # Where the setup page writes persisted settings and where state files live.
 _DEFAULT_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -31,6 +31,9 @@ _SAVEABLE = (
     "pin",
     "logging_enabled",
     "log_retention_days",
+    "sync_server_url",
+    "sync_device_token",
+    "ui_mode",
 )
 
 
@@ -63,6 +66,12 @@ class Settings(BaseSettings):
     # Logging journal (service/app/services/journal.py).
     logging_enabled: bool = True
     log_retention_days: int = 14
+    # Profile sync (future, AutoPi-aj2): pull profiles from a central server.
+    sync_server_url: str = ""
+    sync_device_token: str = ""
+    # Which UI a request sees: "auto" (loopback/kiosk -> operator else builder),
+    # or forced "operator"/"builder". See services/ui_mode.py.
+    ui_mode: str = "auto"
 
     def load_saved(self) -> None:
         """Layer settings.json over the current values (in place)."""

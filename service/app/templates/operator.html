@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="{{ theme_mode }}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <base href="/">
+  <title>Operator: {{ app_name }}</title>
+  <link href="static/vendor/bootstrap.min.css" rel="stylesheet">
+  <link href="static/vendor/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="static/css/app.css" rel="stylesheet">
+  <link rel="icon" type="image/svg+xml" href="static/icons/favicon.svg">
+  <style>
+    html, body { height: 100%; margin: 0; overflow: hidden; }
+    .op-wrap { position: fixed; inset: 0; display: flex; flex-direction: column; }
+
+    /* Top bar: active vehicle, and the two escape hatches (settings, builder). */
+    .op-topbar { display: flex; align-items: center; gap: 0.75rem; padding: 1.2vmin 1.6vmin;
+      border-bottom: 1px solid var(--bs-border-color); flex: 0 0 auto; }
+    .op-vehicle { display: flex; align-items: center; gap: 0.6rem; min-width: 0; }
+    .op-vehicle .bi-car-front { font-size: min(4vw, 3.2vh); opacity: 0.85; }
+    .op-vehicle-name { font-weight: 700; font-size: min(2.6vw, 2.2vh); line-height: 1.15;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .op-vehicle-sub { font-size: min(1.6vw, 1.5vh); color: var(--bs-secondary-color); }
+    .op-topbar-actions { margin-left: auto; display: flex; align-items: center; gap: 0.5rem; }
+    .op-btn-lg { padding: 0.55rem 1rem; font-size: 1rem; }
+
+    /* Key grid, same behavior as the builder's start page. */
+    .op-grid-area { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; padding: 1.2vmin 1.6vmin; }
+    .op-grid {
+      flex: 1 1 auto; display: grid; gap: 1.2vmin; min-height: 0;
+      grid-template-columns: repeat({{ cols }}, 1fr);
+      grid-template-rows: repeat({{ rows }}, 1fr);
+    }
+    .op-key {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 0.6vmin; border: 2px solid rgba(255,255,255,0.15);
+      border-radius: 1.4vmin; color: #fff; cursor: pointer; user-select: none;
+      overflow: hidden; text-align: center; padding: 0.8vmin;
+      transition: transform 0.05s ease, filter 0.1s ease;
+    }
+    .op-key:hover { filter: brightness(1.12); }
+    .op-key:active { transform: scale(0.96); }
+    .op-key.blank { background: transparent !important; border-style: dashed; opacity: 0.25; cursor: default; }
+    .op-key.blank:hover { filter: none; }
+    .op-key.deckonly { opacity: 0.9; }
+    .op-key .ico { font-size: min(7vw, 9vh); line-height: 1; color: #fff; }
+    .op-key .lbl { font-size: min(2.2vw, 3.2vh); font-weight: 600; line-height: 1.05; color: #fff;
+      max-width: 100%; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+
+    /* Status strip along the bottom: recent log line plus CAN state. */
+    .op-status { flex: 0 0 auto; display: flex; align-items: center; gap: 1rem;
+      padding: 0.6vmin 1.6vmin; border-top: 1px solid var(--bs-border-color);
+      font-size: min(1.6vw, 1.6vh); color: var(--bs-secondary-color); }
+    .op-status-log { flex: 1 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .op-can-dot { width: 0.6rem; height: 0.6rem; border-radius: 50%; display: inline-block;
+      background: var(--bs-secondary-color); margin-right: 0.3rem; }
+    .op-can-dot.up { background: var(--bs-success); }
+    .op-can-dot.down { background: var(--bs-danger); }
+
+    .op-toast { position: fixed; bottom: 4.5vmin; left: 50%; transform: translateX(-50%);
+      background: var(--bs-secondary-bg); color: var(--bs-body-color); border: 1px solid var(--bs-border-color);
+      border-radius: 0.6rem; padding: 0.5rem 1rem; z-index: 10; display: none; }
+
+    /* Run Test: a full-screen overlay so the pass/fail state is impossible to miss. */
+    .op-run-overlay { position: fixed; inset: 0; z-index: 20; background: var(--bs-body-bg);
+      display: none; flex-direction: column; padding: 2vmin; }
+    .op-run-overlay.open { display: flex; }
+    .op-run-header { display: flex; align-items: center; gap: 1rem; flex: 0 0 auto; margin-bottom: 1.5vmin; }
+    .op-run-header h4 { margin: 0; }
+    .op-run-body { flex: 1 1 auto; overflow-y: auto; min-height: 0; }
+
+    .op-seq-pick { display: flex; flex-direction: column; align-items: stretch; justify-content: center;
+      height: 100%; gap: 1vmin; max-width: 42rem; margin: 0 auto; }
+    .op-seq-btn { display: flex; align-items: center; gap: 0.9rem; padding: 1.4vmin 1.6vmin;
+      border: 1px solid var(--bs-border-color); border-radius: 0.9rem; background: var(--bs-tertiary-bg);
+      color: var(--bs-body-color); font-size: min(2.4vw, 2.4vh); text-align: left; }
+    .op-seq-btn:hover { filter: brightness(1.15); }
+    .op-seq-btn .bi { font-size: 1.4em; opacity: 0.8; }
+    .op-seq-empty { text-align: center; color: var(--bs-secondary-color); padding: 3vmin; }
+
+    .op-run-state { text-align: center; padding: 2vmin 0; }
+    .op-run-state .op-run-icon { font-size: min(14vw, 18vh); line-height: 1; }
+    .op-run-state .op-run-icon.pass { color: var(--bs-success); }
+    .op-run-state .op-run-icon.fail { color: var(--bs-danger); }
+    .op-run-state .op-run-icon.running { color: var(--bs-warning); }
+    .op-run-state .op-run-label { font-size: min(4vw, 4vh); font-weight: 700; margin-top: 0.5rem; }
+
+    .op-run-step { display: flex; align-items: center; gap: 0.75rem; padding: 1vmin 1.2vmin;
+      border-left: 4px solid var(--bs-secondary-bg); border-radius: 0.5rem; background: var(--bs-tertiary-bg);
+      margin-bottom: 0.8vmin; font-size: min(2vw, 2vh); }
+    .op-run-step.pass { border-left-color: var(--bs-success); }
+    .op-run-step.fail { border-left-color: var(--bs-danger); }
+    .op-run-step.running, .op-run-step.pending_confirm { border-left-color: var(--bs-warning); }
+    .op-run-step.pending { opacity: 0.55; }
+    .op-run-step .lbl { flex: 1 1 auto; }
+    .op-run-step .bi { font-size: 1.3em; }
+
+    .op-confirm-box { max-width: 34rem; margin: 1.5vmin auto 0; text-align: center; }
+    .op-confirm-text { font-size: min(2.6vw, 2.4vh); margin-bottom: 1rem; }
+    .op-confirm-buttons { display: flex; gap: 1rem; justify-content: center; }
+    .op-confirm-buttons .btn { flex: 1 1 0; padding: 1.2vmin 0; font-size: min(2.2vw, 2.2vh); }
+  </style>
+</head>
+<body>
+  <div class="op-wrap">
+    <div class="op-topbar">
+      <div class="op-vehicle">
+        <i class="bi bi-car-front"></i>
+        {% if profile %}
+        <div>
+          <div class="op-vehicle-name">{{ profile.name or vehicle_label or 'Vehicle' }}</div>
+          <div class="op-vehicle-sub">
+            {{ vehicle_label }}{% if profile.vin %} &bull; VIN {{ profile.vin }}{% endif %}
+          </div>
+        </div>
+        {% else %}
+        <div>
+          <div class="op-vehicle-name">No vehicle selected</div>
+          <div class="op-vehicle-sub">Pick one in the builder's Vehicles page.</div>
+        </div>
+        {% endif %}
+      </div>
+      <div class="op-topbar-actions">
+        <button class="btn btn-primary op-btn-lg" id="run-test-btn"><i class="bi bi-play-fill me-1"></i>Run test</button>
+        <a href="start?kiosk=0" class="btn btn-outline-secondary" title="Switch to the builder"><i class="bi bi-tools me-1"></i>Builder</a>
+        <a href="setup" class="btn btn-outline-secondary" title="Settings"><i class="bi bi-gear"></i></a>
+      </div>
+    </div>
+
+    <div class="op-grid-area">
+      {% if not enabled or not keys %}
+      <div class="d-flex flex-column align-items-center justify-content-center h-100 gap-3 text-center">
+        <i class="bi bi-grid-3x3-gap" style="font-size:3rem; opacity:0.6"></i>
+        <h5 class="mb-0">No keys are laid out yet</h5>
+        <p class="text-secondary mb-0">Arrange the key grid in the builder's layout editor.</p>
+      </div>
+      {% else %}
+      <div class="op-grid">
+        {% for k in keys %}
+          {% if k.kind == 'blank' %}
+          <div class="op-key blank"></div>
+          {% elif k.kind == 'deckonly' %}
+          <div class="op-key deckonly" role="button" tabindex="0" style="background: {{ k.color }}"
+               data-kind="deckonly" data-label="{{ k.label }}">
+            <i class="bi {{ k.icon }} ico"></i><span class="lbl">{{ k.label }}</span>
+          </div>
+          {% else %}
+          <div class="op-key" role="button" tabindex="0" style="background: {{ k.color }}"
+               data-kind="action" data-action="{{ k.id }}">
+            <i class="bi {{ k.icon }} ico"></i><span class="lbl">{{ k.label }}</span>
+          </div>
+          {% endif %}
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="op-status">
+      <span><span class="op-can-dot" id="can0-dot"></span>can0</span>
+      <span><span class="op-can-dot" id="can1-dot"></span>can1</span>
+      <span class="op-status-log" id="log-tail">&nbsp;</span>
+    </div>
+  </div>
+
+  <div class="op-toast" id="toast"></div>
+
+  <div class="op-run-overlay" id="run-overlay">
+    <div class="op-run-header">
+      <button class="btn btn-outline-secondary" id="run-close-btn"><i class="bi bi-x-lg me-1"></i>Close</button>
+      <h4 id="run-title">Run test</h4>
+    </div>
+    <div class="op-run-body">
+      <div id="run-pick" class="op-seq-pick"></div>
+      <div id="run-live" class="d-none">
+        <div class="op-run-state">
+          <i class="bi op-run-icon" id="run-icon"></i>
+          <div class="op-run-label" id="run-label"></div>
+        </div>
+        <div id="run-steps"></div>
+        <div class="op-confirm-box d-none" id="confirm-box">
+          <div class="op-confirm-text" id="confirm-text"></div>
+          <div class="op-confirm-buttons">
+            <button class="btn btn-danger" id="confirm-fail"><i class="bi bi-x-lg me-1"></i>Fail</button>
+            <button class="btn btn-success" id="confirm-pass"><i class="bi bi-check-lg me-1"></i>Pass</button>
+          </div>
+        </div>
+        <div class="text-center mt-3">
+          <button class="btn btn-outline-secondary" id="run-again-btn">Run another sequence</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    window.OPERATOR_SEQUENCES = {{ sequences | tojson }};
+  </script>
+  <script src="static/js/operator.js"></script>
+</body>
+</html>
