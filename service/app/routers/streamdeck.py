@@ -77,7 +77,7 @@ def restart_controller():
     """Restart the deck controller. On a Pi appliance this goes through the
     host-bridge (a real systemctl restart); otherwise it falls back to a flag
     the controller reads on its next poll and self-restarts from."""
-    if bridge.is_raspberry_pi() and bridge.available():
+    if bridge.available():
         return bridge.call("POST", "/streamdeck/restart", timeout=15)
     store = _store()
     doc = store.read()

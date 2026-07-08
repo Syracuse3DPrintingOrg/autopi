@@ -37,9 +37,11 @@ def test_network_connect_no_op_off_pi():
     assert "Raspberry Pi" in body["error"]
 
 
-def test_network_connect_requires_ssid_on_pi(monkeypatch):
+def test_network_connect_requires_ssid_when_bridge_present(monkeypatch):
+    # The guard is now bridge reachability (the container cannot reliably detect
+    # Pi hardware), so pretend a bridge is answering.
     from app.services import bridge
-    monkeypatch.setattr(bridge, "is_raspberry_pi", lambda: True)
+    monkeypatch.setattr(bridge, "available", lambda: True)
     with _client() as c:
         r = c.post("/network/wifi/connect", json={"psk": "hunter2"})
     assert r.status_code == 200

@@ -24,7 +24,15 @@ _token_cache: dict[str, str | None] = {"value": None}
 
 
 def is_raspberry_pi() -> bool:
-    for p in ("/proc/device-tree/model", "/sys/firmware/devicetree/base/model"):
+    """Best-effort Pi detection that also works from inside the container.
+
+    The device-tree model files are not always visible in a container, so
+    /proc/cpuinfo (the host's, since the kernel is shared) is checked too. Note
+    this is only a hint: the authoritative capability check for host operations
+    is whether the host-bridge answers (``available()``), because the bridge is
+    what actually performs them and only runs on a Pi appliance.
+    """
+    for p in ("/proc/device-tree/model", "/sys/firmware/devicetree/base/model", "/proc/cpuinfo"):
         try:
             if "raspberry pi" in Path(p).read_text(errors="ignore").lower():
                 return True

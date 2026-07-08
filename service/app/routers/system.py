@@ -8,15 +8,18 @@ from ..services import bridge
 router = APIRouter(prefix="/system", tags=["system"])
 
 
-def _not_on_this_platform():
-    return {"ok": False, "error": "Only available on a Raspberry Pi appliance."}
+# These host operations run through the host-bridge, so the gate is whether the
+# bridge answers, not whether the container can see Pi hardware (it usually
+# cannot). The bridge only runs on a Pi appliance.
+_NO_BRIDGE = {"ok": False, "error": "The host-bridge is not reachable (this runs "
+              "on a Raspberry Pi appliance with the AutoPi host-bridge)."}
 
 
 @router.get("/health")
 def system_health():
     """Decoded Pi power/thermal/disk health (from the bridge)."""
-    if not bridge.is_raspberry_pi():
-        return {"ok": False, "error": "Not a Raspberry Pi."}
+    if not bridge.available():
+        return _NO_BRIDGE
     raw = bridge.call("GET", "/system/health", timeout=8)
     if raw.get("error"):
         return {"ok": False, "error": raw["error"]}
@@ -31,14 +34,14 @@ def bridge_status():
 
 @router.post("/update")
 def system_update():
-    if not bridge.is_raspberry_pi():
-        return _not_on_this_platform()
+    if not bridge.available():
+        return _NO_BRIDGE
     # The OTA can take a while (image build); give it room.
     return bridge.call("POST", "/update", timeout=1800)
 
 
 @router.post("/reboot")
 def system_reboot():
-    if not bridge.is_raspberry_pi():
-        return _not_on_this_platform()
+    if not bridge.available():
+        return _NO_BRIDGE
     return bridge.call("POST", "/reboot", timeout=10)

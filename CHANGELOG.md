@@ -8,6 +8,15 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Fixed
 
+- **Wi-Fi scan (and update, reboot, deck restart) now work on the Pi.** These
+  said "Only available on a Raspberry Pi appliance" even on a real Pi, because
+  the check ran inside the container, which cannot see the Pi's device-tree.
+  They now gate on whether the host-bridge answers (the bridge does the work and
+  only runs on a Pi appliance), which is the correct signal, and Pi detection
+  also reads /proc/cpuinfo so it works from inside the container.
+
+### Fixed
+
 - **Stream Deck and start settings save reliably now.** Settings are re-read
   from disk on every request, so a saved rotation, brightness, model, or the
   start-page toggle no longer appears to revert (the settings object was loaded
