@@ -123,14 +123,22 @@ class LogicRuntime:
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
         self.last_result: dict = {}
+        # One Engine instance lives for the runtime's whole life so its
+        # per-scan state (edge memory, timer anchors, latch bits, and each
+        # rule's previous output for rising/falling triggers) survives
+        # between calls to scan_once. Only the rule list is refreshed each
+        # scan, so an edit in the builder takes effect on the next scan
+        # without losing in-flight timers or latches for rules that did not
+        # change shape.
+        self._engine = Engine([])
 
     def scan_once(self, now: float, *, frames_for=_real_frames, gpio_read=_real_gpio_read,
                   fire: Callable[[str], Any] = registry.run) -> dict:
         """One scan: gather inputs, run the engine, fire actions. Injectable."""
         cfg = get_config()
-        engine = Engine(load_rules())
+        self._engine.rules = load_rules()
         inputs = gather_inputs(cfg.get("inputs", []), frames_for, gpio_read)
-        result = engine.scan(inputs, now)
+        result = self._engine.scan(inputs, now)
         fired = []
         for action_id in result.fire:
             r = fire(action_id)

@@ -8,6 +8,15 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **Point-and-click rule builder for GPIO and CAN cross-triggering.** The
+  Automation page now builds logic rules without writing JSON: name an input (a
+  CAN signal via database/message/signal, a GPIO pin, or a constant), pick a
+  condition (compare, on/off, edge, on/off-delay timer, or latch), and choose the
+  actions to fire, including CAN commands and relay, I2C, or Modbus outputs. So
+  "when this CAN signal crosses a value, drive this output" and "when this input
+  goes high, send this CAN command" are a few clicks. Start the scan loop and
+  watch rules fire.
+
 - **Stream Deck keys now match their on-screen tile.** A physical key's face
   now shows the same icon, label, and color the start menu and layout editor
   draw for it, so what you arrange on screen is what you see on the deck. A
@@ -160,6 +169,11 @@ semantic versioning while pre-1.0 (staying in `0.x`).
   running and expected versions.
 
 ### Fixed
+
+- **Logic runtime kept edge/timer/latch state across scans.** The scan loop
+  rebuilt its engine every cycle, which wiped timer, edge, and latch memory so
+  those condition types never worked live; the engine is now kept alive and only
+  its rules refresh each scan.
 
 - **Wi-Fi and other host features no longer show a bare "not found" after an
   update.** The host-bridge is a long-running service, so replacing its file on

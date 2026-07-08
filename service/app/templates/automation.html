@@ -4,6 +4,9 @@
 <style>
   .card { background: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color); margin-bottom: 1rem; }
   .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .lb-row { border: 1px solid var(--bs-border-color); border-radius: .375rem; padding: .5rem .75rem; margin-bottom: .5rem; }
+  .lb-form { border: 1px solid var(--bs-border-color); border-radius: .375rem; padding: .75rem; margin-top: .5rem; background: var(--bs-body-bg); }
+  .lb-cond-box { border: 1px dashed var(--bs-border-color); border-radius: .375rem; padding: .5rem .75rem; margin-top: .5rem; }
 </style>
 {% endblock %}
 {% block body %}
@@ -12,11 +15,25 @@
   <div class="row">
     <div class="col-lg-7">
       <div class="card"><div class="card-body">
+        <h6><i class="bi bi-plug me-1"></i>Inputs</h6>
+        <p class="small text-secondary">Name the signals a rule can react to: a decoded CAN signal, a
+          GPIO input pin, or a fixed constant for testing. Rules reference an input by name.</p>
+        <div id="lb-inputs-list"><div class="text-secondary small">Loading…</div></div>
+        <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="lb-input-add-btn">
+          <i class="bi bi-plus-lg me-1"></i>Add input</button>
+        <div id="lb-input-form" class="lb-form d-none"></div>
+        <datalist id="lb-known-inputs"></datalist>
+      </div></div>
+
+      <div class="card"><div class="card-body">
         <h6><i class="bi bi-diagram-2 me-1"></i>Logic rules</h6>
-        <p class="small text-secondary">Rules run on a scan cycle: a condition (a signal comparison,
-          an edge, an on/off-delay timer, a set-reset latch, combined with AND/OR/NOT) fires actions.</p>
-        <div id="rules"><div class="text-secondary small">Loading…</div></div>
-        <div class="form-text">A visual rule builder is on the roadmap; this lists the rules currently defined.</div>
+        <p class="small text-secondary">A rule is WHEN a condition THEN one or more actions fire. Build
+          the two headline flows here: drive an output when a CAN signal crosses a value, or send a CAN
+          command when an input pin changes.</p>
+        <div id="lb-rules-list"><div class="text-secondary small">Loading…</div></div>
+        <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="lb-rule-add-btn">
+          <i class="bi bi-plus-lg me-1"></i>Add rule</button>
+        <div id="lb-rule-form" class="lb-form d-none"></div>
       </div></div>
 
       <div class="card"><div class="card-body">
@@ -57,18 +74,9 @@
 </div>
 {% endblock %}
 {% block scripts %}
+<script src="static/js/logic-builder.js"></script>
 <script>
-  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  fetch('logic/rules').then((r) => r.json()).then((d) => {
-    const rules = d.rules || [];
-    document.getElementById('rules').innerHTML = rules.length
-      ? '<ul class="list-group list-group-flush">' + rules.map((r) =>
-          `<li class="list-group-item bg-transparent px-0 small"><strong>${esc(r.name || r.id)}</strong>
-           <span class="text-secondary mono">${esc(JSON.stringify(r.condition || r.definition || {}).slice(0, 80))}</span></li>`).join('') + '</ul>'
-      : '<div class="text-secondary small">No rules defined yet.</div>';
-  }).catch(() => { document.getElementById('rules').innerHTML = '<div class="text-secondary small">Logic API unavailable.</div>'; });
-
-  // Logic runtime controls.
+  // Logic runtime controls (start/stop/scan-once + live result).
   const rtStatus = document.getElementById('rt-status');
   const rtResult = document.getElementById('rt-result');
   function loadRuntime() {
@@ -80,7 +88,7 @@
   }
   document.getElementById('rt-start').addEventListener('click', () => fetch('logic/runtime/start', { method: 'POST' }).then(loadRuntime));
   document.getElementById('rt-stop').addEventListener('click', () => fetch('logic/runtime/stop', { method: 'POST' }).then(loadRuntime));
-  document.getElementById('rt-scan').addEventListener('click', () => fetch('logic/runtime/scan-once', { method: 'POST' }).then((r) => r.json()).then((d) => { rtResult.textContent = JSON.stringify(d.result, null, 2); }));
+  document.getElementById('rt-scan').addEventListener('click', () => fetch('logic/runtime/scan-once', { method: 'POST' }).then((r) => r.json()).then((d) => { rtResult.textContent = JSON.stringify(d.result, null, 2); loadRuntime(); }));
   loadRuntime();
 
   document.getElementById('restore-form').addEventListener('submit', async (e) => {
@@ -92,7 +100,7 @@
       const data = JSON.parse(await file.text());
       const r = await fetch('db/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
       const d = await r.json();
-      status.innerHTML = r.ok ? '<span class="text-success">Restored: ' + esc(JSON.stringify(d.counts || d)) + '</span>'
+      status.innerHTML = r.ok ? '<span class="text-success">Restored: ' + JSON.stringify(d.counts || d) + '</span>'
         : '<span class="text-danger">Restore failed</span>';
     } catch (err) { status.innerHTML = '<span class="text-danger">Invalid JSON file</span>'; }
   });
