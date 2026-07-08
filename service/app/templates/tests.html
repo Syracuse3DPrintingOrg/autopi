@@ -1,0 +1,440 @@
+{% extends "base.html" %}
+{% block title %}Test sequences: {{ app_name }}{% endblock %}
+{% block head %}
+<style>
+  .seq-card { background: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color);
+    border-radius: 0.75rem; padding: 1.5rem; }
+  .seq-row { border: 1px solid var(--bs-border-color); border-radius: 0.6rem;
+    padding: 0.6rem 0.9rem; margin-bottom: 0.5rem; display: flex; align-items: center;
+    justify-content: space-between; gap: 0.75rem; }
+  .step-row { border: 1px solid var(--bs-border-color); border-radius: 0.5rem;
+    padding: 0.5rem 0.75rem; margin-bottom: 0.4rem; display: flex; align-items: center;
+    gap: 0.6rem; }
+  .step-row .step-fields { flex: 1; display: flex; flex-wrap: wrap; gap: 0.4rem; }
+  .step-fields input, .step-fields select { max-width: 12rem; }
+  .step-type-badge { min-width: 4.5rem; text-align: center; }
+  .run-step { border-left: 3px solid var(--bs-secondary-bg); padding: 0.4rem 0.75rem;
+    margin-bottom: 0.3rem; border-radius: 0.3rem; background: var(--bs-tertiary-bg); }
+  .run-step.pass { border-left-color: var(--bs-success); }
+  .run-step.fail { border-left-color: var(--bs-danger); }
+  .run-step.running, .run-step.pending_confirm { border-left-color: var(--bs-warning); }
+  .run-step.pending { opacity: 0.6; }
+  .type-send { color: #38bdf8; } .type-expect { color: #a78bfa; }
+  .type-prompt { color: #fbbf24; } .type-delay { color: #94a3b8; } .type-action { color: #34d399; }
+</style>
+{% endblock %}
+{% block body %}
+<div class="container-fluid">
+  <div class="row g-3">
+    <div class="col-lg-5">
+      <div class="seq-card mb-3">
+        <h5 class="mb-3"><i class="bi bi-list-check me-1"></i>Test sequences</h5>
+        <p class="small text-secondary">
+          A sequence is an ordered list of steps that sends CAN commands,
+          checks for a response, prompts you to confirm something by hand,
+          waits, or runs an existing action. Build one, then run it against
+          the vehicle.
+        </p>
+        <div id="seq-list"></div>
+        <div id="seq-empty" class="text-secondary small d-none">No sequences yet. Add one below.</div>
+        <hr>
+        <form id="new-seq-form" class="row g-2">
+          <div class="col-8">
+            <input type="text" class="form-control form-control-sm" id="new-seq-name" placeholder="New sequence name" required>
+          </div>
+          <div class="col-4">
+            <button type="submit" class="btn btn-sm btn-primary w-100"><i class="bi bi-plus-lg me-1"></i>Add</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="seq-card d-none" id="run-card">
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <h6 class="mb-0"><i class="bi bi-play-circle me-1"></i>Run: <span id="run-name"></span></h6>
+          <span id="run-state-badge" class="badge bg-secondary ms-auto"></span>
+        </div>
+        <div id="run-steps"></div>
+        <div id="confirm-box" class="d-none mt-2 p-2 border rounded">
+          <div class="small mb-2" id="confirm-text"></div>
+          <input type="text" class="form-control form-control-sm mb-2" id="confirm-note" placeholder="Optional note">
+          <button class="btn btn-sm btn-success" id="confirm-pass"><i class="bi bi-check-lg me-1"></i>Pass</button>
+          <button class="btn btn-sm btn-danger" id="confirm-fail"><i class="bi bi-x-lg me-1"></i>Fail</button>
+        </div>
+        <div id="run-report" class="small mt-2"></div>
+      </div>
+    </div>
+
+    <div class="col-lg-7">
+      <div class="seq-card d-none" id="editor-card">
+        <div class="d-flex align-items-center gap-2 mb-3">
+          <h5 class="mb-0" id="editor-title"><i class="bi bi-pencil-square me-1"></i>Edit sequence</h5>
+          <button class="btn btn-sm btn-outline-success ms-auto" id="btn-run"><i class="bi bi-play-fill me-1"></i>Run</button>
+        </div>
+        <div id="step-list"></div>
+        <div id="step-empty" class="text-secondary small d-none">No steps yet. Add one below.</div>
+
+        <hr>
+        <h6 class="mb-2">Add step</h6>
+        <form id="add-step-form" class="row g-2 align-items-end">
+          <div class="col-md-3">
+            <label class="form-label small">Type</label>
+            <select class="form-select form-select-sm" id="f-type">
+              <option value="send">send</option>
+              <option value="expect">expect</option>
+              <option value="prompt">prompt</option>
+              <option value="delay">delay</option>
+              <option value="action">action</option>
+            </select>
+          </div>
+          <div class="col-md-9">
+            <label class="form-label small">Label</label>
+            <input type="text" class="form-control form-control-sm" id="f-label" placeholder="Optional description">
+          </div>
+
+          <div class="col-md-3 f-group f-send f-expect">
+            <label class="form-label small">Channel</label>
+            <input type="text" class="form-control form-control-sm" id="f-channel" value="can0">
+          </div>
+          <div class="col-md-3 f-group f-send f-expect">
+            <label class="form-label small">Arbitration ID</label>
+            <input type="text" class="form-control form-control-sm" id="f-arb" placeholder="0x100">
+          </div>
+          <div class="col-md-3 f-group f-send">
+            <label class="form-label small">Data bytes (hex)</label>
+            <input type="text" class="form-control form-control-sm" id="f-data" placeholder="02 01 0C">
+          </div>
+          <div class="col-md-3 f-group f-expect">
+            <label class="form-label small">Timeout (ms)</label>
+            <input type="number" min="1" class="form-control form-control-sm" id="f-timeout" value="2000">
+          </div>
+          <div class="col-md-3 f-group f-expect">
+            <label class="form-label small">Signal name (optional)</label>
+            <input type="text" class="form-control form-control-sm" id="f-signal" placeholder="e.g. DOOR_OPEN">
+          </div>
+          <div class="col-md-2 f-group f-expect">
+            <label class="form-label small">Op</label>
+            <select class="form-select form-select-sm" id="f-op">
+              <option>==</option><option>!=</option><option>&lt;</option>
+              <option>&lt;=</option><option>&gt;</option><option>&gt;=</option>
+            </select>
+          </div>
+          <div class="col-md-3 f-group f-expect">
+            <label class="form-label small">Expected value</label>
+            <input type="text" class="form-control form-control-sm" id="f-value" placeholder="1">
+          </div>
+
+          <div class="col-md-9 f-group f-prompt">
+            <label class="form-label small">Prompt text</label>
+            <input type="text" class="form-control form-control-sm" id="f-prompt" placeholder="Confirm the horn sounded">
+          </div>
+
+          <div class="col-md-3 f-group f-delay">
+            <label class="form-label small">Delay (ms)</label>
+            <input type="number" min="0" class="form-control form-control-sm" id="f-delay" value="500">
+          </div>
+
+          <div class="col-md-6 f-group f-action">
+            <label class="form-label small">Action id</label>
+            <input type="text" class="form-control form-control-sm" id="f-action" placeholder="an existing action id">
+          </div>
+
+          <div class="col-12">
+            <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-plus-lg me-1"></i>Add step</button>
+            <span id="step-error" class="text-danger small ms-2"></span>
+          </div>
+        </form>
+      </div>
+      <div class="seq-card" id="no-selection-card">
+        <p class="text-secondary small mb-0">Pick a sequence on the left, or add a new one, to build and run it.</p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  let sequences = [];
+  let current = null;   // the sequence object being edited
+  let steps = [];        // working copy of current.steps
+  let runTimer = null;
+
+  const seqListEl = document.getElementById('seq-list');
+  const seqEmptyEl = document.getElementById('seq-empty');
+  const editorCard = document.getElementById('editor-card');
+  const noSelectionCard = document.getElementById('no-selection-card');
+  const editorTitle = document.getElementById('editor-title');
+  const stepListEl = document.getElementById('step-list');
+  const stepEmptyEl = document.getElementById('step-empty');
+  const addStepForm = document.getElementById('add-step-form');
+  const stepError = document.getElementById('step-error');
+  const runCard = document.getElementById('run-card');
+
+  function fieldGroupsFor(type) {
+    document.querySelectorAll('.f-group').forEach((el) => el.classList.add('d-none'));
+    document.querySelectorAll('.f-' + type).forEach((el) => el.classList.remove('d-none'));
+  }
+  document.getElementById('f-type').addEventListener('change', (ev) => fieldGroupsFor(ev.target.value));
+  fieldGroupsFor('send');
+
+  async function loadSequences() {
+    const res = await fetch('tests');
+    const body = await res.json();
+    sequences = body.sequences || [];
+    seqListEl.innerHTML = '';
+    seqEmptyEl.classList.toggle('d-none', sequences.length > 0);
+    for (const s of sequences) {
+      const row = document.createElement('div');
+      row.className = 'seq-row';
+      row.innerHTML = `
+        <div>
+          <div class="fw-semibold">${s.name || '(unnamed)'}</div>
+          <div class="small text-secondary">${(s.steps || []).length} step(s)</div>
+        </div>
+        <div class="btn-group">
+          <button class="btn btn-sm btn-outline-primary btn-edit" data-id="${s.id}"><i class="bi bi-pencil"></i></button>
+          <button class="btn btn-sm btn-outline-success btn-run-row" data-id="${s.id}"><i class="bi bi-play-fill"></i></button>
+          <button class="btn btn-sm btn-outline-danger btn-delete" data-id="${s.id}"><i class="bi bi-trash"></i></button>
+        </div>`;
+      seqListEl.appendChild(row);
+    }
+  }
+
+  function selectSequence(seq) {
+    current = seq;
+    steps = JSON.parse(JSON.stringify(seq.steps || []));
+    editorTitle.innerHTML = '<i class="bi bi-pencil-square me-1"></i>Edit: ' + (seq.name || '(unnamed)');
+    editorCard.classList.remove('d-none');
+    noSelectionCard.classList.add('d-none');
+    renderSteps();
+  }
+
+  function stepSummary(step) {
+    if (step.type === 'send') return `${step.arbitration_id || (step.message || '')} ${step.data || ''}`.trim();
+    if (step.type === 'expect') {
+      let s = `id ${step.arbitration_id}, within ${step.timeout_ms} ms`;
+      if (step.signal_name) s += `, ${step.signal_name} ${step.op} ${step.value}`;
+      return s;
+    }
+    if (step.type === 'prompt') return step.prompt_text || '(no prompt text)';
+    if (step.type === 'delay') return `${step.delay_ms} ms`;
+    if (step.type === 'action') return step.action_id;
+    return '';
+  }
+
+  function renderSteps() {
+    stepListEl.innerHTML = '';
+    stepEmptyEl.classList.toggle('d-none', steps.length > 0);
+    steps.forEach((step, i) => {
+      const row = document.createElement('div');
+      row.className = 'step-row';
+      row.innerHTML = `
+        <span class="badge bg-secondary step-type-badge type-${step.type}">${step.type}</span>
+        <div class="step-fields">
+          <span class="small">${step.label ? step.label + ' &mdash; ' : ''}${stepSummary(step)}</span>
+        </div>
+        <div class="btn-group btn-group-sm">
+          <button class="btn btn-outline-secondary btn-up" data-i="${i}" ${i === 0 ? 'disabled' : ''}><i class="bi bi-arrow-up"></i></button>
+          <button class="btn btn-outline-secondary btn-down" data-i="${i}" ${i === steps.length - 1 ? 'disabled' : ''}><i class="bi bi-arrow-down"></i></button>
+          <button class="btn btn-outline-danger btn-remove" data-i="${i}"><i class="bi bi-trash"></i></button>
+        </div>`;
+      stepListEl.appendChild(row);
+    });
+  }
+
+  stepListEl.addEventListener('click', async (ev) => {
+    const btn = ev.target.closest('button');
+    if (!btn) return;
+    const i = parseInt(btn.dataset.i, 10);
+    if (btn.classList.contains('btn-remove')) {
+      steps.splice(i, 1);
+    } else if (btn.classList.contains('btn-up') && i > 0) {
+      [steps[i - 1], steps[i]] = [steps[i], steps[i - 1]];
+    } else if (btn.classList.contains('btn-down') && i < steps.length - 1) {
+      [steps[i + 1], steps[i]] = [steps[i], steps[i + 1]];
+    } else {
+      return;
+    }
+    renderSteps();
+    await saveSteps();
+  });
+
+  async function saveSteps() {
+    if (!current) return;
+    const payload = { name: current.name, profile_id: current.profile_id, steps };
+    const res = await fetch(`tests/${current.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (res.ok) {
+      const body = await res.json();
+      current = body.sequence;
+      steps = JSON.parse(JSON.stringify(current.steps || []));
+      loadSequences();
+    }
+    return res;
+  }
+
+  addStepForm.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    stepError.textContent = '';
+    const type = document.getElementById('f-type').value;
+    const id = 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const step = {
+      id, type, label: document.getElementById('f-label').value,
+      channel: document.getElementById('f-channel').value || 'can0',
+      backend: 'socketcan',
+      arbitration_id: document.getElementById('f-arb').value,
+      data: document.getElementById('f-data').value,
+      database_id: null, message: null, signals: {},
+      is_fd: false, is_extended_id: false,
+      timeout_ms: parseInt(document.getElementById('f-timeout').value || '2000', 10),
+      signal_name: document.getElementById('f-signal').value,
+      op: document.getElementById('f-op').value,
+      value: parseValue(document.getElementById('f-value').value),
+      prompt_text: document.getElementById('f-prompt').value,
+      delay_ms: parseInt(document.getElementById('f-delay').value || '0', 10),
+      action_id: document.getElementById('f-action').value,
+    };
+    steps.push(step);
+    renderSteps();
+    const res = await saveSteps();
+    if (res && !res.ok) {
+      const body = await res.json().catch(() => ({}));
+      stepError.textContent = body.detail || 'Could not save step';
+      steps.pop();
+      renderSteps();
+      return;
+    }
+    addStepForm.reset();
+    document.getElementById('f-channel').value = 'can0';
+    document.getElementById('f-timeout').value = '2000';
+  });
+
+  function parseValue(raw) {
+    if (raw === '') return null;
+    const num = Number(raw);
+    return Number.isNaN(num) ? raw : num;
+  }
+
+  document.getElementById('new-seq-form').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const name = document.getElementById('new-seq-name').value;
+    const res = await fetch('tests', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, profile_id: null, steps: [] }),
+    });
+    const body = await res.json();
+    document.getElementById('new-seq-form').reset();
+    await loadSequences();
+    if (body.sequence) selectSequence(body.sequence);
+  });
+
+  seqListEl.addEventListener('click', async (ev) => {
+    const btn = ev.target.closest('button');
+    if (!btn) return;
+    const id = btn.dataset.id;
+    if (btn.classList.contains('btn-edit')) {
+      const res = await fetch(`tests/${id}`);
+      selectSequence(await res.json());
+    } else if (btn.classList.contains('btn-delete')) {
+      if (!confirm('Delete this sequence?')) return;
+      await fetch(`tests/${id}`, { method: 'DELETE' });
+      if (current && current.id === id) {
+        current = null;
+        editorCard.classList.add('d-none');
+        noSelectionCard.classList.remove('d-none');
+      }
+      loadSequences();
+    } else if (btn.classList.contains('btn-run-row')) {
+      const res = await fetch(`tests/${id}`);
+      const seq = await res.json();
+      startRun(seq.id);
+    }
+  });
+
+  document.getElementById('btn-run').addEventListener('click', () => {
+    if (current) startRun(current.id);
+  });
+
+  async function startRun(id) {
+    stopPolling();
+    const res = await fetch(`tests/${id}/run`, { method: 'POST' });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      alert(body.detail || 'Could not start run');
+      return;
+    }
+    runCard.classList.remove('d-none');
+    document.getElementById('run-report').innerHTML = '';
+    pollRun();
+    runTimer = setInterval(pollRun, 700);
+  }
+
+  function stopPolling() {
+    if (runTimer) clearInterval(runTimer);
+    runTimer = null;
+  }
+
+  async function pollRun() {
+    const res = await fetch('tests/run/status');
+    if (!res.ok) { stopPolling(); return; }
+    const status = await res.json();
+    const seq = sequences.find((s) => s.id === status.sequence_id) || current;
+    document.getElementById('run-name').textContent = (seq && seq.name) || status.sequence_id;
+    const badge = document.getElementById('run-state-badge');
+    badge.textContent = status.state;
+    badge.className = 'badge ms-auto ' + (
+      status.state === 'done' ? 'bg-success' :
+      status.state === 'waiting_confirm' ? 'bg-warning text-dark' : 'bg-info text-dark');
+
+    const runSteps = document.getElementById('run-steps');
+    runSteps.innerHTML = '';
+    status.steps.forEach((r) => {
+      const div = document.createElement('div');
+      div.className = 'run-step ' + r.status;
+      div.innerHTML = `<span class="type-${r.type} small fw-semibold text-uppercase">${r.type}</span>
+        <span class="small ms-2">${r.label || ''}</span>
+        <div class="small text-secondary">${r.message || ''}</div>`;
+      runSteps.appendChild(div);
+    });
+
+    const confirmBox = document.getElementById('confirm-box');
+    if (status.state === 'waiting_confirm' && status.current_index !== null) {
+      const step = status.steps[status.current_index];
+      confirmBox.classList.remove('d-none');
+      document.getElementById('confirm-text').textContent = step.message || 'Confirm this step';
+    } else {
+      confirmBox.classList.add('d-none');
+    }
+
+    if (status.state === 'done') {
+      stopPolling();
+      const reportRes = await fetch('tests/run/report');
+      const report = await reportRes.json();
+      const reportEl = document.getElementById('run-report');
+      reportEl.innerHTML = `<span class="fw-semibold ${report.ok ? 'text-success' : 'text-danger'}">
+        ${report.ok ? 'PASS' : 'FAIL'}</span> &mdash; ${report.passed} passed, ${report.failed} failed,
+        ${report.skipped} skipped of ${report.total}`;
+    }
+  }
+
+  async function confirmStep(passed) {
+    const note = document.getElementById('confirm-note').value;
+    await fetch('tests/run/confirm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ passed, note }),
+    });
+    document.getElementById('confirm-note').value = '';
+    pollRun();
+  }
+  document.getElementById('confirm-pass').addEventListener('click', () => confirmStep(true));
+  document.getElementById('confirm-fail').addEventListener('click', () => confirmStep(false));
+
+  loadSequences();
+})();
+</script>
+{% endblock %}

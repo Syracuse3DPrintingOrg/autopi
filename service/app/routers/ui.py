@@ -106,3 +106,9 @@ def actions_page(request: Request):
 def diagnostics_page(request: Request):
     # UDS and OBD-II reads, sent and decoded over the /diag API.
     return templates.TemplateResponse(request, "diagnostics.html", theme_context(request))
+
+
+@router.get("/ui/tests", response_class=HTMLResponse)
+def tests_page(request: Request):
+    # Sequences, the step builder, and a live run all load over the /tests API.
+    return templates.TemplateResponse(request, "tests.html", theme_context(request))

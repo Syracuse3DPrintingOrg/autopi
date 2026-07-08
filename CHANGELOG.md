@@ -8,6 +8,11 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **Automated test sequences.** A new Tests page builds and runs a step-by-step
+  vehicle check: send a CAN command, wait for a matching response (with an
+  optional decoded signal check), pause for you to confirm something by hand,
+  delay, or run an existing action. Steps run in order with a live pass/fail
+  status, a confirm prompt when one is needed, and a final report.
 - **Live RAM 1500 (2024) sample on a real open-source DBC.** A second example on
   the Vehicles page uses the real chrysler_cusw.dbc from comma.ai's opendbc
   (MIT, vendored with attribution), which covers the RAM 1500 (2019-2024). Its
