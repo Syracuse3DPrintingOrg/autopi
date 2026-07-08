@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+{% block title %}CAN bus monitor: {{ app_name }}{% endblock %}
+{% block head %}
+<style>
+  .mon-card { background: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color);
+    border-radius: 0.75rem; padding: 1.5rem; }
+  #mon-table td { vertical-align: middle; }
+  #mon-table td.mono { font-family: var(--bs-font-monospace, monospace); }
+  .live-badge.on { color: var(--bs-success); }
+  .live-badge.off { color: var(--bs-secondary-color); }
+  .decoded-cell { max-width: 28rem; white-space: normal; word-break: break-word; }
+</style>
+{% endblock %}
+{% block body %}
+<div class="container-fluid">
+  <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+    <h5 class="mb-0"><i class="bi bi-activity me-1"></i>CAN Bus Monitor</h5>
+    <span id="live-badge" class="live-badge off ms-2 small"><i class="bi bi-circle-fill me-1"></i>Not live</span>
+    <span id="running-badge" class="text-body-secondary small">Stopped</span>
+  </div>
+
+  <div class="mon-card mb-3">
+    <p class="text-body-secondary small mb-3">
+      Watch frames as they arrive on a CAN channel. Pick a database to decode
+      matching frames into named signals; frames the database does not define
+      still show up with their raw bytes.
+    </p>
+    <div class="row g-2 align-items-end mb-3">
+      <div class="col-md-3">
+        <label class="form-label small">Channel</label>
+        <input type="text" class="form-control form-control-sm" id="f-channel" value="can0">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small">Backend</label>
+        <input type="text" class="form-control form-control-sm" id="f-backend" value="socketcan">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small">Decode with database</label>
+        <select class="form-select form-select-sm" id="f-database">
+          <option value="">(none)</option>
+        </select>
+      </div>
+      <div class="col-md-3 btn-group">
+        <button id="btn-start" class="btn btn-sm btn-outline-success"><i class="bi bi-play-fill me-1"></i>Start</button>
+        <button id="btn-stop" class="btn btn-sm btn-outline-secondary"><i class="bi bi-stop-fill me-1"></i>Stop</button>
+        <button id="btn-clear" class="btn btn-sm btn-outline-danger"><i class="bi bi-eraser me-1"></i>Clear</button>
+      </div>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-sm align-middle" id="mon-table">
+        <thead>
+          <tr>
+            <th>Arbitration ID</th>
+            <th>Count</th>
+            <th>Data</th>
+            <th>Last seen</th>
+            <th>Decoded signals</th>
+          </tr>
+        </thead>
+        <tbody id="mon-rows"></tbody>
+      </table>
+    </div>
+    <div id="mon-empty" class="text-body-secondary small">No frames seen yet. Start the monitor to watch live traffic.</div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  const rowsEl = document.getElementById('mon-rows');
+  const emptyEl = document.getElementById('mon-empty');
+  const liveBadge = document.getElementById('live-badge');
+  const runningBadge = document.getElementById('running-badge');
+  const channelEl = document.getElementById('f-channel');
+  const backendEl = document.getElementById('f-backend');
+  const databaseSel = document.getElementById('f-database');
+  let clearedAt = 0;
+  let pollTimer = null;
+
+  function fmtTime(ts) {
+    if (!ts) return '';
+    const d = new Date(ts * 1000);
+    return d.toLocaleTimeString();
+  }
+
+  function fmtDecoded(decoded) {
+    if (!decoded) return '';
+    const parts = Object.entries(decoded).map(([k, v]) => `${k}: ${v}`);
+    return parts.join(', ');
+  }
+
+  async function loadDatabases() {
+    try {
+      const res = await fetch('can/databases');
+      const body = await res.json();
+      const current = databaseSel.value;
+      databaseSel.innerHTML = '<option value="">(none)</option>';
+      for (const d of (body.databases || [])) {
+        const opt = document.createElement('option');
+        opt.value = d.id;
+        opt.textContent = d.name || ('Database ' + d.id);
+        databaseSel.appendChild(opt);
+      }
+      databaseSel.value = current;
+    } catch (e) {
+      // No databases imported yet; raw frames still show up.
+    }
+  }
+
+  async function refreshFrames() {
+    const channel = channelEl.value || 'can0';
+    const backend = backendEl.value || 'socketcan';
+    const params = new URLSearchParams({ channel, backend });
+    if (databaseSel.value) params.set('database_id', databaseSel.value);
+    let body;
+    try {
+      const res = await fetch('can/monitor/frames?' + params.toString());
+      body = await res.json();
+    } catch (e) {
+      return;
+    }
+    const status = body.status || {};
+    liveBadge.classList.toggle('on', !!status.live);
+    liveBadge.classList.toggle('off', !status.live);
+    liveBadge.innerHTML = '<i class="bi bi-circle-fill me-1"></i>' + (status.live ? 'Live' : 'Not live');
+    runningBadge.textContent = status.running
+      ? `Running: ${status.frame_count || 0} frames, ${status.unique_ids || 0} ids`
+      : 'Stopped';
+
+    let frames = body.frames || [];
+    if (clearedAt) frames = frames.filter((f) => f.timestamp > clearedAt);
+    emptyEl.classList.toggle('d-none', frames.length > 0);
+    rowsEl.innerHTML = '';
+    for (const f of frames) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="mono">0x${Number(f.arbitration_id).toString(16).toUpperCase()}</td>
+        <td>${f.count}</td>
+        <td class="mono">${f.hex || '(empty)'}</td>
+        <td>${fmtTime(f.timestamp)}</td>
+        <td class="decoded-cell small">${fmtDecoded(f.decoded)}</td>`;
+      rowsEl.appendChild(tr);
+    }
+  }
+
+  document.getElementById('btn-start').addEventListener('click', async () => {
+    await fetch('can/monitor/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channel: channelEl.value || 'can0', backend: backendEl.value || 'socketcan' }),
+    });
+    refreshFrames();
+  });
+
+  document.getElementById('btn-stop').addEventListener('click', async () => {
+    await fetch('can/monitor/stop', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channel: channelEl.value || 'can0', backend: backendEl.value || 'socketcan' }),
+    });
+    refreshFrames();
+  });
+
+  document.getElementById('btn-clear').addEventListener('click', () => {
+    clearedAt = Date.now() / 1000;
+    refreshFrames();
+  });
+
+  channelEl.addEventListener('change', () => { clearedAt = 0; refreshFrames(); });
+  backendEl.addEventListener('change', () => { clearedAt = 0; refreshFrames(); });
+  databaseSel.addEventListener('change', refreshFrames);
+
+  loadDatabases();
+  refreshFrames();
+  pollTimer = setInterval(refreshFrames, 500);
+})();
+</script>
+{% endblock %}

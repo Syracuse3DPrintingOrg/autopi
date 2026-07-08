@@ -8,6 +8,12 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **Live CAN bus monitor.** A new Monitor page shows frames arriving on a
+  channel in real time (arbitration id, how many times it has been seen, the
+  latest data), and decodes them into named signals when you pick one of your
+  CAN databases. Start and stop the capture per channel; it degrades cleanly to
+  "not live" when there is no bus.
+
 - **The app now warns when the host-bridge is out of date.** The bridge reports
   a version; the app compares it and, if the running bridge is older than
   expected (updated on disk but not restarted, which broke Wi-Fi with a cryptic
