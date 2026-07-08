@@ -6,8 +6,19 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ## [Unreleased]
 
+### Added
+
+- **Join Wi-Fi from the Network settings page.** On a Raspberry Pi appliance,
+  the Network pane now shows the current connection and lets you scan for
+  nearby networks and join one with a password, without opening a terminal.
+
 ### Fixed
 
+- **The fallback hotspot now actually serves the app.** Connecting to the
+  AutoPi setup hotspot and opening `http://192.168.99.1` used to fail,
+  because nothing was listening on the plain web port. The hotspot now
+  forwards that address straight to the app, so it opens without typing a
+  port number.
 - **The Stream Deck keeps its keys through an update, and recovers on its own.**
   The controller now reads its key layout straight from the app's data files on
   the device, so a deck no longer blanks or loses its keys while the app

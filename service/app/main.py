@@ -12,6 +12,7 @@ from .routers import can_dbc as can_dbc_router
 from .routers import db as db_router
 from .routers import layout as layout_router
 from .routers import logic as logic_router
+from .routers import network as network_router
 from .routers import setup as setup_router
 from .routers import streamdeck as streamdeck_router
 from .routers import system as system_router
@@ -53,6 +54,7 @@ app.include_router(system_router.router)
 app.include_router(db_router.router)
 app.include_router(logic_router.router)
 app.include_router(can_dbc_router.router)
+app.include_router(network_router.router)
 
 
 @app.get("/health")

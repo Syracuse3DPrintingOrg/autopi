@@ -3,18 +3,26 @@
 #
 # Sets up hostapd + dnsmasq and a watchdog service that activates a captive
 # setup hotspot (SSID: AutoPi) only when the device has no other connectivity
-# within 30 seconds of boot. A unit that connects normally is unaffected.
+# within 30 seconds of boot. A unit that connects normally is unaffected. The
+# watchdog also installs a port 80 -> 9284 redirect so a browser pointed at
+# plain http://192.168.99.1 reaches the app without typing the port.
 #
 # Run as root on the device. Ported from the source project's firstboot step
-# with the branding changed.
+# with the branding changed. Safe to re-run: every step here is idempotent.
 set -euo pipefail
+
+if ! grep -qi "raspberry pi" /proc/device-tree/model 2>/dev/null \
+   && ! grep -qi "raspberry pi" /sys/firmware/devicetree/base/model 2>/dev/null; then
+  echo "Not a Raspberry Pi; the fallback access point is Pi-only. Skipping." >&2
+  exit 0
+fi
 
 AP_SSID="${AP_SSID:-AutoPi}"
 AP_PASSPHRASE="${AP_PASSPHRASE:-autopiap}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
-echo "Installing hostapd and dnsmasq"
-DEBIAN_FRONTEND=noninteractive apt-get install -y -q hostapd dnsmasq
+echo "Installing hostapd, dnsmasq, and iptables"
+DEBIAN_FRONTEND=noninteractive apt-get install -y -q hostapd dnsmasq iptables
 
 mkdir -p /etc/hostapd
 cat > /etc/hostapd/hostapd.conf <<EOF
