@@ -190,6 +190,45 @@ def send_test_frame(interface_id: str):
     return {"ok": False, "error": f"Send failed on {entry['channel']}"}
 
 
+@router.post("/config/{interface_id}/sniff")
+def sniff(interface_id: str, seconds: float = 3.0):
+    """Listen on this channel for a few seconds and report how many frames
+    arrived and which arbitration ids were seen. This is the quickest way to
+    tell whether a bus is actually streaming (0 frames means nothing is
+    reaching this interface, even when it is up and self-tests fine)."""
+    import time
+
+    entry = can_interfaces.get_interface(interface_id)
+    if entry is None:
+        raise HTTPException(404, "No such configured interface")
+    from ..can import get_channel
+
+    kwargs = {"bitrate": entry["bitrate"], "fd": entry["fd"]}
+    if entry.get("data_bitrate"):
+        kwargs["data_bitrate"] = entry["data_bitrate"]
+    provider = get_channel(entry["channel"], backend=entry["backend"], **kwargs)
+    if not provider.available:
+        return {"ok": False, "error": getattr(provider, "last_error", None)
+                or "Interface is not available. Bring it up first."}
+    seconds = max(0.5, min(float(seconds), 10.0))
+    deadline = time.monotonic() + seconds
+    count = 0
+    ids: dict[str, int] = {}
+    samples: list[str] = []
+    while time.monotonic() < deadline:
+        frame = provider.recv(timeout=0.3)
+        if frame is None:
+            continue
+        count += 1
+        key = hex(frame.arbitration_id)
+        ids[key] = ids.get(key, 0) + 1
+        if len(samples) < 8:
+            samples.append(frame.format())
+    return {"ok": True, "channel": entry["channel"], "seconds": seconds,
+            "frames": count, "unique_ids": len(ids),
+            "ids": sorted(ids.keys())[:32], "samples": samples}
+
+
 @router.post("/config/{interface_id}/self-test")
 def self_test(interface_id: str):
     """Loopback self-test: send the test frame and confirm it comes back.

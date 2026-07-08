@@ -8,6 +8,18 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **CAN interfaces now show which Waveshare HAT port they are, plus live
+  diagnostics.** The detected-interfaces list maps each kernel interface to the
+  board's silkscreen port (the Waveshare HAT labels its two ports CAN0 and CAN1,
+  which no longer match canN once a USB adapter shifts the numbering), shows the
+  SPI device and receive/transmit packet counts, and each configured interface
+  gets a "Listen 3s" button that reports how many frames arrived and which
+  arbitration ids were seen. Zero frames tells you a bus is not reaching the
+  interface even when it is up and self-tests fine, which is the quickest way to
+  find a wiring or bitrate mismatch.
+
+### Added
+
 - **See the CAN interfaces on your device, and pick channels from a dropdown.**
   The CAN Interfaces settings now list every interface actually present on the
   device and what each one is (for example can0 = PEAK PCAN-USB, can1 = Waveshare

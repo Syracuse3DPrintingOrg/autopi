@@ -104,6 +104,35 @@
       });
   }
 
+  function runSniff(iface, row) {
+    const resultEl = row.querySelector('[data-op-result="' + iface.id + '"]');
+    resultEl.textContent = 'Listening on ' + iface.channel + ' for 3s…';
+    resultEl.className = 'small mt-1 text-secondary';
+    fetch('can/interfaces/config/' + encodeURIComponent(iface.id) + '/sniff', { method: 'POST' })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.ok === false) {
+          resultEl.textContent = d.error || 'Listen failed';
+          resultEl.className = 'small mt-1 text-danger';
+          return;
+        }
+        if (!d.frames) {
+          resultEl.innerHTML = '<span class="text-warning">No frames arrived in ' + d.seconds + 's.</span> '
+            + 'The interface is up but nothing is reaching it: check the wiring to this bus, that the bus is '
+            + 'awake, and that the bitrate/FD settings match it.';
+          resultEl.className = 'small mt-1';
+          return;
+        }
+        resultEl.innerHTML = '<span class="text-success">' + d.frames + ' frames, ' + d.unique_ids
+          + ' unique IDs</span> in ' + d.seconds + 's. IDs: ' + (d.ids || []).join(', ');
+        resultEl.className = 'small mt-1';
+      })
+      .catch(() => {
+        resultEl.textContent = 'Request failed';
+        resultEl.className = 'small mt-1 text-danger';
+      });
+  }
+
   function runSelfTest(iface, row) {
     const resultEl = row.querySelector('[data-op-result="' + iface.id + '"]');
     resultEl.textContent = 'Running loopback test…';
@@ -172,6 +201,7 @@
             '<button type="button" class="btn btn-outline-secondary btn-sm" data-down="' + iface.id + '">Bring down</button>' +
             '<button type="button" class="btn btn-outline-primary btn-sm" data-selftest="' + iface.id + '">Run self-test</button>' +
             '<button type="button" class="btn btn-outline-primary btn-sm" data-testframe="' + iface.id + '">Send test frame</button>' +
+            '<button type="button" class="btn btn-outline-info btn-sm" data-sniff="' + iface.id + '">Listen 3s</button>' +
             '<span data-linkstate="' + iface.id + '"></span>' +
             '</div>' +
             '<div class="small mt-1" data-op-result="' + iface.id + '"></div>'
@@ -201,6 +231,7 @@
         row.querySelector('[data-down]').addEventListener('click', () => bringUpDown(iface, row, false));
         row.querySelector('[data-selftest]').addEventListener('click', () => runSelfTest(iface, row));
         row.querySelector('[data-testframe]').addEventListener('click', () => sendTestFrame(iface, row));
+        row.querySelector('[data-sniff]').addEventListener('click', () => runSniff(iface, row));
         refreshLinkState(iface, row);
       }
     });
@@ -280,8 +311,14 @@
         const state = it.up
           ? '<span class="badge text-bg-success">up</span>'
           : '<span class="badge text-bg-secondary">down</span>';
-        row.innerHTML = '<div><code>' + it.name + '</code> ' + state
-          + '<div class="text-secondary">' + (it.description || '') + '</div></div>';
+        const port = it.port_label ? ' <span class="badge text-bg-info">HAT ' + it.port_label + '</span>' : '';
+        const st = it.stats || {};
+        const rx = (st.rx_packets != null)
+          ? ' <span class="text-secondary">rx ' + st.rx_packets + ' / tx ' + (st.tx_packets != null ? st.tx_packets : '?') + '</span>'
+          : '';
+        row.innerHTML = '<div><code>' + it.name + '</code> ' + state + port
+          + '<div class="text-secondary">' + (it.description || '')
+          + (it.spi_device ? ' (' + it.spi_device + ')' : '') + rx + '</div></div>';
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'btn btn-outline-primary btn-sm flex-shrink-0';
