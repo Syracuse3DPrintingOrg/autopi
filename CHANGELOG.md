@@ -6,6 +6,14 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ## [Unreleased]
 
+### Changed
+
+- **Virtual cockpit: pick a gauge's signal from a searchable dropdown.** When you
+  bind a cockpit gauge or indicator to a CAN database, the signal field is now a
+  type-to-search dropdown of that database's signals (with the message and id
+  shown), instead of a free-text box you had to fill from memory. Picking a signal
+  fills in its arbitration id automatically.
+
 ### Added
 
 - **Signal Finder: reverse-engineer an unknown CAN signal automatically.** Capture

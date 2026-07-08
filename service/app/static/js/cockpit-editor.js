@@ -228,7 +228,11 @@
         </div>
         <div class="mb-2">
           <label class="form-label small">Signal name</label>
-          <input type="text" class="form-control form-control-sm" id="p-signal" value="${escapeAttr(el.signal)}">
+          <input type="text" class="form-control form-control-sm" id="p-signal" list="p-signal-list"
+                 autocomplete="off" placeholder="Type to search this database's signals"
+                 value="${escapeAttr(el.signal)}">
+          <datalist id="p-signal-list"></datalist>
+          <div class="form-text" id="p-signal-hint"></div>
         </div>
         <div class="row g-2 mb-2">
           <div class="col-6"><label class="form-label small">Min</label>
@@ -270,6 +274,53 @@
 
     $('#p-save').addEventListener('click', () => savePanel(el));
     $('#p-delete').addEventListener('click', () => deleteElement(el));
+
+    // For gauges/indicators, turn the signal field into a searchable dropdown of
+    // the selected database's signals, and fill in the arbitration id from the
+    // signal's message when one is picked.
+    if (el.type !== 'key') {
+      let signalMap = {};
+      const dbSel = $('#p-database');
+      const sigInput = $('#p-signal');
+      const list = $('#p-signal-list');
+      const hint = $('#p-signal-hint');
+      const toHex = (n) => '0x' + Number(n).toString(16).toUpperCase();
+
+      async function loadSignals() {
+        signalMap = {};
+        if (list) list.innerHTML = '';
+        const dbId = dbSel && dbSel.value ? parseInt(dbSel.value, 10) : null;
+        if (!dbId) { if (hint) hint.textContent = 'Pick a database to list its signals.'; return; }
+        try {
+          const d = await api('can/databases/' + dbId);
+          (d.messages || []).forEach((m) => (m.signals || []).forEach((s) => {
+            signalMap[s.name] = { arb: m.arbitration_id, message: m.name };
+            if (list) {
+              const opt = document.createElement('option');
+              opt.value = s.name;
+              opt.label = (m.name ? m.name + ' · ' : '') + toHex(m.arbitration_id);
+              list.appendChild(opt);
+            }
+          }));
+          const count = Object.keys(signalMap).length;
+          if (hint) hint.textContent = count + ' signal' + (count === 1 ? '' : 's') + ' in this database.';
+          applySignalInfo();
+        } catch (e) { if (hint) hint.textContent = 'Could not load this database\'s signals.'; }
+      }
+
+      function applySignalInfo() {
+        const info = signalMap[sigInput.value];
+        if (info) {
+          const arb = $('#p-arb');
+          if (arb) arb.value = toHex(info.arb);  // a signal lives in one message
+          if (hint) hint.textContent = 'In ' + (info.message || 'message') + ' (' + toHex(info.arb) + ')';
+        }
+      }
+
+      if (dbSel) dbSel.addEventListener('change', loadSignals);
+      if (sigInput) sigInput.addEventListener('change', applySignalInfo);
+      loadSignals();
+    }
   }
 
   function escapeAttr(v) {
