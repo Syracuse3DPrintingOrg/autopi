@@ -242,25 +242,59 @@ def _tick(deck, client: httpx.Client, cfg: Config, state: dict) -> None:
     if state["page"] >= len(pages):
         state["page"] = 0
     state["pages"] = pages
-    _paint(deck, pages[state["page"] % len(pages)], catalog, state["rotation"])
+    page_index = state["page"] % len(pages)
+    _paint(deck, pages[page_index], catalog, state["rotation"], page_index, len(pages))
 
 
-def _paint(deck, page, catalog: dict, rotation: int) -> None:
+def _paint(deck, page, catalog: dict, rotation: int, page_index: int = 0, total_pages: int = 1) -> None:
+    """Paint one page of key faces, matching the on-screen tile per key.
+
+    Each key's face is derived from the same label/icon/color an ActionSpec
+    carries, so the physical deck shows what the user arranged on screen. The
+    page-cycle key gets a small "n/total" badge naming the page it advances
+    to. Painting is defensive per key and per face: a bad glyph or a driver
+    write failure drops to a plainer face (label-only, then a blank tile of
+    the right color) rather than aborting the page or wedging the loop.
+    """
     from StreamDeck.ImageHelpers import PILHelper
     size = deck.key_image_format()["size"]
     for slot, action_id in enumerate(page):
         try:
             phys = deck_layout.rotated_index(slot, deck.key_count(), rotation)
+            badge = None
             if action_id == deck_layout.PAGE_NEXT:
-                label, color = "More", "#1f2937"
+                spec = catalog.get(deck_layout.PAGE_NEXT, {})
+                label = spec.get("label") or "More"
+                icon = spec.get("icon") or "bi-chevron-right"
+                color = spec.get("color") or "#1f2937"
+                next_page = (page_index + 1) % max(1, total_pages) + 1
+                badge = f"{next_page}/{total_pages}" if total_pages > 1 else None
             elif isinstance(action_id, str) and action_id:
                 spec = catalog.get(action_id, {})
-                label, color = spec.get("label") or action_id, spec.get("color") or "#334155"
+                label = spec.get("label") or action_id
+                icon = spec.get("icon") or ""
+                color = spec.get("color") or "#334155"
             else:
-                label, color = "", "#111827"
-            img = render_key(label, color, size, rotation)
+                label, icon, color = "", "", "#111827"
+            img = _render_with_fallback(label, icon, color, size, rotation, badge)
             if img is not None:
                 deck.set_key_image(phys, PILHelper.to_native_format(deck, img))
         except Exception as exc:
             # One bad key must not abort the whole page (or wedge the loop).
             log.debug("Painting key %s failed: %s", slot, exc)
+
+
+def _render_with_fallback(label: str, icon: str, color: str, size, rotation: int, badge):
+    """Render a key face, degrading gracefully if the full face fails.
+
+    Tries icon+label+color first, then label-only, then a blank tile of the
+    right color. render_key already never raises; this just widens the
+    fallback chain so a bad icon can never blank a key that could otherwise
+    at least show its label and color.
+    """
+    img = render_key(label, icon, color, size, rotation, badge=badge)
+    if img is None and icon:
+        img = render_key(label, "", color, size, rotation, badge=badge)
+    if img is None:
+        img = render_key("", "", color, size, rotation)
+    return img
