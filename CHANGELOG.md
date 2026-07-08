@@ -6,6 +6,15 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ## [Unreleased]
 
+### Added
+
+- **Live CAN bus monitor.** A new Monitor page watches frames arriving on a
+  CAN channel in real time: arbitration id, byte count, raw data, and last
+  seen time, with named signal values shown alongside when a matching DBC
+  database is picked. Start and stop the reader per channel from the page; on
+  a machine with no CAN adapter attached it reports "not live" instead of
+  erroring, so the page is safe to open on a dev box.
+
 ### Fixed
 
 - **Wi-Fi and other host features no longer show a bare "not found" after an

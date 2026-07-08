@@ -88,3 +88,9 @@ def profiles_page(request: Request):
 def can_sim_page(request: Request):
     # The panel loads the transmit list and scheduler status over the API.
     return templates.TemplateResponse(request, "can_sim.html", theme_context(request))
+
+
+@router.get("/ui/can-monitor", response_class=HTMLResponse)
+def can_monitor_page(request: Request):
+    # The panel loads databases and polls the frame buffer over the API.
+    return templates.TemplateResponse(request, "can_monitor.html", theme_context(request))
