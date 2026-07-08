@@ -12,6 +12,7 @@ from .routers import can_dbc as can_dbc_router
 from .routers import can_interfaces as can_interfaces_router
 from .routers import can_monitor as can_monitor_router
 from .routers import can_sim as can_sim_router
+from .routers import cockpit as cockpit_router
 from .routers import db as db_router
 from .routers import diagnostics as diagnostics_router
 from .routers import examples as examples_router
@@ -90,6 +91,7 @@ app.include_router(tests_router.router)
 app.include_router(sync_router.router)
 app.include_router(profiles_router.router)
 app.include_router(network_router.router)
+app.include_router(cockpit_router.router)
 
 
 def _data_dir_writable() -> bool:

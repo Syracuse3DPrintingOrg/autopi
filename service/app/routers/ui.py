@@ -10,6 +10,7 @@ from .. import testseq
 from ..actions import registry
 from ..config import settings
 from ..services import can_interfaces, journal
+from ..services import cockpit as cockpit_svc
 from ..services import layout as layout_svc
 from ..services import profiles as profiles_svc
 from ..services import ui_mode as ui_mode_svc
@@ -197,3 +198,18 @@ def logs_page(request: Request):
 def tests_page(request: Request):
     # Sequences, the step builder, and a live run all load over the /tests API.
     return templates.TemplateResponse(request, "tests.html", theme_context(request))
+
+
+@router.get("/ui/cockpit", response_class=HTMLResponse)
+def cockpit_editor_page(request: Request):
+    # The editor loads cockpits, actions, and CAN databases over the API.
+    return templates.TemplateResponse(request, "cockpit_editor.html", theme_context(request))
+
+
+@router.get("/ui/cockpit/{cockpit_id}", response_class=HTMLResponse)
+def cockpit_operate_page(request: Request, cockpit_id: int):
+    # Full-screen, no chrome: the operate view loads the cockpit and polls
+    # live gauge values over the API itself.
+    cockpit = cockpit_svc.get_cockpit(cockpit_id)
+    return templates.TemplateResponse(request, "cockpit_operate.html", theme_context(
+        request, cockpit_id=cockpit_id, cockpit=cockpit))

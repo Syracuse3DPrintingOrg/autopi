@@ -8,6 +8,14 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **Virtual cockpit: design your own dashboard.** Upload a photo of your
+  dashboard (or any background art) on the new Cockpit page, then place keys
+  and gauges directly on top of it: a key runs any action with a tap, a
+  gauge or indicator reads a live CAN signal and updates in real time. Every
+  element scales with the image, so a layout built on a phone looks right on
+  a full-screen kiosk display too. Open a cockpit's kiosk view for a
+  full-screen, chrome-free operate screen.
+
 - **Toyota, Honda, and Hyundai samples on real open-source DBCs.** Three more
   vehicle examples built on real opendbc data (MIT): a 2024 Toyota RAV4
   (toyota_nodsu_pt), a 2022 Honda Civic (honda_civic_ex), and a 2024 Hyundai

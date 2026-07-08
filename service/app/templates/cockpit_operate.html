@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="{{ theme_mode }}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <base href="/">
+  <title>{{ cockpit.name if cockpit else 'Cockpit' }}: {{ app_name }}</title>
+  <link href="static/vendor/bootstrap.min.css" rel="stylesheet">
+  <link href="static/vendor/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="static/css/app.css" rel="stylesheet">
+  <link rel="icon" type="image/svg+xml" href="static/icons/favicon.svg">
+  <style>
+    html, body { height: 100%; margin: 0; overflow: hidden; background: #000; }
+    .cp-wrap { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
+    .cp-stage { position: relative; max-width: 100%; max-height: 100%; }
+    .cp-stage img { display: block; max-width: 100vw; max-height: 100vh; width: auto; height: auto; }
+    .cp-el { position: absolute; border-radius: 0.6vmin; display: flex; align-items: center;
+      justify-content: center; text-align: center; color: #fff; font-weight: 600;
+      font-size: min(2vw, 2.4vh); user-select: none; overflow: hidden; padding: 0.4vmin; }
+    .cp-el.key { cursor: pointer; border: 2px solid rgba(255,255,255,0.2); transition: filter 0.1s ease, transform 0.05s ease; }
+    .cp-el.key:hover { filter: brightness(1.15); }
+    .cp-el.key:active { transform: scale(0.96); }
+    .cp-el.gauge, .cp-el.indicator { flex-direction: column; border: 2px solid rgba(255,255,255,0.35); background: rgba(0,0,0,0.55); }
+    .cp-gauge-label { font-size: min(1.5vw, 1.6vh); opacity: 0.85; }
+    .cp-gauge-value { font-size: min(2.6vw, 3vh); font-weight: 700; }
+    .cp-gauge-bar-track { width: 80%; height: 0.8vmin; background: rgba(255,255,255,0.2); border-radius: 1vmin; overflow: hidden; margin-top: 0.4vmin; }
+    .cp-gauge-bar-fill { height: 100%; background: var(--bs-info); width: 0%; }
+    .cp-indicator-dot { width: 40%; aspect-ratio: 1; border-radius: 50%; background: #444; }
+    .cp-indicator-dot.on { background: var(--bs-success); box-shadow: 0 0 1vmin var(--bs-success); }
+    .cp-empty { color: #ccc; text-align: center; padding: 2rem; }
+    .cp-exit { position: fixed; top: 1vmin; right: 1vmin; z-index: 5; opacity: 0.4; }
+    .cp-exit:hover { opacity: 1; }
+    .cp-toast { position: fixed; bottom: 2vmin; left: 50%; transform: translateX(-50%);
+      background: var(--bs-secondary-bg); color: var(--bs-body-color); border: 1px solid var(--bs-border-color);
+      border-radius: 0.6rem; padding: 0.5rem 1rem; z-index: 6; display: none; }
+  </style>
+</head>
+<body>
+{% if not cockpit %}
+  <div class="d-flex flex-column align-items-center justify-content-center" style="height:100%; gap:1rem; text-align:center; padding:2rem; color:#fff">
+    <i class="bi bi-speedometer2" style="font-size:3rem; opacity:0.6"></i>
+    <h4 class="mb-0">No such cockpit</h4>
+    <a href="ui/cockpit" class="btn btn-primary btn-sm">Open the cockpit editor</a>
+  </div>
+{% else %}
+  <a href="ui/cockpit" class="btn btn-outline-light btn-sm cp-exit" title="Edit this cockpit"><i class="bi bi-pencil"></i></a>
+  <div class="cp-wrap" id="cp-wrap">
+    {% if not cockpit.image_filename %}
+    <div class="cp-empty">
+      <i class="bi bi-image" style="font-size:2.5rem; opacity:0.6"></i>
+      <p class="mb-0 mt-2">This cockpit has no background image yet.</p>
+    </div>
+    {% else %}
+    <div class="cp-stage" id="cp-stage">
+      <img src="cockpit/{{ cockpit.id }}/image" alt="">
+    </div>
+    {% endif %}
+  </div>
+  <div class="cp-toast" id="toast"></div>
+  <script>
+    window.COCKPIT_ID = {{ cockpit.id }};
+    window.COCKPIT_ELEMENTS = {{ (cockpit.elements or []) | tojson }};
+  </script>
+  <script src="static/js/cockpit-operate.js"></script>
+{% endif %}
+</body>
+</html>
