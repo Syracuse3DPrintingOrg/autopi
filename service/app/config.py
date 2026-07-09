@@ -13,7 +13,7 @@ from typing import Any
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 APP_NAME = "AutoPi"
-APP_VERSION = "0.1.52"
+APP_VERSION = "0.1.53"
 
 # Where the setup page writes persisted settings and where state files live.
 _DEFAULT_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -34,6 +34,9 @@ _SAVEABLE = (
     "sync_server_url",
     "sync_device_token",
     "ui_mode",
+    "llm_provider",
+    "llm_api_key",
+    "llm_model",
 )
 
 
@@ -72,6 +75,13 @@ class Settings(BaseSettings):
     # Which UI a request sees: "auto" (loopback/kiosk -> operator else builder),
     # or forced "operator"/"builder". See services/ui_mode.py.
     ui_mode: str = "auto"
+
+    # Optional AI assist for the Signal Finder (app/llm.py). Entirely optional:
+    # with no key the Signal Finder still works on statistics alone. Only the
+    # Anthropic Claude API is wired up today.
+    llm_provider: str = "anthropic"
+    llm_api_key: str = ""
+    llm_model: str = ""
 
     def load_saved(self) -> None:
         """Layer settings.json over the current values (in place)."""

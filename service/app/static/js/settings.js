@@ -76,4 +76,24 @@
       });
     }).catch(() => { list.textContent = 'Could not load drivers.'; });
   }
+
+  // AI Assist: report whether the saved key/model are usable. Save first, then
+  // Test, since it reflects what is persisted, not the unsaved form fields.
+  const aiTest = document.getElementById('ai-test-btn');
+  if (aiTest) {
+    aiTest.addEventListener('click', () => {
+      const st = document.getElementById('ai-test-status');
+      st.textContent = 'Checking…';
+      st.className = 'ms-2 small text-secondary';
+      fetch('reverse/llm/status').then((r) => r.json()).then((d) => {
+        if (d.available) {
+          st.textContent = 'Ready (' + (d.model || 'default model') + '). Save first if you just changed the key.';
+          st.className = 'ms-2 small text-success';
+        } else {
+          st.textContent = d.reason || 'Not configured.';
+          st.className = 'ms-2 small text-warning';
+        }
+      }).catch(() => { st.textContent = 'Check failed.'; st.className = 'ms-2 small text-danger'; });
+    });
+  }
 })();

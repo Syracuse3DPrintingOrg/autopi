@@ -83,6 +83,9 @@
           <button class="nav-link d-flex align-items-center" data-bs-toggle="pill" data-bs-target="#pane-can-interfaces" type="button">
             <i class="bi bi-diagram-3 me-2"></i>CAN Interfaces
           </button>
+          <button class="nav-link d-flex align-items-center" data-bs-toggle="pill" data-bs-target="#pane-ai" type="button">
+            <i class="bi bi-stars me-2"></i>AI Assist
+          </button>
 
           <div class="menu-heading">System</div>
           <button class="nav-link d-flex align-items-center" data-bs-toggle="pill" data-bs-target="#pane-logging" type="button">
@@ -117,6 +120,7 @@
               ('pane-actions','bi-lightning-charge','Actions','Your action library and drivers'),
               ('pane-profile-sync','bi-cloud-arrow-down','Profile Sync','Pull vehicle profiles from a server'),
               ('pane-can-interfaces','bi-diagram-3','CAN Interfaces','Backends, channels, and bitrates'),
+              ('pane-ai','bi-stars','AI Assist','Optional LLM help for reverse engineering'),
               ('pane-logging','bi-journal-text','Logging','Event journal and retention'),
               ('pane-security','bi-shield-lock','Security','Optional PIN lock'),
               ('pane-updates','bi-cloud-arrow-down','Updates','Version and updating'),
@@ -369,6 +373,39 @@
             <span class="ms-2 small" id="can-if-save-status"></span>
             <div class="form-text mt-2">LIN and automotive Ethernet (DoIP) are not backends you can select yet;
               see <code>docs/can.md</code> for where that support will land.</div>
+          </div>
+        </div>
+
+        <div class="tab-pane fade" id="pane-ai" role="tabpanel" data-title="AI Assist">
+          <div class="section-title"><i class="bi bi-stars"></i>AI Assist</div>
+          <p class="pane-intro">The Signal Finder works on its own with no account needed. Add a Claude
+            API key here and it can also suggest names and units for the signals it finds and interpret
+            what a message is carrying. Nothing is sent anywhere until you use one of those buttons, and
+            the key stays on this device.</p>
+          <div class="section-card">
+            <div class="subsection-title mb-2">Claude API</div>
+            <label class="form-label">Provider</label>
+            <select class="form-select" style="max-width: 16rem"
+                    data-setting="llm_provider" data-type="str">
+              <option value="anthropic" {% if s.llm_provider == 'anthropic' or not s.llm_provider %}selected{% endif %}>Anthropic (Claude)</option>
+            </select>
+            <label class="form-label mt-3">API key</label>
+            <input type="password" class="form-control" style="max-width: 32rem"
+                   data-setting="llm_api_key" data-type="str" value="{{ s.llm_api_key }}"
+                   placeholder="sk-ant-…" autocomplete="off">
+            <div class="form-text">Get a key at console.anthropic.com. Leave blank to turn the AI help off.</div>
+            <label class="form-label mt-3">Model</label>
+            <input type="text" class="form-control" style="max-width: 24rem"
+                   data-setting="llm_model" data-type="str" value="{{ s.llm_model }}"
+                   placeholder="claude-opus-4-8">
+            <div class="form-text">Leave blank for the default (claude-opus-4-8). Use claude-haiku-4-5 for a
+              faster, cheaper option.</div>
+            <div class="mt-3">
+              <button class="btn btn-primary btn-sm save-btn">Save</button>
+              <button type="button" class="btn btn-outline-secondary btn-sm ms-2" id="ai-test-btn">Test</button>
+              <span class="save-status ms-2 small"></span>
+              <span id="ai-test-status" class="ms-2 small"></span>
+            </div>
           </div>
         </div>
 

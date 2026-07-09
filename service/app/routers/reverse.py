@@ -13,6 +13,7 @@ import time
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from .. import llm
 from ..can import capture as cap
 from ..can import get_channel
 from ..can import reverse as rev
@@ -221,6 +222,56 @@ def save_route(body: SaveIn):
         s.flush()
         return {"ok": True, "database": database.to_dict(with_messages=True),
                 "candidate": derived}
+
+
+# --------------------------------------------------------------------------
+# Optional LLM assist (app/llm.py): name and interpret signals. Every route
+# degrades to {"available": False, ...} when no API key is configured, so the
+# UI can offer these without them ever 500-ing on an unconfigured device.
+# --------------------------------------------------------------------------
+
+@router.get("/llm/status")
+def llm_status():
+    return llm.status()
+
+
+class InterpretIn(BaseModel):
+    capture_id: str
+    arbitration_id: int
+    context_hint: str = ""
+
+
+@router.post("/llm/interpret")
+def llm_interpret(body: InterpretIn):
+    ready = llm.status()
+    if not ready["available"]:
+        return ready
+    capture = _capture_or_404(body.capture_id)
+    frames = _frames_for_id(capture, body.arbitration_id)
+    if not frames:
+        raise HTTPException(404, "No frames with that arbitration id in this capture")
+    activity = rev.bit_activity(frames)
+    try:
+        return llm.interpret_message(activity, frames, body.context_hint)
+    except RuntimeError as exc:
+        return {"available": True, "error": str(exc)}
+
+
+class NameIn(BaseModel):
+    candidate: dict
+    reference_hint: str = ""
+    context_hint: str = ""
+
+
+@router.post("/llm/name")
+def llm_name(body: NameIn):
+    ready = llm.status()
+    if not ready["available"]:
+        return ready
+    try:
+        return llm.suggest_name(body.candidate, body.reference_hint, body.context_hint)
+    except RuntimeError as exc:
+        return {"available": True, "error": str(exc)}
 
 
 # --------------------------------------------------------------------------

@@ -6,6 +6,16 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ## [Unreleased]
 
+### Added
+
+- **Optional AI help in the Signal Finder.** Add a Claude API key under Settings,
+  AI Assist, and the Signal Finder can suggest a name, unit, and description for a
+  signal it found, and interpret what a whole message is carrying, so you spend
+  less time guessing what a candidate is. It is entirely optional: with no key the
+  Signal Finder works exactly as before on statistics alone, and nothing leaves
+  the device until you press one of the AI buttons. You can point it at a faster,
+  cheaper model and add a note about the vehicle to sharpen the guesses.
+
 ### Fixed
 
 - **Listen and Signal Finder no longer intermittently see "no frames" on a busy

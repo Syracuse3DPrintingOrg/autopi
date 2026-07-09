@@ -97,7 +97,17 @@
         <div id="survey-results" class="small text-secondary">Run a survey to rank the ids.</div>
       </div></div>
       <div class="card"><div class="card-body">
-        <h6 class="mb-2">Signal candidates</h6>
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h6 class="mb-0">Signal candidates</h6>
+          {% if llm_configured %}
+          <button class="btn btn-outline-info btn-sm" id="interpret-ai" disabled>Interpret message (AI)</button>
+          {% endif %}
+        </div>
+        {% if llm_configured %}
+        <input type="text" class="form-control form-control-sm mb-2" id="ai-context"
+               placeholder="Optional: vehicle/platform context, e.g. 2024 Stellantis high-speed CAN">
+        <div id="interpret-out" class="small mb-2"></div>
+        {% endif %}
         <div id="bitsearch-results" class="small text-secondary">Pick an id above to search its bits.</div>
       </div></div>
     </div>
@@ -115,7 +125,11 @@
     <label class="form-label small mb-1">Unit (optional)</label>
     <input type="text" class="form-control form-control-sm mb-3" id="save-unit" placeholder="km/h">
     <button class="btn btn-primary btn-sm" id="save-confirm">Save signal</button>
+    {% if llm_configured %}
+    <button class="btn btn-outline-info btn-sm ms-2" id="save-ai-name">Suggest name (AI)</button>
+    {% endif %}
     <span id="save-status" class="small ms-2"></span>
+    <div id="save-ai-out" class="small text-secondary mt-2"></div>
   </div>
 </div></div></div>
 {% endblock %}
@@ -127,6 +141,8 @@
   const refEl = document.getElementById('reference');
   const hex = (n) => '0x' + Number(n).toString(16).toUpperCase();
   let currentCandidate = null;
+  let currentArbId = null;
+  const aiContext = () => { const el = document.getElementById('ai-context'); return el ? el.value.trim() : ''; };
   let recordedReference = null;
   let recordedMode = null;
 
@@ -349,6 +365,9 @@
 
   function bitsearch(arbId) {
     const el = document.getElementById('bitsearch-results');
+    currentArbId = arbId;
+    const iBtn = document.getElementById('interpret-ai');
+    if (iBtn) iBtn.disabled = false;
     el.textContent = 'Searching the bits of ' + hex(arbId) + '…';
     fetch('reverse/bitsearch', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ capture_id: captureEl.value, arbitration_id: arbId, reference: reference() }) })
@@ -397,6 +416,45 @@
         st.innerHTML = d.ok === false ? '<span class="text-danger">' + esc(d.error || d.detail || 'Save failed') + '</span>'
           : '<span class="text-success">Saved. Decode it on the Monitor now.</span>';
       }).catch(() => { st.textContent = 'Save failed.'; });
+  });
+
+  const interpretBtn = document.getElementById('interpret-ai');
+  if (interpretBtn) interpretBtn.addEventListener('click', () => {
+    if (currentArbId == null) return;
+    const out = document.getElementById('interpret-out');
+    out.innerHTML = '<span class="text-info">Asking the model about ' + hex(currentArbId) + '…</span>';
+    fetch('reverse/llm/interpret', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ capture_id: captureEl.value, arbitration_id: currentArbId, context_hint: aiContext() }) })
+      .then((r) => r.json()).then((d) => {
+        if (d.available === false) { out.innerHTML = '<span class="text-warning">' + esc(d.reason || 'AI assist not configured.') + '</span>'; return; }
+        if (d.error) { out.innerHTML = '<span class="text-danger">' + esc(d.error) + '</span>'; return; }
+        let html = '<div><strong>Likely:</strong> ' + esc(d.message_guess || '') + '</div>';
+        (d.fields || []).forEach((f) => {
+          html += '<div class="mono">' + esc(f.bytes) + ': ' + esc(f.guess) + ' <span class="text-secondary">(' + esc(f.confidence) + ')</span></div>';
+        });
+        if (d.notes) html += '<div class="text-secondary mt-1">' + esc(d.notes) + '</div>';
+        out.innerHTML = html;
+      }).catch(() => { out.innerHTML = '<span class="text-danger">Interpret failed.</span>'; });
+  });
+
+  const aiNameBtn = document.getElementById('save-ai-name');
+  if (aiNameBtn) aiNameBtn.addEventListener('click', () => {
+    if (!currentCandidate) return;
+    const out = document.getElementById('save-ai-out');
+    out.innerHTML = '<span class="text-info">Asking the model for a name…</span>';
+    fetch('reverse/llm/name', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ candidate: currentCandidate, reference_hint: aiContext(), context_hint: aiContext() }) })
+      .then((r) => r.json()).then((d) => {
+        if (d.available === false) { out.innerHTML = '<span class="text-warning">' + esc(d.reason || 'AI assist not configured.') + '</span>'; return; }
+        if (d.error) { out.innerHTML = '<span class="text-danger">' + esc(d.error) + '</span>'; return; }
+        if (d.name) document.getElementById('save-name').value = d.name;
+        if (d.unit) document.getElementById('save-unit').value = d.unit;
+        let html = '<strong>' + esc(d.name || '') + '</strong>' + (d.unit ? ' [' + esc(d.unit) + ']' : '');
+        if (d.description) html += ' — ' + esc(d.description);
+        if (d.plausible === false) html += ' <span class="text-warning">(the model thinks this fit is questionable)</span>';
+        if (d.reason) html += '<div class="text-secondary mt-1">' + esc(d.reason) + '</div>';
+        out.innerHTML = html;
+      }).catch(() => { out.innerHTML = '<span class="text-danger">Suggestion failed.</span>'; });
   });
 
   loadCaptures();
