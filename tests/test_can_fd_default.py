@@ -29,6 +29,19 @@ def test_configured_settings_defaults_fd_from_live_link(monkeypatch):
     assert registry._configured_settings("can1", "socketcan") == {"fd": True}
 
 
+def test_configured_settings_live_fd_overrides_saved_classic(monkeypatch):
+    # The interface is saved with fd disabled, but the live link is up in FD.
+    # A classic socket would receive nothing, so FD must win.
+    monkeypatch.setattr(registry, "_link_is_fd", lambda ch, **kw: True)
+    from app.services import can_interfaces
+    monkeypatch.setattr(can_interfaces, "list_interfaces", lambda: [
+        {"channel": "can0", "backend": "socketcan", "fd": False, "bitrate": 500000},
+    ])
+    settings = registry._configured_settings("can0", "socketcan")
+    assert settings["fd"] is True
+    assert settings["bitrate"] == 500000
+
+
 def test_configured_settings_no_fd_when_link_classic(monkeypatch):
     monkeypatch.setattr(registry, "_link_is_fd", lambda ch, **kw: False)
     from app.services import can_interfaces

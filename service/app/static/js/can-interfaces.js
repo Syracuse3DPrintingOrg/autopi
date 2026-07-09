@@ -23,6 +23,9 @@
   const statusEl = document.getElementById('can-if-save-status');
   const formTitle = document.getElementById('can-if-form-title');
 
+  const bitrateCustom = document.getElementById('can-if-bitrate-custom');
+  const dataBitrateCustom = document.getElementById('can-if-data-bitrate-custom');
+
   const LINK_BACKENDS = new Set(['socketcan']);
   let editingId = null;
 
@@ -33,13 +36,58 @@
   }
   purposeSel.addEventListener('change', updateLabelVisibility);
 
+  // CAN-FD only fields (data bitrate, FD data sample point) are hidden unless
+  // the CAN-FD switch is on, so a classic bus (e.g. a 125k body bus) does not
+  // show settings that do not apply to it.
+  function updateFdVisibility() {
+    document.querySelectorAll('.can-if-fd-only').forEach((el) => {
+      el.classList.toggle('d-none', !fdInput.checked);
+    });
+  }
+  fdInput.addEventListener('change', updateFdVisibility);
+
+  // Standard speeds live in a dropdown; "Other…" reveals a number input for a
+  // non-standard bus. These helpers read and set the effective value across the
+  // select + its custom input.
+  function bindCustom(sel, custom) {
+    sel.addEventListener('change', () => {
+      custom.classList.toggle('d-none', sel.value !== 'custom');
+    });
+  }
+  bindCustom(bitrateInput, bitrateCustom);
+  bindCustom(dataBitrateInput, dataBitrateCustom);
+
+  function getSpeed(sel, custom) {
+    const raw = sel.value === 'custom' ? custom.value : sel.value;
+    const n = parseInt(raw, 10);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }
+
+  function setSpeed(sel, custom, value) {
+    const target = value == null ? '' : String(value);
+    const match = Array.from(sel.options).some((o) => o.value === target);
+    if (target && match) {
+      sel.value = target;
+      custom.value = '';
+      custom.classList.add('d-none');
+    } else if (target) {
+      sel.value = 'custom';
+      custom.value = target;
+      custom.classList.remove('d-none');
+    } else {
+      sel.selectedIndex = 0;
+      custom.value = '';
+      custom.classList.add('d-none');
+    }
+  }
+
   function resetForm() {
     editingId = null;
     idInput.value = '';
     idInput.disabled = false;
     channelInput.value = '';
-    bitrateInput.value = 500000;
-    dataBitrateInput.value = '';
+    setSpeed(bitrateInput, bitrateCustom, 500000);
+    setSpeed(dataBitrateInput, dataBitrateCustom, 2000000);
     if (samplePointInput) samplePointInput.value = '';
     if (dataSamplePointInput) dataSamplePointInput.value = '';
     purposeSel.value = '';
@@ -48,6 +96,7 @@
     formTitle.textContent = 'Add an interface';
     cancelBtn.classList.add('d-none');
     updateLabelVisibility();
+    updateFdVisibility();
   }
 
   function loadBackends() {
@@ -289,8 +338,8 @@
     idInput.disabled = true;
     backendSel.value = iface.backend;
     channelInput.value = iface.channel;
-    bitrateInput.value = iface.bitrate;
-    dataBitrateInput.value = iface.data_bitrate || '';
+    setSpeed(bitrateInput, bitrateCustom, iface.bitrate);
+    setSpeed(dataBitrateInput, dataBitrateCustom, iface.data_bitrate || 2000000);
     if (samplePointInput) samplePointInput.value = iface.sample_point || '';
     if (dataSamplePointInput) dataSamplePointInput.value = iface.data_sample_point || '';
     purposeSel.value = iface.purpose || '';
@@ -299,6 +348,7 @@
     formTitle.textContent = 'Edit ' + iface.id;
     cancelBtn.classList.remove('d-none');
     updateLabelVisibility();
+    updateFdVisibility();
     formTitle.scrollIntoView({ block: 'nearest' });
   }
 
@@ -318,9 +368,9 @@
       id: id,
       backend: backendSel.value,
       channel: channelInput.value.trim() || id,
-      bitrate: parseInt(bitrateInput.value, 10) || 500000,
+      bitrate: getSpeed(bitrateInput, bitrateCustom) || 500000,
       fd: fdInput.checked,
-      data_bitrate: dataBitrateInput.value ? parseInt(dataBitrateInput.value, 10) : null,
+      data_bitrate: fdInput.checked ? getSpeed(dataBitrateInput, dataBitrateCustom) : null,
       sample_point: samplePointInput && samplePointInput.value ? parseFloat(samplePointInput.value) : null,
       data_sample_point: dataSamplePointInput && dataSamplePointInput.value ? parseFloat(dataSamplePointInput.value) : null,
       purpose: purposeSel.value,
@@ -385,6 +435,7 @@
   cancelBtn.addEventListener('click', resetForm);
 
   updateLabelVisibility();
+  updateFdVisibility();
   loadBackends();
   loadDetected();
   loadList();

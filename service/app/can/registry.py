@@ -123,24 +123,28 @@ def _configured_settings(channel: str, backend: str) -> dict[str, Any]:
     kernel never delivers its FD frames to us (a classic socket only sees classic
     frames), which is why the monitor and diagnostics could show nothing on an FD
     bus. Best-effort and lazy to avoid an import cycle."""
+    out: dict[str, Any] = {}
     try:
         from ..services import can_interfaces
         for entry in can_interfaces.list_interfaces():
             if entry.get("channel") == channel and entry.get("backend", "socketcan") == backend:
-                out: dict[str, Any] = {"fd": bool(entry.get("fd"))}
+                out = {"fd": bool(entry.get("fd"))}
                 if entry.get("bitrate"):
                     out["bitrate"] = entry["bitrate"]
                 if entry.get("data_bitrate"):
                     out["data_bitrate"] = entry["data_bitrate"]
-                return out
+                break
     except Exception:
         pass
-    # No saved app config for this channel. For a SocketCAN link, still default
-    # fd from the live link's MTU so a capture or the monitor opens FD mode on an
-    # FD bus instead of a classic socket that would receive nothing.
+    # The live link is ground truth for CAN-FD. A classic socket receives NO
+    # frames from a bus that is up in CAN-FD, so if the link reports FD (MTU 72)
+    # we open FD regardless of a missing or stale saved fd flag (e.g. an
+    # interface saved before its FD box was ticked, or brought up FD by the boot
+    # service). An FD socket still receives classic frames, so forcing FD here is
+    # always safe, and it is the only way a capture on an FD bus sees anything.
     if backend == "socketcan" and _link_is_fd(channel):
-        return {"fd": True}
-    return {}
+        out["fd"] = True
+    return out
 
 
 def get_channel(channel: str, backend: str = "socketcan", **kwargs: Any) -> CanProvider:

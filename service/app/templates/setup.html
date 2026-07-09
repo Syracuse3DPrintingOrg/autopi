@@ -330,19 +330,34 @@
                        placeholder="can0, PCAN_USBBUS1, 0, virtual0…">
               </div>
               <div class="col-sm-4">
-                <label class="form-label small mb-1">Bitrate</label>
-                <input type="number" class="form-control form-control-sm" id="can-if-bitrate" value="500000">
+                <label class="form-label small mb-1">Bitrate (arbitration)</label>
+                <select class="form-select form-select-sm" id="can-if-bitrate">
+                  <option value="125000">125 kbit/s</option>
+                  <option value="250000">250 kbit/s</option>
+                  <option value="500000" selected>500 kbit/s</option>
+                  <option value="1000000">1 Mbit/s</option>
+                  <option value="custom">Other&hellip;</option>
+                </select>
+                <input type="number" class="form-control form-control-sm mt-1 d-none"
+                       id="can-if-bitrate-custom" placeholder="bit/s">
               </div>
-              <div class="col-sm-4">
+              <div class="col-sm-4 can-if-fd-only">
                 <label class="form-label small mb-1">CAN-FD data bitrate</label>
-                <input type="number" class="form-control form-control-sm" id="can-if-data-bitrate" placeholder="optional">
+                <select class="form-select form-select-sm" id="can-if-data-bitrate">
+                  <option value="2000000" selected>2 Mbit/s</option>
+                  <option value="5000000">5 Mbit/s</option>
+                  <option value="8000000">8 Mbit/s</option>
+                  <option value="custom">Other&hellip;</option>
+                </select>
+                <input type="number" class="form-control form-control-sm mt-1 d-none"
+                       id="can-if-data-bitrate-custom" placeholder="bit/s">
               </div>
               <div class="col-sm-4">
                 <label class="form-label small mb-1">Sample point</label>
                 <input type="number" step="0.01" min="0" max="1" class="form-control form-control-sm"
                        id="can-if-sample-point" placeholder="optional, e.g. 0.8">
               </div>
-              <div class="col-sm-4">
+              <div class="col-sm-4 can-if-fd-only">
                 <label class="form-label small mb-1">FD data sample point</label>
                 <input type="number" step="0.01" min="0" max="1" class="form-control form-control-sm"
                        id="can-if-data-sample-point" placeholder="optional, e.g. 0.8">

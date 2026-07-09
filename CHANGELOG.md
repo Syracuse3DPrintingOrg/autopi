@@ -6,6 +6,26 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A CAN-FD bus is now captured in FD mode even if the interface was saved with
+  CAN-FD unticked.** A classic socket receives none of a CAN-FD bus's frames, so
+  the Signal Finder and the monitor now open a link in FD mode whenever the live
+  link is up in CAN-FD, regardless of the saved setting. This is what "frames are
+  reaching the bus but none were read" pointed at.
+- **Each CAN channel comes up with its own bitrate and mode, and it sticks.** The
+  boot bring-up used to force one bitrate and CAN-FD mode on both HAT channels, so
+  a mixed setup (say a 500k CAN-FD bus on one port and a 125k classic bus on the
+  other) left the classic port down. It now brings each channel up the way you
+  configured it in Settings, CAN Interfaces, and that survives a reboot.
+
+### Changed
+
+- **CAN interface speeds are a dropdown of standard rates, and the CAN-FD boxes
+  only show when CAN-FD is on.** Setting up a bus no longer means typing raw bit/s
+  by hand (an "Other" option is there for a non-standard bus), and a classic bus
+  no longer shows data-bitrate and FD sample-point fields that do not apply to it.
+
 ### Added
 
 - **Cockpits read from every CAN channel they use.** A cockpit can mix gauges
