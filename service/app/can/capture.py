@@ -257,12 +257,19 @@ class InhaleSession:
 _inhale_sessions: dict[str, InhaleSession] = {}
 
 
-def get_inhale_session(channel: str, backend: str = "socketcan") -> InhaleSession:
+def get_inhale_session(channel: str, backend: str = "socketcan",
+                       channel_factory: Callable[..., Any] | None = None) -> InhaleSession:
     key = f"{backend}:{channel}"
     session = _inhale_sessions.get(key)
     if session is None:
-        session = InhaleSession(channel, backend=backend)
+        session = InhaleSession(channel, backend=backend, channel_factory=channel_factory)
         _inhale_sessions[key] = session
+    elif channel_factory is not None:
+        # Refresh how this (cached) session opens its socket, so a caller that
+        # resolves fd/bitrate explicitly (e.g. the Signal Finder, matching the
+        # interface config the way the sniff does) always wins over the implicit
+        # default, and a stale factory from an earlier open is never reused.
+        session._get_channel = channel_factory
     return session
 
 

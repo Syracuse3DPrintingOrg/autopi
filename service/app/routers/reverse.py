@@ -56,6 +56,35 @@ def _frames_by_id(capture: dict) -> dict[int, list[dict]]:
     return grouped
 
 
+def _capture_factory(channel: str, backend: str):
+    """A socket opener for live captures that resolves fd/bitrate explicitly from
+    the interface config (and forces fd when the live link is CAN-FD), the same
+    way the working sniff does. This keeps a capture from opening a classic
+    socket on a CAN-FD bus (which receives nothing) even if the implicit lookup
+    inside open_channel does not match this channel."""
+    open_kwargs: dict = {}
+    try:
+        from ..services import can_interfaces
+        for entry in can_interfaces.list_interfaces():
+            if entry.get("channel") == channel and entry.get("backend", "socketcan") == backend:
+                open_kwargs["fd"] = bool(entry.get("fd"))
+                if entry.get("bitrate"):
+                    open_kwargs["bitrate"] = entry["bitrate"]
+                if entry.get("data_bitrate"):
+                    open_kwargs["data_bitrate"] = entry["data_bitrate"]
+                break
+    except Exception:
+        pass
+    if backend == "socketcan" and can_registry._link_is_fd(channel):
+        open_kwargs["fd"] = True
+
+    def factory(ch: str, backend: str = "socketcan", **kw):
+        merged = {**open_kwargs, **{k: v for k, v in kw.items() if v is not None}}
+        return can_registry.open_channel(ch, backend=backend, **merged)
+
+    return factory
+
+
 def _run_live_capture(channel: str, backend: str, seconds: float, name: str = "") -> dict:
     """Run a short, bounded inhale on a live channel and block until it is
     saved, so a caller gets a capture_id back in one request instead of
@@ -71,7 +100,8 @@ def _run_live_capture(channel: str, backend: str, seconds: float, name: str = ""
 
     capped_seconds = max(0.5, min(float(seconds), MAX_LIVE_SECONDS))
     before = can_registry.link_stats(channel)
-    session = cap.get_inhale_session(channel, backend=backend)
+    session = cap.get_inhale_session(channel, backend=backend,
+                                     channel_factory=_capture_factory(channel, backend))
     if not session.start(name, max_duration_s=capped_seconds):
         return {"ok": False, "error": "A capture is already running on that channel"}
 
@@ -117,13 +147,12 @@ def _explain_empty_capture(channel: str, before: dict | None, after: dict | None
     rx0 = (before or {}).get("rx_packets")
     rx1 = after.get("rx_packets")
     climbed = rx0 is not None and rx1 is not None and rx1 > rx0
-    if climbed and after.get("fd"):
-        return (f"Frames are reaching {channel} (kernel rx +{rx1 - rx0} during the capture) but none were "
-                f"read: this bus is CAN-FD and the capture socket opened in classic mode. Update the app "
-                f"to 0.1.55 or newer, which opens CAN-FD links in FD mode.")
     if climbed:
-        return (f"Frames are reaching {channel} (kernel rx +{rx1 - rx0}) but the capture read none, which "
-                f"is a socket/mode issue, not an idle bus.")
+        fd_note = (" This bus is CAN-FD; a classic socket receives none of its frames." if after.get("fd")
+                   else "")
+        return (f"Frames are reaching {channel} (kernel rx +{rx1 - rx0} during the capture) but the capture "
+                f"read none.{fd_note} If the app was just updated, it may still be running older code: "
+                f"restart it (cd /opt/autopi-src && sudo docker compose up -d) and try again.")
     return (f"No frames reached {channel} during the capture (its kernel rx counter did not move), so this "
             f"port is idle. Your traffic is almost certainly on the other CAN interface: on the Waveshare "
             f"HAT the Linux name and the board's CAN0/CAN1 label can be crossed, so try the other channel.")
@@ -346,7 +375,8 @@ def reference_start(body: ReferenceStartIn):
     _reference_capture["backend"] = None
     _reference_capture["name"] = None
     if body.channel:
-        session = cap.get_inhale_session(body.channel, backend=body.backend)
+        session = cap.get_inhale_session(body.channel, backend=body.backend,
+                                         channel_factory=_capture_factory(body.channel, body.backend))
         started = session.start(body.capture_name)
         if not started:
             rec.stop()

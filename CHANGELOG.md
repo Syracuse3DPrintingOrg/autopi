@@ -8,6 +8,13 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Fixed
 
+- **The Signal Finder capture now opens CAN-FD exactly like the "sniff" test
+  does.** It resolves the interface's bitrate and CAN-FD setting from your saved
+  config (and forces CAN-FD whenever the live link is CAN-FD) and passes them to
+  the socket directly, instead of re-deriving them indirectly, so a capture can no
+  longer open a classic socket on a CAN-FD bus and come back empty while the sniff
+  on the same bus works. The "came back empty" message also stops citing a version
+  number and instead suggests restarting the app if it was just updated.
 - **A CAN-FD bus is now captured in FD mode even if the interface was saved with
   CAN-FD unticked.** A classic socket receives none of a CAN-FD bus's frames, so
   the Signal Finder and the monitor now open a link in FD mode whenever the live
