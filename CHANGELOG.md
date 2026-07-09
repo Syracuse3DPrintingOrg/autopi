@@ -6,6 +6,13 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ## [Unreleased]
 
+### Changed
+
+- **The Signal Finder now shows when a reference is loaded and where to go next.**
+  After recording a reference (or building one from a known signal), a clear
+  "Reference loaded: N points, now press Survey the bus" banner appears on the
+  Search step and the page scrolls to it, so the flow is no longer a mystery.
+
 ### Added
 
 - **Signal Finder result plot.** Each signal candidate now has a Plot button that

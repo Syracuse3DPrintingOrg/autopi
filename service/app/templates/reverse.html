@@ -102,8 +102,9 @@
           placeholder="0.0, 0&#10;2.5, 15&#10;5.0, 40&#10;7.5, 70"></textarea>
       </div></div>
 
-      <div class="card"><div class="card-body">
+      <div class="card" id="search-card"><div class="card-body">
         <h6 class="mb-2">3. Search</h6>
+        <div id="ref-ready" class="alert alert-success py-1 px-2 small mb-2 d-none"></div>
         <button class="btn btn-primary btn-sm" id="survey-btn"><i class="bi bi-bar-chart me-1"></i>Survey the bus</button>
         <div class="form-text">Ranks which CAN ids track your reference. Then search one id's bits below.</div>
         <div id="survey-status" class="small mt-2"></div>
@@ -231,6 +232,24 @@
   }
   captureEl.addEventListener('change', captureInfo);
 
+  // Show, near the Survey button, that a reference is loaded and what to do
+  // next, and bring that step into view so the flow is not a mystery.
+  function refReady(sourceLabel, scroll) {
+    const el = document.getElementById('ref-ready');
+    const n = reference().length;
+    if (!n) { el.classList.add('d-none'); return; }
+    el.classList.remove('d-none');
+    el.innerHTML = '<strong>Reference loaded:</strong> ' + n + ' points'
+      + (sourceLabel ? ' from ' + esc(sourceLabel) : '')
+      + '. Now press <strong>Survey the bus</strong> below to rank the CAN ids that track it.';
+    if (scroll) {
+      const card = document.getElementById('search-card');
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      card.classList.add('border-success');
+      setTimeout(() => card.classList.remove('border-success'), 2500);
+    }
+  }
+
   function reference() {
     if (refEl.value.trim() === '' && recordedReference && recordedReference.length) return recordedReference;
     const pts = [];
@@ -346,15 +365,13 @@
           recordedReference = d.reference || [];
           recordedMode = d.mode;
           refEl.value = '';
-          const note = recordedMode === 'button'
-            ? ' The found signal is usually a single toggling bit (length 1).' : '';
           if (d.capture_id) {
             reloadCapturesAndSelect(d.capture_id);
-            statusEl.textContent = 'Captured and recorded ' + recordedReference.length + ' reference points.' + note
-              + ' Loaded into the search below.';
+            statusEl.textContent = 'Captured and recorded ' + recordedReference.length + ' reference points.';
           } else {
-            statusEl.textContent = 'Recorded ' + recordedReference.length + ' reference points (no channel set, so no new capture).' + note;
+            statusEl.textContent = 'Recorded ' + recordedReference.length + ' reference points (no channel set, so no new capture).';
           }
+          refReady(recordedMode === 'button' ? 'button presses' : 'your sweep', true);
         }).catch(() => { statusEl.textContent = 'Could not stop.'; });
     });
   })();
@@ -557,10 +574,12 @@
         if (d.ok === false) { st.innerHTML = '<span class="text-danger">' + esc(d.error || 'Could not build a reference.') + '</span>'; return; }
         recordedReference = d.reference || [];
         refEl.value = '';
-        st.innerHTML = '<span class="text-success">Reference built from ' + esc(sig) + ': ' + recordedReference.length + ' points. Run Survey.</span>';
+        st.innerHTML = '<span class="text-success">Reference built from ' + esc(sig) + ': ' + recordedReference.length + ' points.</span>';
+        refReady('a known signal (' + esc(sig) + ')', true);
       }).catch(() => { st.textContent = 'Failed to build reference.'; });
   });
   loadKnownDbs();
+  refEl.addEventListener('input', () => { recordedReference = null; refReady('your typed points', false); });
 
   loadCaptures();
   loadLiveChannels();
