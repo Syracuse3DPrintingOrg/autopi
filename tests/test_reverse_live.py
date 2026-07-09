@@ -156,3 +156,27 @@ def test_snapshot_summarizes_active_ids(monkeypatch):
     assert any(entry["arbitration_id"] == 0x200 for entry in ids)
     hit = next(entry for entry in ids if entry["arbitration_id"] == 0x200)
     assert 0 in hit["changing_bytes"]
+
+
+def test_verify_control_reports_inject_failure_not_no_effect(monkeypatch):
+    # Regression: a silent send failure used to be reported as "no effect", which
+    # reads as "it is a status". It must instead say the injection failed.
+    fake = _FakeProvider()
+    fake.send = lambda frame: False  # every transmit fails
+    monkeypatch.setattr("app.routers.reverse.get_channel", lambda channel, backend="socketcan", **kw: fake)
+    monkeypatch.setattr(cap, "get_channel", lambda channel, backend="socketcan", **kw: fake)
+    monkeypatch.setattr(cap, "open_channel", lambda channel, backend="socketcan", **kw: fake)
+    monkeypatch.setattr("app.routers.reverse._capture_factory", lambda ch, be: (lambda *a, **k: fake))
+    monkeypatch.setattr("app.can.detect.list_can_interfaces", lambda: [{"name": "vcan0", "up": True}])
+    monkeypatch.setattr("app.routers.reverse._capture_or_404",
+                        lambda cid: {"backend": "socketcan",
+                                     "frames": [{"arbitration_id": 0x123, "data": [1, 2, 3], "timestamp": 0.0}]})
+    client = TestClient(app)
+    resp = client.post("/reverse/verify-control",
+                       json={"capture_id": "x", "arbitration_id": 0x123, "channel": "vcan0",
+                             "byte": None, "baseline_s": 0.02, "inject_s": 0.2, "period_ms": 10})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is False
+    assert body["injected"] == 0
+    assert "Could not inject" in body["error"]

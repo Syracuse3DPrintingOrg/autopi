@@ -6,6 +6,10 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ## [Unreleased]
 
+### Fixed
+
+- **"Verify effect" no longer mistakes a failed send for "no effect".** If the frame could not actually be transmitted (for example a CAN-FD frame on a classic channel, or an interface that is not up for sending), the tool now says the injection failed and why, instead of reporting that nothing reacted (which wrongly suggested the message was only a status). It also returns a clear message instead of an error when it cannot start listening.
+
 ### Added
 
 - **Copy a vehicle.** Duplicate an existing vehicle from the vehicles page to start a new one from a known-good setup (its linked databases, transmit lists, and mapped controls carry over; the VINs do not, since those belong to one physical vehicle).

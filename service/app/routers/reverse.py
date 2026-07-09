@@ -662,18 +662,38 @@ def verify_control_route(body: VerifyControlIn):
         send_data = ov.apply_overlay(template_data, spec["byte"], spec["mask"], spec["active"])
     send_frame = Frame(arbitration_id=body.arbitration_id, data=send_data,
                        is_fd=is_fd, is_extended_id=is_extended_id)
+    # Catch a frame that cannot go out before we mislead the user: an invalid
+    # length or a CAN-FD frame on a classic channel would otherwise fail silently
+    # inside the loop and look like "no effect".
+    invalid = send_frame.validate()
+    if invalid:
+        return {"ok": False, "error": f"Cannot inject 0x{body.arbitration_id:X}: {invalid}"}
 
-    channels = [i["name"] for i in detect.list_can_interfaces() if i.get("up")] or [body.channel]
-    started = []
-    for ch in channels:
-        session = cap.get_inhale_session(ch, backend="socketcan",
-                                         channel_factory=_capture_factory(ch, "socketcan"))
-        if session.start(f"verify {ch}"):
-            started.append(ch)
+    try:
+        channels = [i["name"] for i in detect.list_can_interfaces() if i.get("up")] or [body.channel]
+    except Exception:
+        channels = [body.channel]
+    started: list[str] = []
+    try:
+        for ch in channels:
+            session = cap.get_inhale_session(ch, backend="socketcan",
+                                             channel_factory=_capture_factory(ch, "socketcan"))
+            if session.start(f"verify {ch}"):
+                started.append(ch)
+    except Exception as exc:
+        for ch in started:
+            try:
+                cap.get_inhale_session(ch, backend="socketcan").stop()
+            except Exception:
+                pass
+        return {"ok": False, "error": f"Could not start listening on the bus: {exc}"}
     if not started:
         return {"ok": False, "error": "Could not listen on any bus (a capture may already be running)."}
 
     injected = 0
+    send_failures = 0
+    send_error: str | None = None
+    inject_start = time.time()
     try:
         time.sleep(max(0.0, min(5.0, body.baseline_s)))
         inject_start = time.time()
@@ -683,18 +703,36 @@ def verify_control_route(body: VerifyControlIn):
             try:
                 if provider.send(send_frame):
                     injected += 1
-            except Exception:
-                break
+                else:
+                    send_failures += 1
+            except Exception as exc:
+                send_error = str(exc)
+                send_failures += 1
+                # If nothing is going out at all, stop wasting the window.
+                if injected == 0 and send_failures >= 3:
+                    break
             time.sleep(period)
     finally:
         records: list[dict] = []
         for ch in started:
-            session = cap.get_inhale_session(ch, backend="socketcan")
-            saved = session.stop()
+            try:
+                saved = cap.get_inhale_session(ch, backend="socketcan").stop()
+            except Exception:
+                saved = None
             for frame in (saved or {}).get("frames") or []:
                 rec_frame = dict(frame)
                 rec_frame["channel"] = ch
                 records.append(rec_frame)
+
+    # Nothing actually went out: report that plainly instead of calling it a
+    # status. A silent send failure was the bug that made a status and a failed
+    # injection look identical.
+    if injected == 0:
+        reason = send_error or ("the interface did not accept the frame for transmit. Check that "
+                                f"{body.channel} is up and that the frame type matches the bus "
+                                "(classic vs CAN-FD).")
+        return {"ok": False, "channel": body.channel, "arbitration_id": body.arbitration_id,
+                "injected": 0, "error": f"Could not inject 0x{body.arbitration_id:X} on {body.channel}: {reason}"}
 
     baseline = [r for r in records if float(r.get("timestamp", 0.0)) < inject_start]
     during = [r for r in records if float(r.get("timestamp", 0.0)) >= inject_start]
