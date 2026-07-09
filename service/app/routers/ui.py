@@ -164,6 +164,13 @@ def profiles_page(request: Request):
     return templates.TemplateResponse(request, "profiles.html", theme_context(request))
 
 
+@router.get("/ui/can-lab", response_class=HTMLResponse)
+def can_lab_page(request: Request):
+    # One hub that hosts the five CAN tools in tabbed iframes; each tool still
+    # serves standalone at its own route (ui/reverse, ui/can-monitor, etc.).
+    return templates.TemplateResponse(request, "can-lab.html", theme_context(request))
+
+
 @router.get("/ui/can-sim", response_class=HTMLResponse)
 def can_sim_page(request: Request):
     # The panel loads the transmit list and scheduler status over the API.

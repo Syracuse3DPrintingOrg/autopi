@@ -6,6 +6,15 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ## [Unreleased]
 
+### Added
+
+- **One CAN Lab page with all five CAN tools in tabs.** Signal Finder, Monitor,
+  Simulate / send, Firewall, and Diagnostics now live together under a single
+  "CAN Lab" page, one click apart in tabs instead of six separate links. Each
+  tool still opens on its own from the CAN Lab menu, and a tab only starts its
+  bus when you first switch to it, so opening the hub does not wake all five at
+  once.
+
 ### Changed
 
 - **A much simpler, CAN-first navigation.** The top bar drops from eighteen items

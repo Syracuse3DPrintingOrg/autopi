@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}CAN Lab · {{ app_name }}{% endblock %}
+{% block head %}
+<style>
+  /* The hub fills the viewport under the nav; each tool renders inside its
+     own iframe so its scripts and element IDs stay fully isolated. */
+  .can-lab-shell { padding: 0 0.75rem; }
+  .can-lab-panes { height: calc(100vh - 140px); }
+  .can-lab-panes .tab-pane { height: 100%; }
+  .can-lab-frame { width: 100%; height: 100%; border: 0; display: block; }
+  body { overflow-x: hidden; }
+</style>
+{% endblock %}
+{% block body %}
+<div class="can-lab-shell">
+  <ul class="nav nav-tabs" id="can-lab-tabs" role="tablist">
+    <li class="nav-item" role="presentation">
+      <button class="nav-link active" id="tab-reverse" data-bs-toggle="tab"
+              data-bs-target="#pane-reverse" type="button" role="tab">
+        <i class="bi bi-search me-1"></i>Signal Finder
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="tab-monitor" data-bs-toggle="tab"
+              data-bs-target="#pane-monitor" type="button" role="tab">
+        <i class="bi bi-activity me-1"></i>Monitor
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="tab-sim" data-bs-toggle="tab"
+              data-bs-target="#pane-sim" type="button" role="tab">
+        <i class="bi bi-broadcast me-1"></i>Simulate / send
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="tab-firewall" data-bs-toggle="tab"
+              data-bs-target="#pane-firewall" type="button" role="tab">
+        <i class="bi bi-shield-lock me-1"></i>Firewall
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="tab-diagnostics" data-bs-toggle="tab"
+              data-bs-target="#pane-diagnostics" type="button" role="tab">
+        <i class="bi bi-clipboard2-pulse me-1"></i>Diagnostics
+      </button>
+    </li>
+  </ul>
+  <div class="tab-content can-lab-panes">
+    <div class="tab-pane fade show active" id="pane-reverse" role="tabpanel">
+      <iframe class="can-lab-frame" title="Signal Finder" src="ui/reverse"></iframe>
+    </div>
+    <div class="tab-pane fade" id="pane-monitor" role="tabpanel">
+      <iframe class="can-lab-frame" title="Monitor" data-src="ui/can-monitor"></iframe>
+    </div>
+    <div class="tab-pane fade" id="pane-sim" role="tabpanel">
+      <iframe class="can-lab-frame" title="Simulate / send" data-src="ui/can-sim"></iframe>
+    </div>
+    <div class="tab-pane fade" id="pane-firewall" role="tabpanel">
+      <iframe class="can-lab-frame" title="Firewall" data-src="ui/firewall"></iframe>
+    </div>
+    <div class="tab-pane fade" id="pane-diagnostics" role="tabpanel">
+      <iframe class="can-lab-frame" title="Diagnostics" data-src="ui/diagnostics"></iframe>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  // Lazy-load each tool the first time its tab is shown, so all five CAN
+  // surfaces do not begin capturing at once. The first tab loads eagerly.
+  document.querySelectorAll('#can-lab-tabs [data-bs-toggle="tab"]').forEach(function (tab) {
+    tab.addEventListener('shown.bs.tab', function (event) {
+      var pane = document.querySelector(event.target.dataset.bsTarget);
+      if (!pane) { return; }
+      var frame = pane.querySelector('iframe[data-src]');
+      if (frame && !frame.getAttribute('src')) {
+        frame.setAttribute('src', frame.dataset.src);
+      }
+    });
+  });
+</script>
+{% endblock %}
