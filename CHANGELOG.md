@@ -19,6 +19,17 @@ semantic versioning while pre-1.0 (staying in `0.x`).
   check a button does what you meant while you are still laying out the
   cockpit.
 
+- **Filter and sort the CAN Monitor id list.** Type an arbitration ID (with or
+  without the `0x`) or part of a decoded signal name into the new filter box to
+  narrow the live table to just the frames you care about, and click the
+  Arbitration ID, Count, or Last seen column headers to sort the list either
+  direction.
+
+- **The CAN Monitor highlights bytes that just changed.** When a frame's data
+  updates, the bytes that differ from the previous frame flash amber for a
+  moment, so you can press a button in the car and instantly see which byte
+  moves on the bus.
+
 - **One CAN Lab page with all five CAN tools in tabs.** Signal Finder, Monitor,
   Simulate / send, Firewall, and Diagnostics now live together under a single
   "CAN Lab" page, one click apart in tabs instead of six separate links. Each
