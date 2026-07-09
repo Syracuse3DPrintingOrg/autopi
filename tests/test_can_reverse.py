@@ -529,3 +529,26 @@ def test_add_signal_to_existing_message_preserves_other_signals():
     decoded = dbc_mod.decode(database.dbc_text, 1, bytes([42, 0, 0, 0, 99, 0, 0, 0]))
     assert decoded["NewSignal"] == 42
     assert decoded["Existing"] == 99
+
+
+def test_reference_from_signal_decodes_known_signal():
+    records = [
+        {"arbitration_id": 0x7E8, "data": [0, 1], "timestamp": 0.0},
+        {"arbitration_id": 0x123, "data": [9], "timestamp": 0.1},   # other id, skipped
+        {"arbitration_id": 0x7E8, "data": [0, 2], "timestamp": 0.2},
+        {"arbitration_id": 0x7E8, "data": [0, 0], "timestamp": 0.3},  # non-numeric -> skipped
+    ]
+
+    def fake_decode(dbc_text, arb, data):
+        return {"SPEED": None if data[1] == 0 else float(data[1]) * 10}
+
+    ref = rev.reference_from_signal(records, "DBC", 0x7E8, "SPEED", decode_fn=fake_decode)
+    assert [p["value"] for p in ref] == [10.0, 20.0]
+    assert [p["t"] for p in ref] == [0.0, 0.2]
+    assert all(p["available"] for p in ref)
+
+
+def test_reference_from_signal_unbound_or_undecodable_is_empty():
+    assert rev.reference_from_signal([], "", 1, "X") == []
+    recs = [{"arbitration_id": 1, "data": [1], "timestamp": 0.0}]
+    assert rev.reference_from_signal(recs, "DBC", 1, "MISSING", decode_fn=lambda *a: {"OTHER": 1}) == []

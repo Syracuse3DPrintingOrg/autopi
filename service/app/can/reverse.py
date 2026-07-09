@@ -394,6 +394,46 @@ def reference_from_events(event_times: Sequence[float], span: tuple[float, float
 # Pure statistics: rank correlation and least-squares fit
 # --------------------------------------------------------------------------
 
+def _default_signal_decode(dbc_text: str, arbitration_id: int, data: bytes) -> dict:
+    from . import dbc as dbc_mod
+    return dbc_mod.decode(dbc_text, arbitration_id, data)
+
+
+def reference_from_signal(records: list[dict], dbc_text: str, arbitration_id: int,
+                          signal: str, decode_fn=None) -> list[dict]:
+    """Build a reference series from a KNOWN, decodable signal already in the
+    capture (OBD2 speed/RPM, a GPS-to-CAN signal, or a proprietary signal you
+    reverse engineered earlier), so an unknown field can be found by how closely
+    it tracks it.
+
+    This is the CSS Electronics "CAN-based reference" approach, and the most
+    precise option: the reference is machine-accurate, so no manual sweeping or
+    button pressing is needed. Returns ``[{t, value, available}]`` sorted by
+    time; frames on ``arbitration_id`` that do not decode (or whose signal is not
+    numeric) are skipped. Pure over its arguments (a test drives it with a
+    stubbed ``decode_fn``)."""
+    if not dbc_text or not signal or arbitration_id is None:
+        return []
+    decode_fn = decode_fn or _default_signal_decode
+    out: list[dict] = []
+    for record in records:
+        if record.get("arbitration_id") != arbitration_id:
+            continue
+        try:
+            decoded = decode_fn(dbc_text, arbitration_id, bytes(record.get("data") or []))
+        except Exception:
+            continue
+        if not isinstance(decoded, dict) or signal not in decoded:
+            continue
+        try:
+            value = float(decoded[signal])
+        except (TypeError, ValueError):
+            continue
+        out.append({"t": float(record.get("timestamp", 0.0)), "value": value, "available": True})
+    out.sort(key=lambda point: point["t"])
+    return out
+
+
 def _ranks(values: list[float]) -> list[float]:
     n = len(values)
     order = sorted(range(n), key=lambda i: values[i])

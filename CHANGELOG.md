@@ -6,6 +6,16 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ## [Unreleased]
 
+### Added
+
+- **Use a known signal as the Signal Finder reference.** If a capture already
+  contains a signal you can decode (OBD2 speed or RPM, or a signal you reverse
+  engineered earlier), you can now pick it as the reference and skip the manual
+  sweep or button-pressing entirely. It is decoded straight from the capture, so
+  it is machine-accurate: pick the database and signal, press Use, and Survey.
+  This is the precise "CAN-based reference" workflow, and the fastest way to find
+  a proprietary signal that tracks something you can already read.
+
 ### Fixed
 
 - **Captures on a busy CAN-FD bus no longer report "0 frames" when they actually

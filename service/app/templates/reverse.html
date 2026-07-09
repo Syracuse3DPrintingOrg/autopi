@@ -75,6 +75,25 @@
       </div></div>
 
       <div class="card mb-3"><div class="card-body">
+        <h6 class="mb-1">Or use a known signal as the reference</h6>
+        <p class="small text-secondary mb-2">The most precise option: if the capture already contains a signal you
+          can decode (OBD2 speed or RPM, or a signal you reverse engineered earlier), use it as the reference and
+          skip the manual sweep. Pick the database and signal, and it is built straight from the capture.</p>
+        <div class="row g-2">
+          <div class="col-sm-5">
+            <select class="form-select form-select-sm" id="known-db"></select>
+          </div>
+          <div class="col-sm-5">
+            <select class="form-select form-select-sm" id="known-signal"><option value="">Pick a database first</option></select>
+          </div>
+          <div class="col-sm-2">
+            <button class="btn btn-outline-primary btn-sm w-100" id="known-use-btn">Use</button>
+          </div>
+        </div>
+        <div class="small mt-2" id="known-status"></div>
+      </div></div>
+
+      <div class="card mb-3"><div class="card-body">
         <h6 class="mb-1">Or type a reference by hand</h6>
         <p class="small text-secondary mb-2">One point per line as <code>time, value</code> (time in the same
           seconds as the capture). Mark a value <code>na</code> to skip a moment the signal was unavailable.
@@ -456,6 +475,48 @@
         out.innerHTML = html;
       }).catch(() => { out.innerHTML = '<span class="text-danger">Suggestion failed.</span>'; });
   });
+
+  // Known-signal reference: decode a signal from a database out of the capture
+  // and use it as the reference (the most precise option).
+  const knownDb = document.getElementById('known-db');
+  const knownSignal = document.getElementById('known-signal');
+  function loadKnownSignals(dbId) {
+    if (!dbId) { knownSignal.innerHTML = '<option value="">Pick a database first</option>'; return; }
+    fetch('can/databases/' + encodeURIComponent(dbId)).then((r) => r.json()).then((db) => {
+      const opts = [];
+      (db.messages || []).forEach((m) => (m.signals || []).forEach((s) =>
+        opts.push('<option value="' + m.arbitration_id + '|' + esc(s.name) + '">'
+          + hex(m.arbitration_id) + ' · ' + esc(s.name) + '</option>')));
+      knownSignal.innerHTML = opts.length ? opts.join('') : '<option value="">No signals in this database</option>';
+    }).catch(() => { knownSignal.innerHTML = '<option value="">Could not load signals</option>'; });
+  }
+  function loadKnownDbs() {
+    fetch('can/databases').then((r) => r.json()).then((d) => {
+      const dbs = d.databases || [];
+      knownDb.innerHTML = dbs.length ? dbs.map((db) => '<option value="' + db.id + '">' + esc(db.name) + '</option>').join('')
+        : '<option value="">No databases. Import one on the CAN page.</option>';
+      if (dbs.length) loadKnownSignals(dbs[0].id);
+    }).catch(() => { knownDb.innerHTML = '<option value="">Could not load databases</option>'; });
+  }
+  knownDb.addEventListener('change', () => loadKnownSignals(knownDb.value));
+  document.getElementById('known-use-btn').addEventListener('click', () => {
+    const st = document.getElementById('known-status');
+    if (!captureEl.value) { st.textContent = 'Pick a capture first.'; return; }
+    if (!knownSignal.value) { st.textContent = 'Pick a signal.'; return; }
+    const parts = knownSignal.value.split('|');
+    const arb = parseInt(parts[0], 10);
+    const sig = parts.slice(1).join('|');
+    st.textContent = 'Decoding ' + esc(sig) + ' from the capture…';
+    fetch('reverse/reference/from-signal', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ capture_id: captureEl.value, database_id: parseInt(knownDb.value, 10), arbitration_id: arb, signal: sig }) })
+      .then((r) => r.json()).then((d) => {
+        if (d.ok === false) { st.innerHTML = '<span class="text-danger">' + esc(d.error || 'Could not build a reference.') + '</span>'; return; }
+        recordedReference = d.reference || [];
+        refEl.value = '';
+        st.innerHTML = '<span class="text-success">Reference built from ' + esc(sig) + ': ' + recordedReference.length + ' points. Run Survey.</span>';
+      }).catch(() => { st.textContent = 'Failed to build reference.'; });
+  });
+  loadKnownDbs();
 
   loadCaptures();
   loadLiveChannels();

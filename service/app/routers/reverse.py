@@ -298,6 +298,70 @@ def save_route(body: SaveIn):
 
 
 # --------------------------------------------------------------------------
+# CAN-based reference: use a known, decodable signal already in the capture
+# (OBD2 speed/RPM, or a signal reverse engineered earlier) as the reference,
+# instead of sweeping or button-pressing by hand. The most precise option.
+# --------------------------------------------------------------------------
+
+def _dbc_text_or_404(database_id: int) -> str:
+    with session_scope() as s:
+        database = s.get(CanDatabase, database_id)
+        if database is None:
+            raise HTTPException(404, "No such CAN database")
+        if not database.dbc_text:
+            raise HTTPException(400, "That database has no DBC text to decode with")
+        return database.dbc_text
+
+
+class ReferenceFromSignalIn(BaseModel):
+    capture_id: str
+    database_id: int
+    arbitration_id: int
+    signal: str
+
+
+@router.post("/reference/from-signal")
+def reference_from_signal_route(body: ReferenceFromSignalIn):
+    """Build a reference series from a known signal decoded out of the capture,
+    ready to feed straight into /survey and /bitsearch."""
+    capture = _capture_or_404(body.capture_id)
+    frames = _frames_for_id(capture, body.arbitration_id)
+    if not frames:
+        raise HTTPException(404, "No frames with that arbitration id in this capture")
+    dbc_text = _dbc_text_or_404(body.database_id)
+    reference = rev.reference_from_signal(frames, dbc_text, body.arbitration_id, body.signal)
+    if not reference:
+        return {"ok": False, "error": "That signal did not decode on any frame of this capture."}
+    return {"ok": True, "reference": reference, "points": len(reference)}
+
+
+class VerifyIn(BaseModel):
+    capture_id: str
+    candidate: dict
+    reference: list[ReferencePoint]
+
+
+@router.post("/verify")
+def verify_route(body: VerifyIn):
+    """Decode a candidate across the capture and return it alongside the
+    reference, both as time series, so the UI can plot decoded-vs-reference and
+    the user can confirm the field is really the signal (the article's result
+    plot)."""
+    capture = _capture_or_404(body.capture_id)
+    try:
+        arbitration_id = int(body.candidate["arbitration_id"])
+    except (KeyError, TypeError, ValueError):
+        raise HTTPException(400, "candidate needs an arbitration_id")
+    frames = _frames_for_id(capture, arbitration_id)
+    series = rev.field_series(frames, body.candidate)
+    scale = float(body.candidate.get("scale", 1.0) or 1.0)
+    offset = float(body.candidate.get("offset", 0.0) or 0.0)
+    decoded = [{"t": t, "value": raw * scale + offset} for t, raw in series]
+    reference = [{"t": p.t, "value": p.value} for p in body.reference if p.available]
+    return {"decoded": decoded, "reference": reference}
+
+
+# --------------------------------------------------------------------------
 # Optional LLM assist (app/llm.py): name and interpret signals. Every route
 # degrades to {"available": False, ...} when no API key is configured, so the
 # UI can offer these without them ever 500-ing on an unconfigured device.
