@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+{% block title %}Databases: {{ app_name }}{% endblock %}
+{% block body %}
+<div class="container-fluid py-3" style="max-width: 1100px">
+  <h4 class="mb-1"><i class="bi bi-database me-2"></i>CAN databases</h4>
+  <p class="small text-secondary">A CAN database (DBC) turns raw frames into named signals. Tag each one with the
+    vehicle it fits (make, model, years) so it can be offered automatically when you pick that vehicle. Only
+    permissively-licensed databases are ever bundled with {{ app_name }}; everything else you import yourself.</p>
+
+  <div class="card mb-3"><div class="card-body">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <h6 class="mb-0">Installed databases</h6>
+      <select class="form-select form-select-sm" style="max-width: 16rem" id="vehicle-filter">
+        <option value="">Show all</option>
+      </select>
+    </div>
+    <div id="db-list" class="small text-secondary">Loading&hellip;</div>
+  </div></div>
+
+  <div class="card mb-3"><div class="card-body">
+    <h6 class="mb-2">Get an open-source database</h6>
+    <p class="small text-secondary mb-2">Import a permissively-licensed database directly, or follow the link to a
+      source we cannot redistribute and import it yourself.</p>
+    <div id="catalog-list" class="small text-secondary">Loading&hellip;</div>
+  </div></div>
+
+  <div class="card"><div class="card-body">
+    <h6 class="mb-2">Import your own</h6>
+    <div class="row g-2">
+      <div class="col-sm-6"><input type="text" class="form-control form-control-sm" id="imp-url"
+        placeholder="Paste a link to a .dbc file (https://…)"></div>
+      <div class="col-sm-2"><button class="btn btn-outline-primary btn-sm w-100" id="imp-url-btn">Import URL</button></div>
+      <div class="col-sm-4"><input type="file" class="form-control form-control-sm" id="imp-file" accept=".dbc"></div>
+    </div>
+    <div class="row g-2 mt-1">
+      <div class="col-sm-3"><input type="text" class="form-control form-control-sm" id="imp-name" placeholder="Name"></div>
+      <div class="col-sm-2"><input type="text" class="form-control form-control-sm" id="imp-make" placeholder="Make"></div>
+      <div class="col-sm-3"><input type="text" class="form-control form-control-sm" id="imp-models" placeholder="Model(s), comma-separated"></div>
+      <div class="col-sm-2"><input type="text" class="form-control form-control-sm" id="imp-years" placeholder="Years e.g. 2018-2022"></div>
+      <div class="col-sm-2"><input type="text" class="form-control form-control-sm" id="imp-license" placeholder="License"></div>
+    </div>
+    <div class="mt-2">
+      <button class="btn btn-primary btn-sm" id="imp-file-btn">Import file</button>
+      <span id="imp-status" class="small ms-2"></span>
+    </div>
+    <div class="form-text">Add non-open databases here as long as they are not shipped with the software. Fill in the
+      make, models, and years so they get offered for the right vehicle.</div>
+  </div></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const listEl = document.getElementById('db-list');
+  const catEl = document.getElementById('catalog-list');
+  const statusEl = document.getElementById('imp-status');
+  const vehicleFilter = document.getElementById('vehicle-filter');
+
+  function dbModels(db) { return [db.model].concat((db.models || '').split(',')).map((s) => (s || '').trim()).filter(Boolean).join(', '); }
+  function licenseBadge(lic) {
+    const ok = /mit|cc0|bsd|apache|public/i.test(lic || '');
+    return '<span class="badge ' + (ok ? 'text-bg-success' : 'text-bg-secondary') + '">' + esc(lic || 'unknown') + '</span>';
+  }
+
+  function renderDbs(dbs) {
+    if (!dbs.length) { listEl.textContent = 'No databases yet. Import one below.'; return; }
+    listEl.innerHTML = '<table class="table table-sm table-dark align-middle mb-0"><thead><tr>'
+      + '<th>Name</th><th>Vehicle</th><th>Years</th><th>Signals</th><th>License</th><th>Author</th><th></th></tr></thead><tbody>'
+      + dbs.map((db) => '<tr>'
+        + '<td>' + esc(db.name) + '</td>'
+        + '<td class="small">' + esc([db.make, dbModels(db)].filter(Boolean).join(' ')) + '</td>'
+        + '<td class="small">' + esc(db.years || (db.year || '')) + '</td>'
+        + '<td>' + (db.message_count || 0) + '</td>'
+        + '<td>' + licenseBadge(db.license) + '</td>'
+        + '<td class="small">' + esc(db.author || '') + '</td>'
+        + '<td><button class="btn btn-outline-secondary btn-sm me-1" data-edit="' + db.id + '">Tag</button>'
+        + '<button class="btn btn-outline-danger btn-sm" data-del="' + db.id + '">Delete</button></td></tr>'
+        + '<tr class="d-none" id="edit-' + db.id + '"><td colspan="7">' + editForm(db) + '</td></tr>').join('')
+      + '</tbody></table>';
+    listEl.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => {
+      const row = document.getElementById('edit-' + b.getAttribute('data-edit')); row.classList.toggle('d-none');
+    }));
+    listEl.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', () => {
+      if (!confirm('Delete this database?')) return;
+      fetch('can/databases/' + b.getAttribute('data-del'), { method: 'DELETE' }).then(load);
+    }));
+    listEl.querySelectorAll('[data-save]').forEach((b) => b.addEventListener('click', () => saveMeta(b.getAttribute('data-save'))));
+  }
+
+  function editForm(db) {
+    const f = (id, ph, val) => '<input class="form-control form-control-sm" id="m-' + id + '-' + db.id + '" placeholder="' + ph + '" value="' + esc(val || '') + '">';
+    return '<div class="row g-1 py-1">'
+      + '<div class="col-sm-2">' + f('make', 'Make', db.make) + '</div>'
+      + '<div class="col-sm-3">' + f('models', 'Model(s)', db.models || db.model) + '</div>'
+      + '<div class="col-sm-2">' + f('years', 'Years', db.years || (db.year || '')) + '</div>'
+      + '<div class="col-sm-2">' + f('author', 'Author', db.author) + '</div>'
+      + '<div class="col-sm-2">' + f('license', 'License', db.license) + '</div>'
+      + '<div class="col-sm-1"><button class="btn btn-primary btn-sm w-100" data-save="' + db.id + '">Save</button></div>'
+      + '</div>';
+  }
+  function saveMeta(id) {
+    const v = (k) => (document.getElementById('m-' + k + '-' + id) || {}).value || '';
+    fetch('can/databases/' + id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ make: v('make'), models: v('models'), years: v('years'), author: v('author'), license: v('license') }) })
+      .then((r) => r.json()).then(load);
+  }
+
+  function renderCatalog(items) {
+    if (!items.length) { catEl.textContent = 'No catalog entries.'; return; }
+    catEl.innerHTML = items.map((e) => '<div class="d-flex justify-content-between align-items-start border-bottom py-2">'
+      + '<div><div class="fw-semibold">' + esc(e.name) + ' ' + licenseBadge(e.license) + '</div>'
+      + '<div class="small text-secondary">' + esc([e.make, (e.models || []).join('/'), e.years].filter(Boolean).join(' · '))
+      + (e.author ? ' — ' + esc(e.author) : '') + (e.notes ? '<br>' + esc(e.notes) : '') + '</div></div>'
+      + '<div class="text-nowrap ms-2">'
+      + (e.importable && e.import_url
+          ? '<button class="btn btn-outline-primary btn-sm" data-imp="' + encodeURIComponent(JSON.stringify(e)) + '">Import</button> '
+          : '')
+      + '<a class="btn btn-outline-secondary btn-sm" href="' + esc(e.homepage) + '" target="_blank" rel="noopener">Source</a>'
+      + '</div></div>').join('');
+    catEl.querySelectorAll('[data-imp]').forEach((b) => b.addEventListener('click', () => {
+      const e = JSON.parse(decodeURIComponent(b.getAttribute('data-imp')));
+      statusEl.textContent = 'Importing ' + esc(e.name) + '…';
+      fetch('can/dbc/import-url', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: e.import_url, name: e.name, make: e.make || '', models: (e.models || []).join(','), years: e.years || '', author: e.author || '', license: e.license || '', source: e.homepage }) })
+        .then((r) => r.json()).then((d) => {
+          statusEl.innerHTML = d.ok ? '<span class="text-success">Imported ' + esc(e.name) + '.</span>'
+            : '<span class="text-danger">' + esc(d.error || 'Import failed') + ' (try the Source link).</span>';
+          if (d.ok) load();
+        }).catch(() => { statusEl.textContent = 'Import failed.'; });
+    }));
+  }
+
+  let allDbs = [];
+  function applyFilter() {
+    const v = vehicleFilter.value;
+    if (!v) { renderDbs(allDbs); return; }
+    const parts = v.split('|');
+    fetch('can/databases/for-vehicle?make=' + encodeURIComponent(parts[0] || '') + '&model=' + encodeURIComponent(parts[1] || '') + '&year=' + encodeURIComponent(parts[2] || ''))
+      .then((r) => r.json()).then((d) => renderDbs(d.databases || []));
+  }
+  vehicleFilter.addEventListener('change', applyFilter);
+
+  function loadVehicles() {
+    fetch('profiles').then((r) => r.json()).then((d) => {
+      (d.profiles || []).forEach((p) => {
+        const opt = document.createElement('option');
+        opt.value = [p.make || '', p.model || '', p.year || ''].join('|');
+        opt.textContent = 'Fits ' + [p.year, p.make, p.model].filter(Boolean).join(' ') || p.name;
+        vehicleFilter.appendChild(opt);
+      });
+    }).catch(() => {});
+  }
+
+  function load() {
+    fetch('can/databases').then((r) => r.json()).then((d) => { allDbs = d.databases || []; applyFilter(); });
+  }
+
+  document.getElementById('imp-url-btn').addEventListener('click', () => {
+    const url = document.getElementById('imp-url').value.trim();
+    if (!url) { statusEl.textContent = 'Paste a .dbc URL first.'; return; }
+    statusEl.textContent = 'Fetching…';
+    fetch('can/dbc/import-url', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(importMeta({ url })) }).then((r) => r.json()).then((d) => {
+        statusEl.innerHTML = d.ok ? '<span class="text-success">Imported.</span>' : '<span class="text-danger">' + esc(d.error || 'Failed') + '</span>';
+        if (d.ok) load();
+      }).catch(() => { statusEl.textContent = 'Import failed.'; });
+  });
+  document.getElementById('imp-file-btn').addEventListener('click', () => {
+    const file = document.getElementById('imp-file').files[0];
+    if (!file) { statusEl.textContent = 'Choose a .dbc file first.'; return; }
+    const fd = new FormData();
+    fd.append('file', file);
+    Object.entries(importMeta({})).forEach(([k, v]) => fd.append(k, v));
+    statusEl.textContent = 'Importing…';
+    fetch('can/dbc/import', { method: 'POST', body: fd }).then((r) => r.json()).then((d) => {
+      statusEl.innerHTML = d.ok ? '<span class="text-success">Imported.</span>' : '<span class="text-danger">Failed</span>';
+      if (d.ok) load();
+    }).catch(() => { statusEl.textContent = 'Import failed.'; });
+  });
+  function importMeta(base) {
+    const g = (id) => document.getElementById(id).value.trim();
+    return Object.assign(base, { name: g('imp-name'), make: g('imp-make'), models: g('imp-models'), years: g('imp-years'), license: g('imp-license') });
+  }
+
+  fetch('can/dbc/catalog').then((r) => r.json()).then((d) => renderCatalog(d.catalog || [])).catch(() => { catEl.textContent = 'Could not load the catalog.'; });
+  loadVehicles();
+  load();
+})();
+</script>
+{% endblock %}

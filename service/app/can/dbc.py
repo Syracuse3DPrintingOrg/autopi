@@ -97,12 +97,15 @@ def parse_dbc(dbc_text: str) -> list[dict[str, Any]]:
 
 def import_dbc(session, name: str, dbc_text: str, *, source: str = "upload",
                license: str = "", version: str = "", make: str = "",
-               model: str = "", year: int | None = None, notes: str = "") -> CanDatabase:
+               model: str = "", models: str = "", year: int | None = None,
+               years: str = "", author: str = "", updated: str = "",
+               notes: str = "") -> CanDatabase:
     """Parse a DBC and store it as a new CanDatabase with its messages/signals."""
     parsed = parse_dbc(dbc_text)
     database = CanDatabase(
         name=name, source=source, license=license, version=version,
-        make=make, model=model, year=year, notes=notes, dbc_text=dbc_text,
+        make=make, model=model, models=models, year=year, years=years,
+        author=author, updated=updated, notes=notes, dbc_text=dbc_text,
     )
     session.add(database)
     session.flush()  # assign database.id

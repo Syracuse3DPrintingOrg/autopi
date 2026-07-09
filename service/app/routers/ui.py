@@ -213,6 +213,12 @@ def tests_page(request: Request):
     return templates.TemplateResponse(request, "tests.html", theme_context(request))
 
 
+@router.get("/ui/databases", response_class=HTMLResponse)
+def databases_page(request: Request):
+    # Loads installed databases, the open-source catalog, and vehicles over the API.
+    return templates.TemplateResponse(request, "databases.html", theme_context(request))
+
+
 @router.get("/ui/cockpit", response_class=HTMLResponse)
 def cockpit_editor_page(request: Request):
     # The editor loads cockpits, actions, and CAN databases over the API.

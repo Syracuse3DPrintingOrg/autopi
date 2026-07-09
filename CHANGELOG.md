@@ -6,6 +6,18 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ## [Unreleased]
 
+### Added
+
+- **A dedicated Databases page.** CAN databases now have their own page (in the
+  top nav) instead of being buried on the CAN page. Each database is tagged with
+  the vehicle it fits (make, model(s), years) plus source, author, and license,
+  and you can filter the list to a saved vehicle. A built-in catalog of real
+  open-source databases lets you import permissively-licensed ones (opendbc, MIT)
+  in one click, or follow a link to sources we cannot redistribute and import
+  them yourself. You can also import any database by URL or file and tag it, so
+  non-open databases can be added on a device without being shipped in the
+  software. Selecting a vehicle can now surface the databases that match it.
+
 ### Changed
 
 - **The Signal Finder now shows when a reference is loaded and where to go next.**

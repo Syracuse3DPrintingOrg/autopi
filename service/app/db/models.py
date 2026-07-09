@@ -97,7 +97,17 @@ class CanDatabase(Base):
     version: Mapped[str] = mapped_column(String(100), default="")
     make: Mapped[str] = mapped_column(String(100), default="")
     model: Mapped[str] = mapped_column(String(100), default="")
+    # Comma-separated model names when a database covers several (e.g. a platform
+    # shared across trims); `model` stays the primary/legacy single value.
+    models: Mapped[str] = mapped_column(String(400), default="")
     year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Free "YYYY" or "YYYY-YYYY" range the database applies to, when it spans
+    # more than one model year.
+    years: Mapped[str] = mapped_column(String(40), default="")
+    author: Mapped[str] = mapped_column(String(200), default="")
+    # When the database content was last updated (user-stated; ISO date or free
+    # text), distinct from the row's own timestamps.
+    updated: Mapped[str] = mapped_column(String(40), default="")
     notes: Mapped[str] = mapped_column(String(500), default="")
     # The original DBC text, kept so cantools can decode/encode frames against
     # this database exactly (the parsed messages/signals below are for listing,
@@ -117,7 +127,11 @@ class CanDatabase(Base):
             "version": self.version,
             "make": self.make,
             "model": self.model,
+            "models": self.models,
             "year": self.year,
+            "years": self.years,
+            "author": self.author,
+            "updated": self.updated,
             "notes": self.notes,
             "message_count": len(self.messages),
         }

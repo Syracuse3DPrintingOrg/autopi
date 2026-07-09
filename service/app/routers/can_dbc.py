@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from ..can import dbc as dbc_mod
 from ..can import opendbc_import
 from ..db import CanDatabase, session_scope
+from ..services import dbc_catalog
 
 router = APIRouter(prefix="/can", tags=["can-dbc"])
 
@@ -22,10 +23,100 @@ def dbc_available():
     return {"available": dbc_mod.available()}
 
 
+@router.get("/dbc/catalog")
+def dbc_catalog_route():
+    """A directory of open-source DBC sources: the permissive ones can be
+    imported directly, the rest are links. Nothing here ships with the app."""
+    return {"catalog": dbc_catalog.catalog()}
+
+
 @router.get("/databases")
 def list_databases():
     with session_scope() as s:
         return {"databases": [d.to_dict() for d in s.query(CanDatabase).all()]}
+
+
+@router.get("/databases/for-vehicle")
+def databases_for_vehicle(make: str = "", model: str = "", year: int | None = None):
+    """Installed databases compatible with a vehicle's make/model/year, most
+    specific first, so selecting a vehicle can offer the databases that fit it."""
+    with session_scope() as s:
+        dbs = [d.to_dict() for d in s.query(CanDatabase).all()]
+    return {"databases": dbc_catalog.compatible_databases(dbs, make, model, year)}
+
+
+class DatabaseMetaIn(BaseModel):
+    name: str | None = None
+    make: str | None = None
+    model: str | None = None
+    models: str | None = None
+    year: int | None = None
+    years: str | None = None
+    author: str | None = None
+    updated: str | None = None
+    license: str | None = None
+    source: str | None = None
+    version: str | None = None
+    notes: str | None = None
+
+
+@router.patch("/databases/{database_id}")
+def update_database_meta(database_id: int, body: DatabaseMetaIn):
+    """Edit a database's metadata (make, model(s), years, author, license, ...)
+    without re-importing it, so a vehicle can be matched to it."""
+    with session_scope() as s:
+        d = s.get(CanDatabase, database_id)
+        if d is None:
+            raise HTTPException(404, "No such CAN database")
+        for key, value in body.model_dump(exclude_unset=True).items():
+            setattr(d, key, value)
+        s.flush()
+        return {"ok": True, "database": d.to_dict()}
+
+
+class ImportUrlIn(BaseModel):
+    url: str
+    name: str = ""
+    make: str = ""
+    model: str = ""
+    models: str = ""
+    year: int | None = None
+    years: str = ""
+    author: str = ""
+    updated: str = ""
+    license: str = ""
+    source: str = ""
+
+
+@router.post("/dbc/import-url")
+def import_url(body: ImportUrlIn):
+    """Fetch a raw .dbc from a URL and import it (used by the catalog's importable
+    open-source entries, and for any DBC the user has a link to)."""
+    if not dbc_mod.available():
+        raise HTTPException(400, "cantools is not installed on this host")
+    url = body.url.strip()
+    if not (url.startswith("http://") or url.startswith("https://")):
+        raise HTTPException(400, "A http(s) URL to a .dbc file is required")
+    try:
+        import httpx
+        resp = httpx.get(url, timeout=30.0, follow_redirects=True)
+    except Exception as exc:
+        return {"ok": False, "error": f"Could not fetch the URL: {exc}"}
+    if resp.status_code >= 400:
+        return {"ok": False, "error": f"The URL returned {resp.status_code}. Check the link or import the file by hand."}
+    text = resp.text
+    name = body.name or url.rsplit("/", 1)[-1].removesuffix(".dbc")
+    try:
+        with session_scope() as s:
+            d = dbc_mod.import_dbc(
+                s, name=name, dbc_text=text, source=body.source or url,
+                license=body.license, make=body.make, model=body.model,
+                models=body.models, year=body.year, years=body.years,
+                author=body.author, updated=body.updated)
+            s.flush()
+            return {"ok": True, "database": d.to_dict()}
+    except Exception as exc:
+        return {"ok": False, "error": f"Could not parse the DBC: {exc}"}
 
 
 @router.get("/databases/{database_id}")
@@ -55,7 +146,11 @@ async def import_dbc(
     license: str = Form(""),
     make: str = Form(""),
     model: str = Form(""),
+    models: str = Form(""),
     year: int | None = Form(None),
+    years: str = Form(""),
+    author: str = Form(""),
+    updated: str = Form(""),
 ):
     if not dbc_mod.available():
         raise HTTPException(400, "cantools is not installed on this host")
@@ -65,7 +160,8 @@ async def import_dbc(
             d = dbc_mod.import_dbc(
                 s, name=name or (file.filename or "database").removesuffix(".dbc"),
                 dbc_text=text, source=source, license=license,
-                make=make, model=model, year=year)
+                make=make, model=model, models=models, year=year, years=years,
+                author=author, updated=updated)
             s.flush()
             return {"ok": True, "database": d.to_dict()}
     except Exception as exc:

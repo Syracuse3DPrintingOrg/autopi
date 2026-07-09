@@ -74,6 +74,12 @@ def init_db() -> None:
 # nullable or defaulted so an ALTER on a populated table cannot fail.
 _ADDED_COLUMNS = {
     "can_messages": {"database_id": "INTEGER"},
+    "can_databases": {
+        "models": "VARCHAR(400) DEFAULT ''",
+        "years": "VARCHAR(40) DEFAULT ''",
+        "author": "VARCHAR(200) DEFAULT ''",
+        "updated": "VARCHAR(40) DEFAULT ''",
+    },
 }
 
 
