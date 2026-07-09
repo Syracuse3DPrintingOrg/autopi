@@ -6,16 +6,27 @@ here, not there.
 
 ## What This Is
 
-AutoPi is a blank-slate control surface for a Raspberry Pi (or any
-Debian/Ubuntu server). It runs a web interface plus an optional physical
-Stream Deck and an optional screen (touch or not), and it drives an external
-environment through a library of user-defined **actions**: GPIO pins, shell
-commands, HTTP calls to other applications, and (Phase 2) automotive CAN bus
-messages.
+AutoPi is a **CAN-first automotive tool** for a Raspberry Pi (or any
+Debian/Ubuntu server): reverse engineer a vehicle's CAN bus and build a custom
+controller for it. It runs a web interface plus an optional physical Stream
+Deck and an optional screen (touch or not). The core workflow: bring up the CAN
+interfaces, find a signal or a control (Signal Finder / "Find a control"), save
+it into a CAN database, and drop it onto a **cockpit** of buttons and gauges you
+actually use, one-shot or periodic.
 
-Nothing about the app is domain-specific. The point is maximum flexibility:
-you define actions, then drag and drop them onto a start menu and a Stream
-Deck to build whatever controller you need.
+**Two surfaces by device (see `services/ui_mode.py`):** a desktop browser gets
+the detailed builder/productivity environment (full nav, CAN Lab, Signal
+Finder, databases); the Pi touchscreen and Stream Deck get the simple,
+glanceable operator surface (`/operator`) for using what you built. The choice
+is automatic (loopback/kiosk -> operator) with a manual override.
+
+**The generic engine is preserved and forkable.** Under the hood everything
+still runs through a domain-neutral **action / driver** library (GPIO, shell,
+HTTP, CAN) laid onto a start menu, Stream Deck, and cockpit. AutoPi leads with
+CAN, but that generic control-surface engine is kept intact and cleanly
+separable, so the project can be forked into a non-CAN general-purpose testing
+platform later. Do not gut the generic bones (actions / drivers / cockpit /
+start / layout); keep them tucked under "Builder", not deleted.
 
 This project was spun out from the Pantry Raider codebase, reusing its proven
 device bones (the Stream Deck render and paging pipeline, the atomic

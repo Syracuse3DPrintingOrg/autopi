@@ -6,6 +6,16 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ## [Unreleased]
 
+### Changed
+
+- **A much simpler, CAN-first navigation.** The top bar drops from eighteen items
+  to seven: Home, Cockpit, CAN Lab (Signal Finder, Monitor, Simulate, CAN
+  console, Firewall, Diagnostics), Databases, Vehicles, a Builder menu (the
+  general-purpose actions, start menu, layout, automation, and test sequences,
+  kept but tucked out of the way), and Settings. The home page now leads with what
+  you actually do: find a signal, build a cockpit, watch the bus, manage
+  databases, pick a vehicle.
+
 ### Fixed
 
 - **"Test (fire)" and other actions right after a capture no longer fail.** A

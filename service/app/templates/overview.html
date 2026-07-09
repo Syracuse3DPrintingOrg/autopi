@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Overview: {{ app_name }}{% endblock %}
+{% block title %}Home: {{ app_name }}{% endblock %}
 {% block head %}
 <style>
   .card { background: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color); margin-bottom: 1rem; }
@@ -19,7 +19,7 @@
 {% endblock %}
 {% block body %}
 <div class="container-fluid">
-  <h4 class="mb-3"><i class="bi bi-house-door me-1"></i>Overview</h4>
+  <h4 class="mb-3"><i class="bi bi-house-door me-1"></i>{{ app_name }}</h4>
 
   <div class="row">
     <div class="col-lg-6">
@@ -75,45 +75,45 @@
     <h6 class="mb-3"><i class="bi bi-grid-3x3-gap me-1"></i>What do you want to do?</h6>
     <div class="row g-3">
       <div class="col-6 col-md-4 col-lg-2">
+        <a class="ov-tile" href="ui/reverse">
+          <i class="bi bi-search"></i>
+          <span class="ov-tile-label">Find a signal</span>
+          <span class="ov-tile-sub">Reverse engineer a control</span>
+        </a>
+      </div>
+      <div class="col-6 col-md-4 col-lg-2">
+        <a class="ov-tile" href="ui/cockpit">
+          <i class="bi bi-speedometer2"></i>
+          <span class="ov-tile-label">Build a cockpit</span>
+          <span class="ov-tile-sub">Buttons &amp; gauges to use</span>
+        </a>
+      </div>
+      <div class="col-6 col-md-4 col-lg-2">
         <a class="ov-tile" href="ui/can-monitor">
           <i class="bi bi-activity"></i>
-          <span class="ov-tile-label">Monitor</span>
-          <span class="ov-tile-sub">Watch live CAN traffic</span>
+          <span class="ov-tile-label">Watch the bus</span>
+          <span class="ov-tile-sub">Live CAN traffic, decoded</span>
         </a>
       </div>
       <div class="col-6 col-md-4 col-lg-2">
-        <a class="ov-tile" href="can">
-          <i class="bi bi-diagram-3"></i>
-          <span class="ov-tile-label">CAN console</span>
-          <span class="ov-tile-sub">Databases, send &amp; decode</span>
+        <a class="ov-tile" href="ui/databases">
+          <i class="bi bi-database"></i>
+          <span class="ov-tile-label">Databases</span>
+          <span class="ov-tile-sub">Get &amp; manage DBCs</span>
         </a>
       </div>
       <div class="col-6 col-md-4 col-lg-2">
-        <a class="ov-tile" href="layout-editor">
-          <i class="bi bi-columns-gap"></i>
-          <span class="ov-tile-label">Arrange keys</span>
-          <span class="ov-tile-sub">Layout editor</span>
-        </a>
-      </div>
-      <div class="col-6 col-md-4 col-lg-2">
-        <a class="ov-tile" href="ui/tests">
-          <i class="bi bi-list-check"></i>
-          <span class="ov-tile-label">Run a test</span>
-          <span class="ov-tile-sub">Build or run a sequence</span>
-        </a>
-      </div>
-      <div class="col-6 col-md-4 col-lg-2">
-        <a class="ov-tile" href="ui/can-sim">
-          <i class="bi bi-broadcast"></i>
-          <span class="ov-tile-label">Import a DBC</span>
-          <span class="ov-tile-sub">Databases &amp; simulate</span>
+        <a class="ov-tile" href="ui/profiles">
+          <i class="bi bi-car-front"></i>
+          <span class="ov-tile-label">Pick a vehicle</span>
+          <span class="ov-tile-sub">Set the active vehicle</span>
         </a>
       </div>
       <div class="col-6 col-md-4 col-lg-2">
         <a class="ov-tile" href="operator">
           <i class="bi bi-hand-index-thumb"></i>
           <span class="ov-tile-label">Operator screen</span>
-          <span class="ov-tile-sub">Switch to the touch screen</span>
+          <span class="ov-tile-sub">The simple touch surface</span>
         </a>
       </div>
     </div>
