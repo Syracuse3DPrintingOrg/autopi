@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% block title %}Vehicle controls: {{ app_name }}{% endblock %}
+{% block head %}
+<style>
+  .ctrl-card { background: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color); }
+  .ctrl-slot { border: 1px solid var(--bs-border-color); border-radius: 0.6rem; padding: 0.6rem 0.75rem;
+    background: var(--bs-tertiary-bg); height: 100%; }
+  .ctrl-slot.mapped { border-color: var(--bs-primary); }
+  .ctrl-cmd { font-family: ui-monospace, "Cascadia Code", Menlo, Consolas, monospace; font-size: 0.78rem; }
+  .ctrl-group-label { font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--bs-secondary-color); }
+</style>
+{% endblock %}
+{% block body %}
+<div class="container-fluid">
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h4 class="mb-0"><i class="bi bi-dpad me-1"></i>Vehicle controls</h4>
+    <span class="text-secondary small" id="vc-vehicle-label"></span>
+  </div>
+
+  {% if not nav_active_vehicle_id %}
+  <div class="alert alert-secondary">
+    Pick a vehicle from the selector at the top right to see and map its controls.
+    <a href="ui/profiles">Manage vehicles</a>.
+  </div>
+  {% else %}
+  <p class="text-secondary small">Each control can be filled from the Signal Finder (save it to the library, then map it here),
+    from a saved library command, or by entering the CAN frame yourself. Empty slots stay empty until you map them.</p>
+  <div id="vc-controls"><div class="text-secondary small">Loading controls…</div></div>
+
+  <div class="card ctrl-card mt-4"><div class="card-body">
+    <h6><i class="bi bi-collection me-1"></i>Command library</h6>
+    <p class="small text-secondary mb-2">Reusable commands you can drop onto any vehicle's controls. Save found commands here from the Signal Finder.</p>
+    <div id="vc-library"><div class="text-secondary small">Loading library…</div></div>
+  </div></div>
+  {% endif %}
+</div>
+
+<!-- Map a slot: manual entry or pick from the library -->
+<div class="modal fade" id="mapModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+  <div class="modal-header"><h5 class="modal-title" id="map-title">Map control</h5>
+    <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body">
+    <ul class="nav nav-tabs mb-3" role="tablist">
+      <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-lib" type="button">From library</button></li>
+      <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-manual" type="button">Enter manually</button></li>
+    </ul>
+    <div class="tab-content">
+      <div class="tab-pane fade show active" id="tab-lib">
+        <label class="form-label small">Saved command</label>
+        <select class="form-select form-select-sm" id="map-lib-select"></select>
+        <div class="form-text">Save commands to the library from the Signal Finder, or on the library list below.</div>
+      </div>
+      <div class="tab-pane fade" id="tab-manual">
+        <div class="row g-2">
+          <div class="col-6"><label class="form-label small">Interface</label>
+            <input class="form-control form-control-sm" id="map-channel" value="can0"></div>
+          <div class="col-6"><label class="form-label small">Arbitration ID (hex)</label>
+            <input class="form-control form-control-sm" id="map-arb" placeholder="0x5C6"></div>
+          <div class="col-12"><label class="form-label small">Data bytes (hex)</label>
+            <input class="form-control form-control-sm" id="map-data" placeholder="05 14 50 50 52 80 00 00"></div>
+          <div class="col-6"><label class="form-label small">Repeat every (ms, 0 = once)</label>
+            <input type="number" min="0" class="form-control form-control-sm" id="map-period" value="0"></div>
+          <div class="col-6 d-flex align-items-end gap-3">
+            <div class="form-check"><input class="form-check-input" type="checkbox" id="map-fd">
+              <label class="form-check-label small" for="map-fd">CAN-FD</label></div>
+            <div class="form-check"><input class="form-check-input" type="checkbox" id="map-ext">
+              <label class="form-check-label small" for="map-ext">Extended ID</label></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="modal-footer">
+    <span class="text-secondary small me-auto" id="map-status"></span>
+    <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+    <button class="btn btn-primary btn-sm" id="map-save">Map it</button>
+  </div>
+</div></div></div>
+{% endblock %}
+{% block scripts %}
+<script>
+  const VEHICLE_ID = {{ nav_active_vehicle_id if nav_active_vehicle_id is not none else 'null' }};
+  const vcLabel = document.getElementById('vc-vehicle-label');
+  if (vcLabel) vcLabel.textContent = {{ (nav_active_vehicle.label if nav_active_vehicle else '') | tojson }};
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  let libraryCache = [];
+  let mapSlot = null;
+
+  function cmdSummary(cmd) {
+    if (!cmd) return '';
+    let s = esc(cmd.arbitration_id) + '  ' + esc(cmd.data || '');
+    if (cmd.period_ms) s += '  @' + cmd.period_ms + 'ms';
+    if (cmd.channel) s += '  (' + esc(cmd.channel) + ')';
+    return s;
+  }
+
+  async function loadControls() {
+    if (VEHICLE_ID == null) return;
+    const r = await fetch('profiles/' + VEHICLE_ID + '/controls');
+    const d = await r.json();
+    const groups = {};
+    (d.controls || []).forEach((c) => { (groups[c.group] = groups[c.group] || []).push(c); });
+    const host = document.getElementById('vc-controls');
+    host.innerHTML = Object.keys(groups).map((g) =>
+      '<div class="ctrl-group-label mb-1 mt-3">' + esc(g) + '</div><div class="row g-2">'
+      + groups[g].map((c) => {
+        const mapped = !!c.command;
+        return '<div class="col-md-6 col-lg-4"><div class="ctrl-slot' + (mapped ? ' mapped' : '') + '">'
+          + '<div class="d-flex justify-content-between align-items-start">'
+          + '<div><div class="fw-semibold">' + esc(c.label) + '</div>'
+          + (mapped ? '<div class="ctrl-cmd text-secondary">' + cmdSummary(c.command) + '</div>'
+                      + '<span class="badge bg-secondary mt-1">' + esc(c.source || 'mapped') + '</span>'
+                    : '<div class="small text-secondary">Empty</div>') + '</div>'
+          + '<div class="btn-group btn-group-sm">'
+          + '<button class="btn btn-outline-primary" data-map="' + esc(c.slot) + '" data-label="' + esc(c.label) + '"><i class="bi bi-pencil"></i></button>'
+          + (mapped ? '<button class="btn btn-outline-danger" data-clear="' + esc(c.slot) + '"><i class="bi bi-x-lg"></i></button>' : '')
+          + '</div></div></div></div>';
+      }).join('') + '</div>').join('');
+    host.querySelectorAll('[data-map]').forEach((b) => b.addEventListener('click', () => openMap(b.getAttribute('data-map'), b.getAttribute('data-label'))));
+    host.querySelectorAll('[data-clear]').forEach((b) => b.addEventListener('click', () => clearSlot(b.getAttribute('data-clear'))));
+  }
+
+  async function loadLibrary() {
+    const r = await fetch('library/commands');
+    const d = await r.json();
+    libraryCache = d.commands || [];
+    const host = document.getElementById('vc-library');
+    if (!host) return;
+    host.innerHTML = libraryCache.length
+      ? '<ul class="list-group list-group-flush">' + libraryCache.map((c) =>
+          '<li class="list-group-item bg-transparent d-flex justify-content-between align-items-center px-0">'
+          + '<span><span class="fw-semibold">' + esc(c.name) + '</span> '
+          + '<span class="ctrl-cmd text-secondary ms-2">' + cmdSummary(c.command) + '</span></span>'
+          + '<button class="btn btn-sm btn-outline-danger" data-libdel="' + c.id + '"><i class="bi bi-trash"></i></button></li>').join('') + '</ul>'
+      : '<div class="text-secondary small">No saved commands yet. Save one from the Signal Finder after you find a control.</div>';
+    host.querySelectorAll('[data-libdel]').forEach((b) => b.addEventListener('click', async () => {
+      await fetch('library/commands/' + b.getAttribute('data-libdel'), { method: 'DELETE' });
+      loadLibrary();
+    }));
+  }
+
+  const mapModal = new bootstrap.Modal(document.getElementById('mapModal'));
+  function openMap(slot, label) {
+    mapSlot = slot;
+    document.getElementById('map-title').textContent = 'Map: ' + label;
+    document.getElementById('map-status').textContent = '';
+    const sel = document.getElementById('map-lib-select');
+    sel.innerHTML = libraryCache.length
+      ? libraryCache.map((c) => '<option value="' + c.id + '">' + esc(c.name) + ' — ' + esc(cmdSummary(c.command)) + '</option>').join('')
+      : '<option value="">(library is empty)</option>';
+    mapModal.show();
+  }
+
+  async function clearSlot(slot) {
+    await fetch('profiles/' + VEHICLE_ID + '/controls/' + encodeURIComponent(slot), { method: 'DELETE' });
+    loadControls();
+  }
+
+  document.getElementById('map-save').addEventListener('click', async () => {
+    const activeTab = document.querySelector('#mapModal .tab-pane.active').id;
+    let body;
+    if (activeTab === 'tab-lib') {
+      const id = document.getElementById('map-lib-select').value;
+      if (!id) { document.getElementById('map-status').textContent = 'The library is empty.'; return; }
+      body = { library_id: parseInt(id, 10) };
+    } else {
+      const arb = document.getElementById('map-arb').value.trim();
+      if (!arb) { document.getElementById('map-status').textContent = 'Enter an arbitration ID.'; return; }
+      body = { source: 'manual', command: {
+        channel: document.getElementById('map-channel').value.trim() || 'can0',
+        arbitration_id: arb,
+        data: document.getElementById('map-data').value.trim(),
+        period_ms: parseInt(document.getElementById('map-period').value || '0', 10),
+        is_fd: document.getElementById('map-fd').checked,
+        is_extended_id: document.getElementById('map-ext').checked } };
+    }
+    const r = await fetch('profiles/' + VEHICLE_ID + '/controls/' + encodeURIComponent(mapSlot), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (r.ok) { mapModal.hide(); loadControls(); }
+    else { document.getElementById('map-status').textContent = 'Could not map that.'; }
+  });
+
+  if (VEHICLE_ID != null) { loadControls(); loadLibrary(); }
+</script>
+{% endblock %}

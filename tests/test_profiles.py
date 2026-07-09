@@ -248,3 +248,27 @@ def test_copy_profile_duplicates_config_not_vins():
     assert copy["config"]["controls"] == {"lock": {"x": 1}}
     assert copy["vin"] == "" and copy["config"].get("vins") in (None, [])
     assert profiles_svc.copy_profile(999999) is None
+
+
+def test_controls_default_slots_and_mapping():
+    p = profiles_svc.create_profile(name="Rig")
+    controls = profiles_svc.get_controls(p["id"])
+    assert controls is not None and len(controls) == len(profiles_svc.DEFAULT_CONTROL_SLOTS)
+    assert all(c["command"] is None for c in controls)  # all empty at first
+    cmd = {"channel": "can1", "arbitration_id": "0x5C6", "data": "05 14", "overlay_mask": 1, "overlay_byte": 0, "overlay_value": 0}
+    updated = profiles_svc.set_control(p["id"], "mute", cmd, label="Mute audio", source="finder")
+    mute = next(c for c in updated if c["slot"] == "mute")
+    assert mute["command"]["arbitration_id"] == "0x5C6"
+    assert mute["command"]["overlay_mask"] == 1
+    assert mute["source"] == "finder" and mute["label"] == "Mute audio"
+    cleared = profiles_svc.clear_control(p["id"], "mute")
+    assert next(c for c in cleared if c["slot"] == "mute")["command"] is None
+    assert profiles_svc.get_controls(999999) is None
+
+
+def test_copy_profile_carries_mapped_controls():
+    p = profiles_svc.create_profile(name="Base")
+    profiles_svc.set_control(p["id"], "lock", {"arbitration_id": "0x123", "data": "01"}, source="manual")
+    copy = profiles_svc.copy_profile(p["id"])
+    lock = next(c for c in profiles_svc.get_controls(copy["id"]) if c["slot"] == "lock")
+    assert lock["command"]["arbitration_id"] == "0x123"

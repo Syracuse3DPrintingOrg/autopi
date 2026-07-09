@@ -6,6 +6,15 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ## [Unreleased]
 
+### Added
+
+- **Every vehicle now has a full set of controls you can fill in.** A new Vehicle controls page (under Vehicles) gives the active vehicle a ready made list of common buttons (lock, windows, lights, climate, mute, and more). Fill any slot from a saved library command or by typing the CAN frame yourself, and clear it just as easily.
+- **A shared command library.** Save a command you found in the Signal Finder to a reusable library (the new "Save to library" button on a found control), then map it onto any vehicle's controls later.
+
+### Fixed
+
+- **Find a control no longer floods the list with false matches.** Messages that are on the bus continuously with a fixed payload were being listed as if they only appear when you act, which produced a long list of look-alike candidates. Only messages that are genuinely sent around your presses are listed now.
+
 ### Changed
 
 - **A denser, more technical look across the whole app.** AutoPi now wears a dark cockpit theme built around its pink accent: tighter tables and forms fit more on screen, panels sit on glass-style surfaces over a faint engineering grid, labels and readouts use a monospace technical type, and the top bar, menus, and scrollbars match. The operator screen and Start page share the same look, so the touchscreen and the workbench feel like one instrument. Everything stays high-contrast and readable.

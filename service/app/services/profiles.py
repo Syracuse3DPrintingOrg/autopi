@@ -32,6 +32,105 @@ def _active_store() -> StateFile:
     return StateFile(settings.data_dir / "active-profile.json", default={"profile_id": None})
 
 
+# The default set of control slots every vehicle starts with, covering the
+# common use cases. Slots stay empty until mapped from the Signal Finder, the
+# command library, or a manual entry. Grouped for display.
+DEFAULT_CONTROL_SLOTS: list[dict] = [
+    {"slot": "lock", "label": "Lock doors", "group": "Doors"},
+    {"slot": "unlock", "label": "Unlock doors", "group": "Doors"},
+    {"slot": "trunk", "label": "Trunk / tailgate", "group": "Doors"},
+    {"slot": "window_up", "label": "Windows up", "group": "Windows"},
+    {"slot": "window_down", "label": "Windows down", "group": "Windows"},
+    {"slot": "headlights", "label": "Headlights", "group": "Lights"},
+    {"slot": "high_beams", "label": "High beams", "group": "Lights"},
+    {"slot": "fog_lights", "label": "Fog lights", "group": "Lights"},
+    {"slot": "hazards", "label": "Hazards", "group": "Lights"},
+    {"slot": "interior_light", "label": "Interior light", "group": "Lights"},
+    {"slot": "horn", "label": "Horn", "group": "Body"},
+    {"slot": "mirror_fold", "label": "Fold mirrors", "group": "Body"},
+    {"slot": "remote_start", "label": "Remote start", "group": "Body"},
+    {"slot": "climate_toggle", "label": "Climate on/off", "group": "Climate"},
+    {"slot": "fan_up", "label": "Fan up", "group": "Climate"},
+    {"slot": "fan_down", "label": "Fan down", "group": "Climate"},
+    {"slot": "defrost", "label": "Defrost", "group": "Climate"},
+    {"slot": "mute", "label": "Mute", "group": "Media"},
+    {"slot": "volume_up", "label": "Volume up", "group": "Media"},
+    {"slot": "volume_down", "label": "Volume down", "group": "Media"},
+]
+
+
+def get_controls(profile_id: int) -> list[dict] | None:
+    """The vehicle's control slots: the default template merged with whatever is
+    mapped in the profile config, plus any extra custom slots the user added.
+    Each entry is {slot, label, group, command|None, source}. None if the vehicle
+    does not exist."""
+    profile = get_profile(profile_id)
+    if profile is None:
+        return None
+    mapped = (profile.get("config") or {}).get("controls") or {}
+    out: list[dict] = []
+    seen: set[str] = set()
+    for tmpl in DEFAULT_CONTROL_SLOTS:
+        slot = tmpl["slot"]
+        seen.add(slot)
+        entry = mapped.get(slot) or {}
+        out.append({"slot": slot, "label": entry.get("label") or tmpl["label"],
+                    "group": tmpl["group"], "command": entry.get("command"),
+                    "source": entry.get("source")})
+    # Custom slots the user added beyond the template.
+    for slot, entry in mapped.items():
+        if slot in seen:
+            continue
+        out.append({"slot": slot, "label": entry.get("label") or slot,
+                    "group": entry.get("group") or "Custom",
+                    "command": entry.get("command"), "source": entry.get("source")})
+    return out
+
+
+def set_control(profile_id: int, slot: str, command: dict | None,
+                label: str = "", source: str = "manual") -> list[dict] | None:
+    """Map a command onto a control slot (or update its label). Returns the new
+    control list, or None if the vehicle does not exist."""
+    from .command_library import normalize_command
+    slot = (slot or "").strip()
+    if not slot:
+        return get_controls(profile_id)
+    with session_scope() as s:
+        p = s.get(Profile, profile_id)
+        if p is None:
+            return None
+        cfg = dict(p.config or {})
+        controls = dict(cfg.get("controls") or {})
+        entry = dict(controls.get(slot) or {})
+        if command is not None:
+            entry["command"] = normalize_command(command)
+            entry["source"] = source
+        if label:
+            entry["label"] = label
+        controls[slot] = entry
+        cfg["controls"] = controls
+        p.config = cfg
+        s.flush()
+    return get_controls(profile_id)
+
+
+def clear_control(profile_id: int, slot: str) -> list[dict] | None:
+    """Remove the mapping from a slot (a template slot goes back to empty; a
+    custom slot is deleted). Returns the new control list, or None if missing."""
+    with session_scope() as s:
+        p = s.get(Profile, profile_id)
+        if p is None:
+            return None
+        cfg = dict(p.config or {})
+        controls = dict(cfg.get("controls") or {})
+        if slot in controls:
+            del controls[slot]
+            cfg["controls"] = controls
+            p.config = cfg
+            s.flush()
+    return get_controls(profile_id)
+
+
 def profile_label(profile: dict | None) -> str:
     """A short human label for a vehicle: its name, else year/make/model, else
     a numbered fallback. Shared by the persistent selector and the pages."""

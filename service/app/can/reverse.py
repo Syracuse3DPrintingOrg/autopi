@@ -474,12 +474,14 @@ def event_responders(records: list[dict], event_times: Sequence[float], *,
             # No byte changed in response, but the message itself may appear only
             # when you act: a command another controller emits on trigger, often
             # with a constant payload (so nothing "changes", it just shows up).
-            # Detect that by presence: present for most of your actions, scarce
-            # otherwise.
+            # Detect that by presence, but require genuine sparsity: a real
+            # command is sent about once per press, whereas a periodic broadcast
+            # (even one whose payload never changes) has far more frames than
+            # presses and would otherwise flood the list as a false "appears".
             appear = sum(1 for e in events if any(abs(t - e) <= window for t in times))
-            away = sum(1 for t in times if all(abs(t - e) > window for e in events))
             need = max(2, (3 * total + 4) // 5)  # ceil(0.6 * total)
-            if appear >= need and away <= appear:
+            sparse = len(times) <= 4 * total
+            if appear >= need and sparse:
                 results.append({
                     "channel": channel, "arbitration_id": arb, "byte": None,
                     "responded": appear, "events": total, "baseline": 0.0,

@@ -171,6 +171,13 @@ def can_lab_page(request: Request):
     return templates.TemplateResponse(request, "can-lab.html", theme_context(request))
 
 
+@router.get("/ui/vehicle-controls", response_class=HTMLResponse)
+def vehicle_controls_page(request: Request):
+    # The active vehicle's button set. Controls, the library, and the active
+    # vehicle load over the API so the page reflects the nav selector live.
+    return templates.TemplateResponse(request, "vehicle-controls.html", theme_context(request))
+
+
 @router.get("/ui/can-sim", response_class=HTMLResponse)
 def can_sim_page(request: Request):
     # The panel loads the transmit list and scheduler status over the API.

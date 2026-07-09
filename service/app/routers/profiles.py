@@ -10,9 +10,17 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from ..services import command_library as library_svc
 from ..services import profiles as profiles_svc
 
 router = APIRouter(prefix="/profiles", tags=["profiles"])
+
+
+class ControlIn(BaseModel):
+    command: dict | None = None
+    label: str = ""
+    source: str = "manual"
+    library_id: int | None = None
 
 
 class ProfileIn(BaseModel):
@@ -79,6 +87,40 @@ def delete_profile(profile_id: int):
     if not profiles_svc.delete_profile(profile_id):
         raise HTTPException(404, "No such profile")
     return {"ok": True}
+
+
+@router.get("/{profile_id}/controls")
+def get_controls(profile_id: int):
+    controls = profiles_svc.get_controls(profile_id)
+    if controls is None:
+        raise HTTPException(404, "No such profile")
+    return {"controls": controls}
+
+
+@router.post("/{profile_id}/controls/{slot}")
+def set_control(profile_id: int, slot: str, body: ControlIn):
+    """Map a command onto a control slot. The command comes from the request
+    (Signal Finder or manual entry) or from a saved library entry by id."""
+    command = body.command
+    source = body.source
+    if body.library_id is not None:
+        entry = library_svc.get_command(body.library_id)
+        if entry is None:
+            raise HTTPException(404, "No such library command")
+        command = entry.get("command")
+        source = "library"
+    controls = profiles_svc.set_control(profile_id, slot, command, label=body.label, source=source)
+    if controls is None:
+        raise HTTPException(404, "No such profile")
+    return {"controls": controls}
+
+
+@router.delete("/{profile_id}/controls/{slot}")
+def clear_control(profile_id: int, slot: str):
+    controls = profiles_svc.clear_control(profile_id, slot)
+    if controls is None:
+        raise HTTPException(404, "No such profile")
+    return {"controls": controls}
 
 
 class CopyIn(BaseModel):

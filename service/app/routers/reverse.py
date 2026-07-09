@@ -558,6 +558,66 @@ def add_to_cockpit_route(body: AddToCockpitIn):
             "periodic": bool(body.period_ms), "data": data_hex, "element": element}
 
 
+def _command_from_capture(capture: dict, arbitration_id: int, byte: int | None,
+                          channel: str, period_ms: int) -> dict:
+    """Build a reusable command dict (the shape the can driver and the command
+    library share) from a found control: the frame's resting template plus, when
+    a target byte is known, the overlay bit mask so only its bits change."""
+    from ..can import overlay as ov
+    frames = _frames_for_id(capture, arbitration_id)
+    frame = _pick_active_frame(frames, byte)
+    command = {
+        "channel": channel or capture.get("channel") or "can0",
+        "arbitration_id": f"0x{arbitration_id:X}",
+        "data": " ".join(f"{int(b) & 0xFF:02X}" for b in (frame.get("data") or [])),
+        "is_fd": bool(frame.get("is_fd")), "is_extended_id": bool(frame.get("is_extended_id")),
+        "period_ms": int(period_ms or 0),
+    }
+    if byte is not None:
+        spec = ov.derive_mask(frames, byte)
+        if spec["mask"]:
+            command.update({"overlay_byte": spec["byte"], "overlay_mask": spec["mask"],
+                            "overlay_value": spec["active"]})
+    return command
+
+
+class SaveCommandIn(BaseModel):
+    capture_id: str
+    arbitration_id: int
+    channel: str = ""
+    byte: int | None = None
+    name: str = ""
+    period_ms: int = 0
+    to_library: bool = True
+    to_vehicle_slot: str = ""
+
+
+@router.post("/save-command")
+def save_command_route(body: SaveCommandIn):
+    """Save a found command to the shared library, to a slot on the active
+    vehicle, or both. The command carries the overlay mask so it changes only the
+    control's bits when replayed."""
+    from ..services import command_library as library_svc
+    from ..services import profiles as profiles_svc
+    capture = _capture_or_404(body.capture_id)
+    if not _frames_for_id(capture, body.arbitration_id):
+        raise HTTPException(404, "No frames with that id in this capture")
+    name = (body.name or "").strip() or f"CAN {body.arbitration_id:X}"
+    command = _command_from_capture(capture, body.arbitration_id, body.byte, body.channel, body.period_ms)
+    saved = {"library": False, "vehicle": False}
+    if body.to_library:
+        library_svc.add_command(name, command)
+        saved["library"] = True
+    if body.to_vehicle_slot:
+        active_id = profiles_svc.get_active_profile_id()
+        if active_id is None:
+            return {"ok": False, "error": "No active vehicle. Pick one from the top selector first.",
+                    "saved": saved}
+        profiles_svc.set_control(active_id, body.to_vehicle_slot, command, label=name, source="finder")
+        saved["vehicle"] = True
+    return {"ok": True, "saved": saved, "name": name, "command": command}
+
+
 # --------------------------------------------------------------------------
 # "Find a control": capture every active bus at once, have the user operate the
 # control and mark each press, and rank the message that reacts. No reference

@@ -656,6 +656,20 @@ def test_event_responders_finds_constant_payload_command_by_appearance():
     assert cmd["byte"] is None or cmd["match"] == "byte"
 
 
+def test_event_responders_rejects_constant_periodic_broadcast():
+    # A message on the bus the whole time with a fixed payload (many frames, far
+    # more than presses) must NOT be flagged as an "appears" command just because
+    # dense press windows overlap it. This was flooding the list.
+    events = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+    records = []
+    for i in range(600):  # ~100 frames per event window's worth: clearly periodic
+        ts = round(i * 0.02, 2)
+        records.append({"channel": "can0", "arbitration_id": 0x483,
+                        "data": [0x11, 0x22, 0x33], "timestamp": ts})
+    out = rev.event_responders(records, events, window=0.4)
+    assert all(r["arbitration_id"] != 0x483 for r in out), "periodic broadcast must not be an 'appears' candidate"
+
+
 def test_injection_reactors_finds_downstream_reaction():
     # At rest only 0x111 byte 0 wanders. While injecting, 0x222 byte 3 starts
     # moving: a downstream reaction to the injected command. The injected id
