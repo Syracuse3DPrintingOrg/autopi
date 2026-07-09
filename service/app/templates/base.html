@@ -59,6 +59,25 @@
             </ul>
           </li>
         </ul>
+        <div class="dropdown me-2" id="vehicle-selector" data-active-vehicle="{{ nav_active_vehicle_id if nav_active_vehicle_id is not none else '' }}">
+          <button class="btn btn-outline-primary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown"
+                  title="The vehicle everything applies to and saves to">
+            <i class="bi bi-car-front-fill me-1"></i>{{ nav_active_vehicle.label if nav_active_vehicle else 'No vehicle' }}
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end">
+            <li><h6 class="dropdown-header">Active vehicle</h6></li>
+            {% for v in nav_vehicles %}
+            <li><a class="dropdown-item vehicle-pick{% if v.id == nav_active_vehicle_id %} active{% endif %}" href="#" data-vehicle-id="{{ v.id }}">
+              <i class="bi bi-car-front me-2"></i>{{ v.label }}</a></li>
+            {% else %}
+            <li><span class="dropdown-item-text text-secondary small">No vehicles yet</span></li>
+            {% endfor %}
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item vehicle-pick" href="#" data-vehicle-id="">
+              <i class="bi bi-slash-circle me-2"></i>No vehicle</a></li>
+            <li><a class="dropdown-item" href="ui/profiles"><i class="bi bi-sliders me-2"></i>Manage vehicles</a></li>
+          </ul>
+        </div>
         <a class="btn btn-outline-secondary btn-sm me-3" href="operator" title="Switch to the operator screen">
           <i class="bi bi-hand-index-thumb me-1"></i>Operator</a>
         <span class="navbar-text small">v{{ app_version }}</span>
@@ -68,6 +87,22 @@
   {% endblock %}
   {% block body %}{% endblock %}
   <script src="static/vendor/bootstrap.bundle.min.js"></script>
+  <script>
+    // Persistent vehicle selector: picking a vehicle sets the app-wide active
+    // vehicle (what pages key off and where new work saves), then reloads so the
+    // whole UI reflects it.
+    document.querySelectorAll('#vehicle-selector .vehicle-pick').forEach((el) => {
+      el.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        const raw = el.getAttribute('data-vehicle-id');
+        const id = raw === '' ? null : parseInt(raw, 10);
+        fetch('profiles/active', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ profile_id: id }) })
+          .then((r) => r.json()).then(() => window.location.reload())
+          .catch(() => window.location.reload());
+      });
+    });
+  </script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

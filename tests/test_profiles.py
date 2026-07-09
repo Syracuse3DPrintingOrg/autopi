@@ -222,3 +222,17 @@ def test_ui_profiles_page_renders():
         resp = c.get("/ui/profiles")
     assert resp.status_code == 200
     assert "text/html" in resp.headers["content-type"]
+
+
+def test_profile_label_prefers_name_then_year_make_model():
+    assert profiles_svc.profile_label({"name": "Daily", "year": 2020, "make": "Ford"}) == "Daily"
+    assert profiles_svc.profile_label({"year": 2020, "make": "Ford", "model": "F-150"}) == "2020 Ford F-150"
+    assert profiles_svc.profile_label({"id": 7}) == "Vehicle 7"
+    assert profiles_svc.profile_label(None) == ""
+
+
+def test_nav_shows_persistent_vehicle_selector():
+    with _client() as c:
+        resp = c.get("/overview")
+    assert resp.status_code == 200
+    assert "vehicle-selector" in resp.text

@@ -32,6 +32,21 @@ def _active_store() -> StateFile:
     return StateFile(settings.data_dir / "active-profile.json", default={"profile_id": None})
 
 
+def profile_label(profile: dict | None) -> str:
+    """A short human label for a vehicle: its name, else year/make/model, else
+    a numbered fallback. Shared by the persistent selector and the pages."""
+    if not profile:
+        return ""
+    name = (profile.get("name") or "").strip()
+    if name:
+        return name
+    parts = [str(profile.get("year") or "").strip(),
+             (profile.get("make") or "").strip(),
+             (profile.get("model") or "").strip()]
+    label = " ".join(p for p in parts if p)
+    return label or f"Vehicle {profile.get('id')}"
+
+
 def list_profiles() -> list[dict]:
     with session_scope() as s:
         return [p.to_dict() for p in s.query(Profile).order_by(Profile.id).all()]

@@ -8,6 +8,10 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **Your vehicle now follows you everywhere.** A vehicle selector sits at the top of every screen, so the vehicle you are working on is always visible and one click to change. Whatever you pick is the active vehicle the rest of the app works against, and it stays selected across restarts.
+
+### Added
+
 - **Find a control also catches commands that just appear.** Some controls are driven by a command another module sends with a fixed payload, so nothing in the message "changes", it only shows up while you act. Those are now detected and listed (marked "appears") instead of being missed, so a button whose command is a constant frame can still be found and replayed.
 
 ### Added
