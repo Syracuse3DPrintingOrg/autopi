@@ -14,6 +14,7 @@ from ..can import dbc as dbc_mod
 from ..can import opendbc_import
 from ..db import CanDatabase, session_scope
 from ..services import dbc_catalog
+from ..services import profiles as profiles_svc
 
 router = APIRouter(prefix="/can", tags=["can-dbc"])
 
@@ -67,6 +68,44 @@ def databases_for_vehicle(make: str = "", model: str = "", year: int | None = No
     with session_scope() as s:
         dbs = [d.to_dict() for d in s.query(CanDatabase).all()]
     return {"databases": dbc_catalog.compatible_databases(dbs, make, model, year)}
+
+
+class LinkIn(BaseModel):
+    profile_id: int
+
+
+def _linked_ids(profile: dict) -> list[int]:
+    ids = (profile.get("config") or {}).get("can_database_ids") or []
+    return [int(i) for i in ids if isinstance(i, int) or str(i).isdigit()]
+
+
+@router.post("/databases/{database_id}/link")
+def link_database(database_id: int, body: LinkIn):
+    """Link a database to a vehicle, so that vehicle uses it to decode its
+    traffic. Persists into the profile's ``can_database_ids`` config key."""
+    with session_scope() as s:
+        if s.get(CanDatabase, database_id) is None:
+            raise HTTPException(404, "No such CAN database")
+    profile = profiles_svc.get_profile(body.profile_id)
+    if profile is None:
+        raise HTTPException(404, "No such vehicle")
+    ids = _linked_ids(profile)
+    if database_id not in ids:
+        ids.append(database_id)
+        profiles_svc.update_profile(body.profile_id, config={"can_database_ids": ids})
+    return {"ok": True, "profile_id": body.profile_id, "can_database_ids": ids}
+
+
+@router.post("/databases/{database_id}/unlink")
+def unlink_database(database_id: int, body: LinkIn):
+    """Remove a database from a vehicle's linked set. Works even if the
+    database row is gone, so a stale link can always be cleaned up."""
+    profile = profiles_svc.get_profile(body.profile_id)
+    if profile is None:
+        raise HTTPException(404, "No such vehicle")
+    ids = [i for i in _linked_ids(profile) if i != database_id]
+    profiles_svc.update_profile(body.profile_id, config={"can_database_ids": ids})
+    return {"ok": True, "profile_id": body.profile_id, "can_database_ids": ids}
 
 
 class DatabaseMetaIn(BaseModel):

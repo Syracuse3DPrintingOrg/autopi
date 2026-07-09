@@ -14,6 +14,14 @@
         <option value="">Show all</option>
       </select>
     </div>
+    {% if nav_active_vehicle %}
+    <p class="small text-secondary mb-2"><i class="bi bi-car-front-fill me-1"></i>Databases marked
+      <span class="badge text-bg-primary">In use</span> decode traffic for <b>{{ nav_active_vehicle.label }}</b>,
+      the vehicle picked in the top bar. Use the button on a row to add or remove one.</p>
+    {% else %}
+    <p class="small text-secondary mb-2"><i class="bi bi-car-front me-1"></i>Pick a vehicle in the top bar to
+      choose which databases it uses.</p>
+    {% endif %}
     <div id="db-list" class="small text-secondary">Loading&hellip;</div>
   </div></div>
 
@@ -52,6 +60,9 @@
 <script>
 (function () {
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const ACTIVE_ID = {{ nav_active_vehicle_id if nav_active_vehicle_id is not none else 'null' }};
+  const ACTIVE_LABEL = {{ (nav_active_vehicle.label if nav_active_vehicle else '') | tojson }};
+  let linkedIds = [];
   const listEl = document.getElementById('db-list');
   const catEl = document.getElementById('catalog-list');
   const statusEl = document.getElementById('imp-status');
@@ -63,10 +74,22 @@
     return '<span class="badge ' + (ok ? 'text-bg-success' : 'text-bg-secondary') + '">' + esc(lic || 'unknown') + '</span>';
   }
 
+  function linkCell(db) {
+    if (ACTIVE_ID == null) return '';
+    if (linkedIds.indexOf(db.id) !== -1) {
+      return '<td class="text-nowrap"><span class="badge text-bg-primary me-1">In use</span>'
+        + '<button class="btn btn-outline-secondary btn-sm" data-unlink="' + db.id + '">Remove</button></td>';
+    }
+    return '<td><button class="btn btn-outline-primary btn-sm text-nowrap" data-link="' + db.id + '" '
+      + 'title="Decode ' + esc(ACTIVE_LABEL) + '’s traffic with this database">Use with ' + esc(ACTIVE_LABEL) + '</button></td>';
+  }
+
   function renderDbs(dbs) {
     if (!dbs.length) { listEl.textContent = 'No databases yet. Import one below.'; return; }
+    const cols = ACTIVE_ID == null ? 7 : 8;
     listEl.innerHTML = '<table class="table table-sm table-dark align-middle mb-0"><thead><tr>'
-      + '<th>Name</th><th>Vehicle</th><th>Years</th><th>Signals</th><th>License</th><th>Author</th><th></th></tr></thead><tbody>'
+      + '<th>Name</th><th>Vehicle</th><th>Years</th><th>Signals</th><th>License</th><th>Author</th>'
+      + (ACTIVE_ID == null ? '' : '<th>' + esc(ACTIVE_LABEL) + '</th>') + '<th></th></tr></thead><tbody>'
       + dbs.map((db) => '<tr>'
         + '<td>' + esc(db.name) + '</td>'
         + '<td class="small">' + esc([db.make, dbModels(db)].filter(Boolean).join(' ')) + '</td>'
@@ -74,9 +97,10 @@
         + '<td>' + (db.message_count || 0) + '</td>'
         + '<td>' + licenseBadge(db.license) + '</td>'
         + '<td class="small">' + esc(db.author || '') + '</td>'
+        + linkCell(db)
         + '<td><button class="btn btn-outline-secondary btn-sm me-1" data-edit="' + db.id + '">Tag</button>'
         + '<button class="btn btn-outline-danger btn-sm" data-del="' + db.id + '">Delete</button></td></tr>'
-        + '<tr class="d-none" id="edit-' + db.id + '"><td colspan="7">' + editForm(db) + '</td></tr>').join('')
+        + '<tr class="d-none" id="edit-' + db.id + '"><td colspan="' + cols + '">' + editForm(db) + '</td></tr>').join('')
       + '</tbody></table>';
     listEl.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => {
       const row = document.getElementById('edit-' + b.getAttribute('data-edit')); row.classList.toggle('d-none');
@@ -86,6 +110,23 @@
       fetch('can/databases/' + b.getAttribute('data-del'), { method: 'DELETE' }).then(load);
     }));
     listEl.querySelectorAll('[data-save]').forEach((b) => b.addEventListener('click', () => saveMeta(b.getAttribute('data-save'))));
+    listEl.querySelectorAll('[data-link]').forEach((b) => b.addEventListener('click', () => setLink(b.getAttribute('data-link'), 'link')));
+    listEl.querySelectorAll('[data-unlink]').forEach((b) => b.addEventListener('click', () => setLink(b.getAttribute('data-unlink'), 'unlink')));
+  }
+
+  function setLink(dbId, action) {
+    fetch('can/databases/' + dbId + '/' + action, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profile_id: ACTIVE_ID }) })
+      .then((r) => r.json()).then((d) => {
+        if (d.can_database_ids) { linkedIds = d.can_database_ids; applyFilter(); }
+      }).catch(() => {});
+  }
+
+  function loadLinked() {
+    if (ACTIVE_ID == null) return Promise.resolve();
+    return fetch('profiles/' + ACTIVE_ID).then((r) => r.json())
+      .then((p) => { linkedIds = ((p.config || {}).can_database_ids) || []; })
+      .catch(() => {});
   }
 
   function editForm(db) {
@@ -155,6 +196,7 @@
   function load() {
     fetch('can/databases').then((r) => r.json()).then((d) => { allDbs = d.databases || []; applyFilter(); });
   }
+  loadLinked().then(load);
 
   document.getElementById('imp-url-btn').addEventListener('click', () => {
     const url = document.getElementById('imp-url').value.trim();
@@ -185,7 +227,6 @@
 
   fetch('can/dbc/catalog').then((r) => r.json()).then((d) => renderCatalog(d.catalog || [])).catch(() => { catEl.textContent = 'Could not load the catalog.'; });
   loadVehicles();
-  load();
 })();
 </script>
 {% endblock %}

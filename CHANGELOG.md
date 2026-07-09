@@ -6,6 +6,10 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ## [Unreleased]
 
+### Added
+
+- **Pick which databases your vehicle uses, right on the Databases page.** With a vehicle selected in the top bar, each installed database shows a "Use with" button, and the ones already in use carry an "In use" badge with a one-click Remove. The choice is saved with the vehicle, so its linked databases follow it everywhere.
+
 ### Fixed
 
 - **Firing a CAN-FD control now actually sends.** Injecting a found control on a CAN-FD bus could report "could not inject" and transmit nothing, while a shorter classic control on the same bus fired fine. The transmit was going out on a socket opened in classic mode, which the kernel refuses for a CAN-FD frame. Firing a control, verifying its effect, and holding a control down (repeat send) now open the bus in CAN-FD mode whenever the frame is CAN-FD, so the frame goes out. Classic frames are unaffected.
