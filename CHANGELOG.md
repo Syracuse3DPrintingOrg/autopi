@@ -6,6 +6,14 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ## [Unreleased]
 
+### Fixed
+
+- **"Test (fire)" and other actions right after a capture no longer fail.** A
+  just-finished capture is now available the instant it is made, instead of only
+  after its (sometimes slow) write to disk finishes, so firing a found message,
+  cross-correlating, or adding it to the cockpit immediately after "Find a
+  control" works reliably even on a busy bus.
+
 ### Added
 
 - **Find a button and put it on the cockpit in a couple of presses.** In the

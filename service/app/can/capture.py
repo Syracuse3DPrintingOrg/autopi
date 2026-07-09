@@ -102,7 +102,25 @@ def list_captures() -> list[dict[str, Any]]:
     ]
 
 
+# Captures built this process, kept in memory keyed by id, so a just-finished
+# capture is retrievable the instant it is built even though persisting it to
+# disk happens after (and can be slow). Without this, an action right after a
+# capture (fire it, survey it) could 404 while the disk write was still in
+# flight. Bounded so it cannot grow without limit.
+_recent: "dict[str, dict[str, Any]]" = {}
+_RECENT_MAX = 30
+
+
+def _remember(capture: dict[str, Any]) -> None:
+    _recent[capture["id"]] = capture
+    while len(_recent) > _RECENT_MAX:
+        del _recent[next(iter(_recent))]
+
+
 def get_capture(capture_id: str) -> dict[str, Any] | None:
+    remembered = _recent.get(capture_id)
+    if remembered is not None:
+        return remembered
     for capture in _store().read().get("captures", []):
         if capture.get("id") == capture_id:
             return capture
@@ -118,8 +136,9 @@ MAX_STORED_CAPTURES = 25
 
 def build_capture(name: str, channel: str, backend: str, frames: list[dict[str, Any]]) -> dict[str, Any]:
     """The in-memory capture dict, with no disk I/O, so a caller can have the
-    result immediately even when persisting it is slow."""
-    return {
+    result immediately even when persisting it is slow. Remembered in-process so
+    get_capture finds it before the disk write completes."""
+    capture = {
         "id": _new_id(),
         "name": name or f"{channel} capture",
         "channel": channel,
@@ -127,6 +146,8 @@ def build_capture(name: str, channel: str, backend: str, frames: list[dict[str, 
         "created_at": time.time(),
         "frames": frames,
     }
+    _remember(capture)
+    return capture
 
 
 def persist_capture(capture: dict[str, Any]) -> None:
@@ -150,12 +171,13 @@ def save_capture(name: str, channel: str, backend: str, frames: list[dict[str, A
 
 
 def delete_capture(capture_id: str) -> bool:
+    had_recent = _recent.pop(capture_id, None) is not None
     store = _store()
     doc = store.read()
     captures = doc.get("captures", [])
     remaining = [c for c in captures if c.get("id") != capture_id]
     if len(remaining) == len(captures):
-        return False
+        return had_recent
     doc["captures"] = remaining
     store.write(doc)
     return True

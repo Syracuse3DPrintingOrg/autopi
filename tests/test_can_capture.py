@@ -408,3 +408,12 @@ def test_router_exhale_stop_when_idle(client):
     resp = client.post("/firewall/exhale/stop")
     assert resp.status_code == 200
     assert resp.json()["stopped"] is False
+
+
+def test_get_capture_finds_it_before_persist():
+    # build_capture remembers the capture in-process, so an action right after a
+    # capture (fire it, survey it) can retrieve it before the disk write lands.
+    c = cap.build_capture("t", "can0", "socketcan",
+                          [{"arbitration_id": 0x3E0, "data": [0] * 8, "timestamp": 0.0}])
+    got = cap.get_capture(c["id"])   # not persisted yet
+    assert got is not None and got["id"] == c["id"]
