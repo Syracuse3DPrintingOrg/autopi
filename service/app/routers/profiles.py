@@ -81,6 +81,18 @@ def delete_profile(profile_id: int):
     return {"ok": True}
 
 
+class CopyIn(BaseModel):
+    name: str = ""
+
+
+@router.post("/{profile_id}/copy")
+def copy_profile(profile_id: int, body: CopyIn):
+    copied = profiles_svc.copy_profile(profile_id, new_name=body.name)
+    if copied is None:
+        raise HTTPException(404, "No such profile")
+    return copied
+
+
 @router.post("/active")
 def set_active_profile(body: ActiveIn):
     try:

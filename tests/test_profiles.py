@@ -236,3 +236,15 @@ def test_nav_shows_persistent_vehicle_selector():
         resp = c.get("/overview")
     assert resp.status_code == 200
     assert "vehicle-selector" in resp.text
+
+
+def test_copy_profile_duplicates_config_not_vins():
+    src = profiles_svc.create_profile(name="Base", year=2020, make="Ford", model="F-150",
+                                      vin="VIN123", config={"can_database_ids": [1, 2], "controls": {"lock": {"x": 1}}})
+    copy = profiles_svc.copy_profile(src["id"], new_name="Base copy")
+    assert copy["id"] != src["id"]
+    assert copy["name"] == "Base copy"
+    assert copy["config"]["can_database_ids"] == [1, 2]
+    assert copy["config"]["controls"] == {"lock": {"x": 1}}
+    assert copy["vin"] == "" and copy["config"].get("vins") in (None, [])
+    assert profiles_svc.copy_profile(999999) is None

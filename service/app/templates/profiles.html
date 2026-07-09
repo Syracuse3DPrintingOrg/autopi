@@ -187,6 +187,13 @@
     editBtn.addEventListener('click', () => fillForm(p));
     actions.appendChild(editBtn);
 
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'btn btn-sm btn-outline-secondary';
+    copyBtn.title = 'Copy this vehicle';
+    copyBtn.innerHTML = '<i class="bi bi-files"></i>';
+    copyBtn.addEventListener('click', () => copyProfile(p));
+    actions.appendChild(copyBtn);
+
     const delBtn = document.createElement('button');
     delBtn.className = 'btn btn-sm btn-outline-danger';
     delBtn.innerHTML = '<i class="bi bi-trash"></i>';
@@ -234,6 +241,18 @@
       body: JSON.stringify({ profile_id: id }),
     });
     load();
+  }
+
+  async function copyProfile(p) {
+    const suggested = (p.name || [p.year, p.make, p.model].filter(Boolean).join(' ') || 'Vehicle') + ' (copy)';
+    const name = prompt('Name for the copy:', suggested);
+    if (name === null) return;
+    statusEl.textContent = 'Copying vehicle…';
+    const r = await fetch('/profiles/' + p.id + '/copy', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: name }) });
+    if (r.ok) { statusEl.textContent = 'Copied.'; load(); }
+    else { statusEl.textContent = 'Copy failed.'; }
   }
 
   async function deleteProfile(id) {

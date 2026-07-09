@@ -90,6 +90,24 @@ def create_profile(
         return p.to_dict()
 
 
+def copy_profile(profile_id: int, new_name: str = "") -> dict | None:
+    """Duplicate a vehicle profile into a new one, carrying over its whole config
+    (linked databases, transmit lists, mapped controls). VINs are not copied
+    since they are unique to a physical vehicle. Returns the new profile, or None
+    if the source does not exist."""
+    with session_scope() as s:
+        src = s.get(Profile, profile_id)
+        if src is None:
+            return None
+        cfg = dict(src.config or {})
+        cfg.pop("vins", None)  # VINs are per-vehicle; do not clone them
+        name = (new_name or "").strip() or f"{src.name or profile_label(src.to_dict())} (copy)"
+        p = Profile(name=name, year=src.year, make=src.make, model=src.model, vin="", config=cfg)
+        s.add(p)
+        s.flush()
+        return p.to_dict()
+
+
 def update_profile(profile_id: int, **fields) -> dict | None:
     """Apply only the fields that were actually passed (partial update)."""
     vin_update = "vin" in fields

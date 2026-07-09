@@ -8,6 +8,10 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **Copy a vehicle.** Duplicate an existing vehicle from the vehicles page to start a new one from a known-good setup (its linked databases, transmit lists, and mapped controls carry over; the VINs do not, since those belong to one physical vehicle).
+
+### Added
+
 - **Your vehicle now follows you everywhere.** A vehicle selector sits at the top of every screen, so the vehicle you are working on is always visible and one click to change. Whatever you pick is the active vehicle the rest of the app works against, and it stays selected across restarts.
 
 ### Added
