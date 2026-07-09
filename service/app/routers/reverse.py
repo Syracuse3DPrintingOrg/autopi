@@ -16,6 +16,7 @@ from pydantic import BaseModel
 from .. import llm
 from ..can import capture as cap
 from ..can import get_channel
+from ..can import registry as can_registry
 from ..can import reverse as rev
 from ..db import CanDatabase, session_scope
 from ..services import ref_recorder as rec
@@ -69,6 +70,7 @@ def _run_live_capture(channel: str, backend: str, seconds: float, name: str = ""
                 or f"Channel {channel!r} is not available. Bring the interface up first."}
 
     capped_seconds = max(0.5, min(float(seconds), MAX_LIVE_SECONDS))
+    before = can_registry.link_stats(channel)
     session = cap.get_inhale_session(channel, backend=backend)
     if not session.start(name, max_duration_s=capped_seconds):
         return {"ok": False, "error": "A capture is already running on that channel"}
@@ -80,9 +82,40 @@ def _run_live_capture(channel: str, backend: str, seconds: float, name: str = ""
     while session.is_running() and time.time() < deadline:
         time.sleep(0.05)
     saved = session.stop()
-    if saved is None:
-        return {"ok": False, "error": "Capture produced nothing"}
+    frame_count = len(saved.get("frames", [])) if saved else 0
+    if saved is None or frame_count == 0:
+        note = _explain_empty_capture(channel, before, can_registry.link_stats(channel))
+        result: dict = {"ok": False, "error": note, "note": note}
+        if saved is not None:
+            result["capture"] = saved
+        return result
     return {"ok": True, "capture": saved}
+
+
+def _explain_empty_capture(channel: str, before: dict | None, after: dict | None) -> str:
+    """Say *why* a live capture came back empty, from the interface's link state
+    and kernel rx counter, instead of a bare "nothing". Distinguishes an idle
+    port (rx counter did not move: wrong channel) from a port that is receiving
+    frames the socket did not read (rx climbed: a CAN-FD-vs-classic mode issue)."""
+    after = after or {}
+    if not after.get("present"):
+        return f"{channel} is not present on this device."
+    state = after.get("operstate")
+    if state not in ("up", "unknown", None):
+        return f"{channel} is not up (state: {state}). Bring the interface up first."
+    rx0 = (before or {}).get("rx_packets")
+    rx1 = after.get("rx_packets")
+    climbed = rx0 is not None and rx1 is not None and rx1 > rx0
+    if climbed and after.get("fd"):
+        return (f"Frames are reaching {channel} (kernel rx +{rx1 - rx0} during the capture) but none were "
+                f"read: this bus is CAN-FD and the capture socket opened in classic mode. Update the app "
+                f"to 0.1.55 or newer, which opens CAN-FD links in FD mode.")
+    if climbed:
+        return (f"Frames are reaching {channel} (kernel rx +{rx1 - rx0}) but the capture read none, which "
+                f"is a socket/mode issue, not an idle bus.")
+    return (f"No frames reached {channel} during the capture (its kernel rx counter did not move), so this "
+            f"port is idle. Your traffic is almost certainly on the other CAN interface: on the Waveshare "
+            f"HAT the Linux name and the board's CAN0/CAN1 label can be crossed, so try the other channel.")
 
 
 class CaptureLiveIn(BaseModel):

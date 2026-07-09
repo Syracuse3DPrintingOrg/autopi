@@ -166,6 +166,17 @@ def get_values(cockpit_id: int):
     from ..can import monitor as mon
 
     cockpit = _get_or_404(cockpit_id)
+
+    # Make sure a monitor is running for every channel this cockpit draws from,
+    # so gauges on can0 and can1 (and any other bus) all get live data without
+    # the user having to open the CAN monitor for each one first. start() is a
+    # no-op if already running; we only start channels that are actually present
+    # so an absent bus does not spawn a spinning reader thread.
+    for used in cockpit_svc.channels_used(cockpit):
+        monitor = mon.get_monitor(used["channel"], backend=used["backend"])
+        if not monitor.is_running() and monitor.is_live():
+            monitor.start()
+
     values: dict[str, dict] = {}
     dbc_cache: dict[int, str | None] = {}
     for element in cockpit.get("elements", []):

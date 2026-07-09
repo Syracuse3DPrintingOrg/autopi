@@ -6,6 +6,19 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ## [Unreleased]
 
+### Added
+
+- **Cockpits read from every CAN channel they use.** A cockpit can mix gauges
+  bound to different buses (say engine data on one channel and body data on
+  another), and the operate view now makes sure a monitor is running on each of
+  those channels, so all the gauges get live data at once instead of only the one
+  channel you happened to open the CAN monitor for.
+- **The Signal Finder says why a live snapshot came back empty.** Instead of just
+  showing nothing, it now reports whether the port was idle (no frames arrived,
+  so your traffic is on the other channel) or whether frames were arriving but not
+  read (a CAN-FD versus classic mode mismatch), reading the interface's own
+  counters, so you know which knob to turn.
+
 ### Fixed
 
 - **The CAN HAT interfaces now keep the board's names.** The kernel used to name

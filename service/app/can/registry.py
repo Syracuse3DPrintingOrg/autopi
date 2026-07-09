@@ -81,6 +81,38 @@ def _link_is_fd(channel: str, sysfs_root: str = "/sys/class/net") -> bool:
     return mtu >= _CANFD_MTU
 
 
+def link_stats(channel: str, sysfs_root: str = "/sys/class/net") -> dict[str, Any]:
+    """Best-effort SocketCAN link diagnostics from sysfs: whether the interface
+    is present and up, its MTU (72 means CAN-FD), and the kernel rx_packets
+    counter. Used to explain why a live capture came back empty (idle port vs a
+    port that is receiving frames the socket did not read). ``{}`` when the
+    interface is not a sysfs device."""
+    base = Path(f"{sysfs_root}/{channel}")
+    if not base.exists():
+        return {}
+
+    def _int(rel: str) -> int | None:
+        try:
+            return int((base / rel).read_text().strip())
+        except (OSError, ValueError):
+            return None
+
+    def _str(rel: str) -> str | None:
+        try:
+            return (base / rel).read_text().strip()
+        except OSError:
+            return None
+
+    mtu = _int("mtu")
+    return {
+        "present": True,
+        "operstate": _str("operstate"),
+        "mtu": mtu,
+        "fd": (mtu or 0) >= _CANFD_MTU,
+        "rx_packets": _int("statistics/rx_packets"),
+    }
+
+
 def _configured_settings(channel: str, backend: str) -> dict[str, Any]:
     """The fd/bitrate a configured interface uses, so any caller opens the bus
     the way the user set it up. A CAN-FD bus MUST be opened with fd=True or the

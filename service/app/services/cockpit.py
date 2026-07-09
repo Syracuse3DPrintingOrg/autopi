@@ -220,6 +220,26 @@ def latest_signal_value(
     return None
 
 
+def channels_used(cockpit: dict) -> list[dict[str, str]]:
+    """The distinct (channel, backend) pairs the cockpit's gauge/indicator
+    elements read from, first-seen order, so the operate view can make sure a
+    monitor is running on every channel a cockpit draws from, not just one. A
+    cockpit can mix gauges bound to can0 and can1 (and any other bus), and each
+    needs its own channel monitor feeding it. Pure over the cockpit dict."""
+    seen: list[dict[str, str]] = []
+    keys: set[tuple[str, str]] = set()
+    for element in (cockpit or {}).get("elements", []):
+        if element.get("type") not in ("gauge", "indicator"):
+            continue
+        channel = str(element.get("channel") or "can0")
+        backend = str(element.get("backend") or "socketcan")
+        key = (backend, channel)
+        if key not in keys:
+            keys.add(key)
+            seen.append({"channel": channel, "backend": backend})
+    return seen
+
+
 def validate_image_upload(filename: str | None, size: int) -> str | None:
     """Return an error message if the upload should be rejected, else None."""
     ext = Path(filename or "").suffix.lower()

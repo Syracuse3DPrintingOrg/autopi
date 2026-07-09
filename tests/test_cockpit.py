@@ -173,6 +173,26 @@ def test_latest_signal_value_decode_failure_returns_none():
     assert cockpit_svc.latest_signal_value(frames, "text", 1, "SPEED", decode_fn=bad_decode) is None
 
 
+def test_channels_used_distinct_and_ordered():
+    cockpit = {"elements": [
+        {"type": "gauge", "channel": "can1", "backend": "socketcan"},
+        {"type": "gauge", "channel": "can0", "backend": "socketcan"},
+        {"type": "indicator", "channel": "can1", "backend": "socketcan"},  # dup of first
+        {"type": "key", "channel": "can2"},                                 # not a gauge/indicator
+        {"type": "gauge"},                                                  # defaults can0 -> dup
+    ]}
+    used = cockpit_svc.channels_used(cockpit)
+    assert used == [
+        {"channel": "can1", "backend": "socketcan"},
+        {"channel": "can0", "backend": "socketcan"},
+    ]
+
+
+def test_channels_used_empty_cockpit():
+    assert cockpit_svc.channels_used({}) == []
+    assert cockpit_svc.channels_used({"elements": []}) == []
+
+
 def test_validate_image_upload_rejects_bad_extension():
     assert cockpit_svc.validate_image_upload("dash.txt", 100) is not None
 
@@ -340,6 +360,12 @@ def test_router_values_endpoint_with_stubbed_monitor_and_decode(client, monkeypa
     class FakeMonitor:
         def frames(self):
             return [{"arbitration_id": 0x201, "data": [42, 0, 0, 0, 0, 0, 0, 0]}]
+
+        def is_running(self):
+            return True
+
+        def is_live(self):
+            return True
 
     from app.can import monitor as mon
     monkeypatch.setattr(mon, "get_monitor", lambda channel, backend="socketcan": FakeMonitor())
