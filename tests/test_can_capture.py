@@ -237,6 +237,24 @@ def test_inhale_session_returns_frames_even_when_persist_is_slow(monkeypatch):
     assert len(saved["frames"]) == 2
 
 
+def test_inhale_session_persist_false_skips_disk_write(monkeypatch):
+    # Verify effect only diffs frames in memory; it must not write captures to
+    # disk, which thrashes the SD card on a busy CAN-FD bus.
+    calls = {"persisted": 0}
+    monkeypatch.setattr(cap, "persist_capture", lambda capture: calls.__setitem__("persisted", calls["persisted"] + 1))
+    fake = _FakeProvider()
+    session = InhaleSession("can0", channel_factory=lambda *a, **k: fake)
+    session.start("verify", persist=False)
+    fake.push(Frame(arbitration_id=0x100, data=[1]))
+    deadline = time.time() + 2.0
+    while time.time() < deadline and session.status()["frame_count"] < 1:
+        time.sleep(0.02)
+    saved = session.stop()
+    assert saved is not None and len(saved["frames"]) == 1  # frames still returned
+    time.sleep(0.1)
+    assert calls["persisted"] == 0  # but nothing written to disk
+
+
 def test_persist_capture_trims_to_max_stored():
     for i in range(cap.MAX_STORED_CAPTURES + 5):
         cap.save_capture(f"run{i}", "can0", "socketcan", [{"arbitration_id": i, "data": [], "timestamp": 0.0}])

@@ -6,6 +6,10 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ## [Unreleased]
 
+### Fixed
+
+- **"Verify effect" no longer bogs down the device.** It used to save every frame it heard to the SD card while it worked, which on a busy CAN-FD bus wrote tens of thousands of frames and made the whole interface feel like it had hung. It now keeps those frames only in memory (it never needed to save them), so it stays responsive.
+
 ### Added
 
 - **Every vehicle now has a full set of controls you can fill in.** A new Vehicle controls page (under Vehicles) gives the active vehicle a ready made list of common buttons (lock, windows, lights, climate, mute, and more). Fill any slot from a saved library command or by typing the CAN frame yourself, and clear it just as easily.

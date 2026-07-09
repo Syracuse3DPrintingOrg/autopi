@@ -738,7 +738,10 @@ def verify_control_route(body: VerifyControlIn):
         for ch in channels:
             session = cap.get_inhale_session(ch, backend="socketcan",
                                              channel_factory=_capture_factory(ch, "socketcan"))
-            if session.start(f"verify {ch}"):
+            # Verify only diffs frames in memory: never write these captures to
+            # disk (that thrashes the SD card on a busy CAN-FD bus), and cap the
+            # frame count so a firehose bus cannot exhaust memory.
+            if session.start(f"verify {ch}", persist=False, max_frames=200000):
                 started.append(ch)
     except Exception as exc:
         for ch in started:

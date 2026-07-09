@@ -227,7 +227,8 @@ class InhaleSession:
             "max_duration_s": self._max_duration_s,
         }
 
-    def start(self, name: str, max_frames: int | None = None, max_duration_s: float | None = None) -> bool:
+    def start(self, name: str, max_frames: int | None = None, max_duration_s: float | None = None,
+              persist: bool = True) -> bool:
         with self._lock:
             if self._running:
                 return False
@@ -236,6 +237,7 @@ class InhaleSession:
             self._name = name
             self._max_frames = max_frames
             self._max_duration_s = max_duration_s
+            self._persist = persist
             self._started_at = time.time()
             self._saved = None
             self._thread = threading.Thread(target=self._loop, daemon=True, name=f"can-inhale-{self.channel}")
@@ -299,6 +301,12 @@ class InhaleSession:
         # slow disk write never makes a good capture look empty.
         with self._lock:
             self._saved = capture
+        # Some callers (Verify effect) only need the frames in memory for a diff
+        # and never open the saved capture, so they skip the disk write entirely.
+        # On a busy CAN-FD bus persisting tens of thousands of frames thrashes the
+        # SD card and makes the whole app feel like it hung.
+        if not getattr(self, "_persist", True):
+            return
         try:
             persist_capture(capture)
         except Exception as exc:
