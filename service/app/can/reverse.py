@@ -405,6 +405,31 @@ def _last_index_before(times: list[float], target: float) -> int | None:
 # free-running counter rather than a discrete control.
 STREAM_FLIP_RATE = 0.75
 
+def _appearance(times: list[float], events: Sequence[float], window: float) -> int:
+    """How many marks the message NEWLY appeared at: absent in ``window`` before
+    the mark, present in ``window`` after it.
+
+    This is what separates a real command from a periodic broadcast on a busy bus
+    where marks are dense. A message that is on the bus regardless of what you do
+    is present just before every mark too, so it never "newly appears" and scores
+    zero; a command triggered by the press is absent before and shows up after, so
+    it scores once per real press (and not at all at marks where you did nothing).
+    Pure. ``times`` must be sorted."""
+    if not times or not events:
+        return 0
+
+    def present(lo: float, hi: float) -> bool:
+        i = bisect.bisect_left(times, lo)
+        return i < len(times) and times[i] <= hi
+
+    appear = 0
+    for e in events:
+        before = present(e - window, e - 1e-6)
+        after = present(e, e + window)
+        if after and not before:
+            appear += 1
+    return appear
+
 
 def event_responders(records: list[dict], event_times: Sequence[float], *,
                      window: float = 0.4, max_results: int = 25) -> list[dict]:
@@ -450,13 +475,19 @@ def event_responders(records: list[dict], event_times: Sequence[float], *,
                     flips[b] += 1
         flip_rate = [f / (len(datas) - 1) for f in flips]
 
-        # For each event, which bytes changed within `window` of the mark.
+        # For each event, which bytes changed within `window` of the mark. Only
+        # count a change when the message actually existed just before the mark:
+        # a message that is absent and then appears is not a byte "change" (that
+        # is the appearance case below), and comparing it against a zero default
+        # would otherwise fake a change on its first frame.
         responded = [0] * n_bytes
         for te in events:
             pre_idx = _last_index_before(times, te)
-            pre = datas[pre_idx] if pre_idx is not None else [0] * n_bytes
+            if pre_idx is None:
+                continue
+            pre = datas[pre_idx]
             changed = [False] * n_bytes
-            i = (pre_idx + 1) if pre_idx is not None else 0
+            i = pre_idx + 1
             while i < len(frames) and times[i] <= te + window:
                 cur = datas[i]
                 for b in range(n_bytes):
@@ -474,22 +505,21 @@ def event_responders(records: list[dict], event_times: Sequence[float], *,
             # No byte changed in response, but the message itself may appear only
             # when you act: a command another controller emits on trigger, often
             # with a constant payload (so nothing "changes", it just shows up).
-            # Detect that by presence, but require genuine sparsity: a real
-            # command is sent about once per press, whereas a periodic broadcast
-            # (even one whose payload never changes) has far more frames than
-            # presses and would otherwise flood the list as a false "appears".
-            appear = sum(1 for e in events if any(abs(t - e) <= window for t in times))
-            need = max(2, (3 * total + 4) // 5)  # ceil(0.6 * total)
-            sparse = len(times) <= 4 * total
-            if appear >= need and sparse:
+            # The catch is a busy bus is full of periodic broadcasts that appear
+            # near every mark too. So only keep a message whose presence CLUSTERS
+            # at the marks well above its presence between them: a periodic
+            # broadcast cancels out, a real event message stands out.
+            appear = _appearance(times, events, window)
+            need = max(2, (total + 1) // 2)  # newly appeared at least half the marks
+            if appear >= need:
                 results.append({
                     "channel": channel, "arbitration_id": arb, "byte": None,
                     "responded": appear, "events": total, "baseline": 0.0,
                     "score": round(appear / total, 3), "kind": "event",
                     "match": "appears", "steady": 0.0,
-                    "hint": ("This message appears mainly when you act and is otherwise "
-                             "rare, so another controller is likely emitting it as the "
-                             "command with a fixed payload. Replay it or use Verify effect."),
+                    "hint": ("This message shows up right when you act and is absent just "
+                             "before, so another controller is likely emitting it as the "
+                             "command. Replay it or use Verify effect."),
                 })
             continue
         # Status vs command: is this id broadcast steadily the whole time, or

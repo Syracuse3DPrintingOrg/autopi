@@ -670,6 +670,32 @@ def test_event_responders_rejects_constant_periodic_broadcast():
     assert all(r["arbitration_id"] != 0x483 for r in out), "periodic broadcast must not be an 'appears' candidate"
 
 
+def test_event_responders_appearance_needs_clustering_not_mere_presence():
+    # The user's experiment: 9 marks, but the control was only actually operated
+    # on the last 6. The real command (0x596) shows up only at those 6 marks and
+    # is otherwise absent, so it should score ~6/9. Two periodic broadcasts
+    # (0x483, 0x481) are on the bus the whole time and appear near every mark, so
+    # they must be rejected, not listed at 9/9.
+    events = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]
+    real_marks = events[3:]  # only the last 6 were real presses
+    records = []
+    # Periodic broadcasts across the whole 0..12s span, fixed payloads.
+    t = 0.0
+    while t <= 12.0:
+        records.append({"channel": "can0", "arbitration_id": 0x483, "data": [0x11, 0x22], "timestamp": round(t, 3)})
+        records.append({"channel": "can0", "arbitration_id": 0x481, "data": [0x33], "timestamp": round(t, 3)})
+        t += 0.1
+    # The real command: one frame right at each REAL press, absent otherwise.
+    for e in real_marks:
+        records.append({"channel": "can1", "arbitration_id": 0x596, "data": [0x00, 0x01], "timestamp": e + 0.02})
+    out = rev.event_responders(records, events, window=0.4)
+    ids = {r["arbitration_id"] for r in out}
+    assert 0x596 in ids, "the real command that clusters at the real presses must be found"
+    assert 0x483 not in ids and 0x481 not in ids, "periodic broadcasts must not be listed"
+    cmd = next(r for r in out if r["arbitration_id"] == 0x596)
+    assert cmd["responded"] == 6 and cmd["events"] == 9  # reflects the 6 real presses
+
+
 def test_injection_reactors_finds_downstream_reaction():
     # At rest only 0x111 byte 0 wanders. While injecting, 0x222 byte 3 starts
     # moving: a downstream reaction to the injected command. The injected id
