@@ -213,6 +213,14 @@
         <div class="mb-2">
           <label class="form-label small">Action</label>
           <select class="form-select form-select-sm" id="p-action">${actionOptions(el.action_id)}</select>
+        </div>
+        <div class="mb-2">
+          <label class="form-label small">Try it here</label>
+          <div class="d-flex align-items-center gap-2">
+            <button class="btn btn-sm btn-outline-success" id="p-test" disabled>
+              <i class="bi bi-play-fill me-1"></i>Test key</button>
+            <span class="small text-body-secondary" id="p-test-status"></span>
+          </div>
         </div>`;
     } else {
       bindingHtml = `
@@ -275,6 +283,8 @@
     $('#p-save').addEventListener('click', () => savePanel(el));
     $('#p-delete').addEventListener('click', () => deleteElement(el));
 
+    if (el.type === 'key') setupKeyTest(el);
+
     // For gauges/indicators, turn the signal field into a searchable dropdown of
     // the selected database's signals, and fill in the arbitration id from the
     // signal's message when one is picked.
@@ -321,6 +331,85 @@
       if (sigInput) sigInput.addEventListener('change', applySignalInfo);
       loadSignals();
     }
+  }
+
+  // Live test control for a key: fire the element's saved action without
+  // leaving the editor, through the same /fire endpoint the operate view uses.
+  // A periodic (toggle) CAN action renders as an on/off button that reflects
+  // the current sending state; anything else fires once per press.
+  function setupKeyTest(el) {
+    const btn = $('#p-test');
+    const status = $('#p-test-status');
+    if (!btn || !status) return;
+    let isToggle = false;
+    let running = false;
+
+    function render() {
+      btn.disabled = false;
+      if (isToggle && running) {
+        btn.className = 'btn btn-sm btn-danger';
+        btn.innerHTML = '<i class="bi bi-stop-fill me-1"></i>Turn off';
+      } else if (isToggle) {
+        btn.className = 'btn btn-sm btn-outline-success';
+        btn.innerHTML = '<i class="bi bi-play-fill me-1"></i>Turn on';
+      } else {
+        btn.className = 'btn btn-sm btn-outline-success';
+        btn.innerHTML = '<i class="bi bi-play-fill me-1"></i>Test key';
+      }
+    }
+
+    async function load() {
+      try {
+        const s = await api(`cockpit/${state.cockpit.id}/elements/${el.id}/state`);
+        if (!s.bound) {
+          btn.disabled = true;
+          status.textContent = 'Pick an action and save to test it.';
+          return;
+        }
+        isToggle = !!s.toggle;
+        running = !!s.running;
+        status.textContent = isToggle ? (running ? 'Sending now.' : 'Not sending.') : '';
+        render();
+      } catch (e) {
+        btn.disabled = true;
+        status.textContent = 'Could not read this key\'s state.';
+      }
+    }
+
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      try {
+        const res = await fetch(`cockpit/${state.cockpit.id}/elements/${el.id}/fire`, { method: 'POST' });
+        const data = await res.json();
+        if (data.data && typeof data.data.periodic === 'boolean') {
+          isToggle = true;
+          running = data.data.periodic;
+        }
+        status.textContent = data.message || (data.ok ? 'Done.' : 'That did not work.');
+        status.classList.toggle('text-danger', data.ok === false);
+      } catch (e) {
+        status.textContent = 'Could not run that key.';
+        status.classList.add('text-danger');
+      }
+      render();
+    });
+
+    // Changing the dropdown does not retarget the test until saved; make that
+    // visible instead of quietly firing the old binding.
+    const actionSel = $('#p-action');
+    if (actionSel) {
+      actionSel.addEventListener('change', () => {
+        if ((actionSel.value || null) !== (el.action_id || null)) {
+          btn.disabled = true;
+          status.classList.remove('text-danger');
+          status.textContent = 'Save to test the new action.';
+        } else {
+          load();
+        }
+      });
+    }
+
+    load();
   }
 
   function escapeAttr(v) {

@@ -197,6 +197,41 @@ def get_values(cockpit_id: int):
     return {"values": values}
 
 
+@router.get("/{cockpit_id}/elements/{element_id}/state")
+def element_state(cockpit_id: int, element_id: str):
+    """Read-only status of a key element's bound action, for the editor's
+    in-place test control: whether an action is bound at all, whether it is a
+    periodic (toggle) CAN send, and whether that send is running right now.
+    Nothing is fired or changed here.
+    """
+    cockpit = _get_or_404(cockpit_id)
+    element = next((e for e in cockpit.get("elements", []) if e.get("id") == element_id), None)
+    if element is None:
+        raise HTTPException(404, "No such cockpit element")
+    if element.get("type") != "key":
+        raise HTTPException(400, "Only a key element has an action state")
+    from ..actions import registry
+    action_id = element.get("action_id")
+    action = registry.get_action(action_id) if action_id else None
+    if action is None:
+        return {"bound": False, "toggle": False, "running": False}
+    toggle = False
+    running = False
+    if action.driver == "can":
+        try:
+            period_ms = int(action.params.get("period_ms") or 0)
+        except (TypeError, ValueError):
+            period_ms = 0
+        if period_ms > 0:
+            toggle = True
+            from ..actions.drivers.can import _parse_frame
+            frame = _parse_frame(action.params)
+            if not isinstance(frame, str):
+                from ..services import can_tx
+                running = can_tx.is_running(frame["channel"], frame["arbitration_id"])
+    return {"bound": True, "toggle": toggle, "running": running}
+
+
 @router.post("/{cockpit_id}/elements/{element_id}/fire")
 def fire_element(cockpit_id: int, element_id: str):
     """Run a key element's bound action, exactly like tapping it on the start

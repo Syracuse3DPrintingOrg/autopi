@@ -8,6 +8,13 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **Test a cockpit key without leaving the editor.** Selecting a key in the
+  cockpit editor now shows a "Try it here" button next to its action binding.
+  A one-shot action fires once per press; a periodic (toggle) CAN action shows
+  whether it is sending right now and turns it on or off in place, so you can
+  check a button does what you meant while you are still laying out the
+  cockpit.
+
 - **One CAN Lab page with all five CAN tools in tabs.** Signal Finder, Monitor,
   Simulate / send, Firewall, and Diagnostics now live together under a single
   "CAN Lab" page, one click apart in tabs instead of six separate links. Each
