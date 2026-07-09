@@ -45,6 +45,11 @@ class CanDriver(Driver):
          "required": False, "default": 0,
          "help": "0 sends the frame once per press. A value keeps sending it at that rate "
                  "and the key toggles it on/off (needed for controls the ECU expects every cycle)."},
+        {"key": "burst_ms", "label": "Flood on press (ms, 0 = off)", "type": "number",
+         "required": False, "default": 0,
+         "help": "Sends the frame every 10 ms for this long on each press, then stops. Use "
+                 "when a real controller broadcasts the same message and a single send loses "
+                 "to it (a momentary command like mute). 0 turns flooding off."},
     ]
 
     @property
@@ -105,6 +110,25 @@ class CanDriver(Driver):
             period_ms = int(params.get("period_ms") or 0)
         except (TypeError, ValueError):
             period_ms = 0
+        try:
+            burst_ms = int(params.get("burst_ms") or 0)
+        except (TypeError, ValueError):
+            burst_ms = 0
+        # Flood on press: send the frame every 10 ms for burst_ms, then stop, to
+        # out-rate a genuine broadcaster so the command is accepted. Momentary,
+        # unlike period_ms which holds a state until pressed again. Runs on a
+        # thread so the key press returns immediately.
+        if burst_ms > 0:
+            from app.services import can_tx
+            if not channel.available:
+                return DriverResult.success(
+                    f"(simulated) would flood {frame.format()} on {channel_name} for {burst_ms} ms",
+                    simulated=True, **frame_params)
+            can_tx.burst_async(channel_name, frame_params["arbitration_id"], send_data,
+                               period_ms=10, duration_ms=min(5000, burst_ms),
+                               is_fd=frame_params["is_fd"], is_extended_id=frame_params["is_extended_id"])
+            return DriverResult.success(
+                f"Flooding {frame.format()} on {channel_name} for {burst_ms} ms", **frame_params)
         if period_ms > 0:
             from app.services import can_tx
             now_on = can_tx.toggle(channel_name, frame_params["arbitration_id"], send_data,

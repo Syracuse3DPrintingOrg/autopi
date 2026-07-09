@@ -9,6 +9,7 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 ### Added
 
 - **Pick which databases your vehicle uses, right on the Databases page.** With a vehicle selected in the top bar, each installed database shows a "Use with" button, and the ones already in use carry an "In use" badge with a one-click Remove. The choice is saved with the vehicle, so its linked databases follow it everywhere.
+- **Flood a command to out-rate the real sender.** Some controls are broadcast continuously by another module, so sending your found command once loses to the next real frame and nothing happens. The Signal Finder now has a "Flood 1s" button that sends the command every 10 ms for a second to win that contest, and a control saved to a cockpit can be set to flood on each press (a "Flood on press" option on the CAN action). This is what a momentary command like mute usually needs.
 
 ### Fixed
 

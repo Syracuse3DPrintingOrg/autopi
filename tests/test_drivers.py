@@ -68,3 +68,12 @@ def test_can_execute_rejects_invalid_frame():
         {"channel": "can0", "arbitration_id": "0x123",
          "data": "01 02 03 04 05 06 07 08 09"})
     assert res.ok is False
+
+
+def test_can_burst_simulated_when_unavailable():
+    from app.actions.registry import get_driver
+    res = get_driver("can").execute(
+        {"channel": "can9", "arbitration_id": "0x7DF", "data": "01 02", "burst_ms": 500})
+    assert res.ok
+    assert res.data["simulated"] is True
+    assert "flood" in res.message.lower()

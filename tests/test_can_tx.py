@@ -37,3 +37,32 @@ def test_start_is_idempotent(monkeypatch):
         assert can_tx.stop("can1", 0x200) is True
     finally:
         can_tx.stop_all()
+
+
+def test_burst_sends_multiple_then_stops(monkeypatch):
+    from app import can as can_pkg
+    sent = []
+
+    class _Fake:
+        available = True
+        def send(self, frame):
+            sent.append(frame)
+            return True
+
+    monkeypatch.setattr(can_pkg, "get_channel", lambda ch, **kw: _Fake())
+    n = can_tx.burst("can0", 0x100, [1, 2], period_ms=10, duration_ms=60)
+    assert n >= 3                    # ~6 sends in 60ms at 10ms; several, bounded
+    assert len(sent) == n
+    assert can_tx.is_running("can0", 0x100) is False  # burst does not linger in the registry
+
+
+def test_burst_unavailable_channel_sends_nothing(monkeypatch):
+    from app import can as can_pkg
+
+    class _Down:
+        available = False
+        def send(self, frame):
+            raise AssertionError("must not send on an unavailable channel")
+
+    monkeypatch.setattr(can_pkg, "get_channel", lambda ch, **kw: _Down())
+    assert can_tx.burst("can0", 0x100, [1], period_ms=10, duration_ms=50) == 0

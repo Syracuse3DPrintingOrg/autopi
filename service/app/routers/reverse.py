@@ -430,6 +430,10 @@ class FireIn(BaseModel):
     arbitration_id: int
     channel: str = ""
     byte: int | None = None
+    # Flood mode: send the frame every period_ms for burst_ms, to out-rate a
+    # genuine broadcaster so the ECU accepts the command. 0 = a single send.
+    burst_ms: int = 0
+    period_ms: int = 10
 
 
 @router.post("/fire")
@@ -467,6 +471,20 @@ def fire_route(body: FireIn):
         spec = ov.derive_mask(frames, body.byte)
         data, source = ov.overlaid_data(provider, body.arbitration_id, spec["byte"],
                                         spec["mask"], spec["active"], template=template_data)
+    # Flood: out-rate the genuine broadcaster for a short window so the command
+    # is accepted, instead of a single send that the next real frame overwrites.
+    if body.burst_ms and body.burst_ms > 0:
+        from ..services import can_tx
+        period = max(2, int(body.period_ms or 10))
+        duration = min(5000, int(body.burst_ms))
+        n = can_tx.burst(channel, body.arbitration_id, data, period_ms=period,
+                         duration_ms=duration, is_fd=is_fd, is_extended_id=is_extended_id)
+        if n == 0:
+            return {"ok": False, "error": f"Could not flood 0x{body.arbitration_id:X} on {channel} "
+                    "(interface not accepting the frame; classic vs CAN-FD?)."}
+        return {"ok": True, "channel": channel, "arbitration_id": body.arbitration_id,
+                "data": data, "source": source, "mode": "burst", "injected": n,
+                "period_ms": period, "burst_ms": duration}
     try:
         sent = provider.send(Frame(arbitration_id=body.arbitration_id, data=data,
                                    is_fd=is_fd, is_extended_id=is_extended_id))
@@ -475,7 +493,7 @@ def fire_route(body: FireIn):
     if not sent:
         return {"ok": False, "error": "The interface did not accept the frame (is it up?)."}
     return {"ok": True, "channel": channel, "arbitration_id": body.arbitration_id,
-            "data": data, "source": source}
+            "data": data, "source": source, "mode": "single"}
 
 
 def _send_suggestion(frames: list[dict]) -> dict:
@@ -517,6 +535,7 @@ class AddToCockpitIn(BaseModel):
     byte: int | None = None
     name: str
     period_ms: int = 0
+    burst_ms: int = 0
     cockpit_id: int | None = None
     new_cockpit_name: str = ""
 
@@ -542,7 +561,7 @@ def add_to_cockpit_route(body: AddToCockpitIn):
     params = {"channel": channel, "arbitration_id": f"0x{body.arbitration_id:X}",
               "data": data_hex, "is_fd": bool(frame.get("is_fd")),
               "is_extended_id": bool(frame.get("is_extended_id")),
-              "period_ms": int(body.period_ms or 0)}
+              "period_ms": int(body.period_ms or 0), "burst_ms": int(body.burst_ms or 0)}
     if body.byte is not None:
         spec = ov.derive_mask(frames, body.byte)
         if spec["mask"]:

@@ -209,17 +209,22 @@
   const knownDbId = () => { const el = document.getElementById('known-db'); const v = el && el.value ? parseInt(el.value, 10) : null; return Number.isFinite(v) ? v : null; };
   const hx2 = (x) => ('0' + (x & 0xFF).toString(16)).slice(-2).toUpperCase();
 
-  // Transmit a found message back onto the bus to test what it does.
-  function fireFrame(captureId, arbId, channel, byte, statusEl) {
+  // Transmit a found message back onto the bus to test what it does. With
+  // burstMs > 0 it floods the frame every ~10ms for that long, to out-rate a
+  // genuine broadcaster so the command is accepted.
+  function fireFrame(captureId, arbId, channel, byte, statusEl, burstMs) {
     if (!captureId) { if (statusEl) statusEl.textContent = 'No capture to fire from.'; return; }
-    if (statusEl) statusEl.textContent = 'Firing ' + hex(arbId) + '…';
+    const flooding = burstMs && burstMs > 0;
+    if (statusEl) statusEl.textContent = (flooding ? 'Flooding ' : 'Firing ') + hex(arbId) + '…';
     fetch('reverse/fire', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ capture_id: captureId, arbitration_id: arbId, channel: channel || '', byte: (byte == null ? null : byte) }) })
+      body: JSON.stringify({ capture_id: captureId, arbitration_id: arbId, channel: channel || '',
+        byte: (byte == null ? null : byte), burst_ms: (flooding ? burstMs : 0), period_ms: 10 }) })
       .then((r) => r.json()).then((d) => {
         if (!statusEl) return;
-        statusEl.innerHTML = d.ok
-          ? '<span class="text-success">Fired ' + hex(arbId) + ' [' + (d.data || []).map(hx2).join(' ') + '] on ' + esc(d.channel) + '. Watch for the effect.</span>'
-          : '<span class="text-danger">' + esc(d.error || 'Fire failed') + '</span>';
+        if (!d.ok) { statusEl.innerHTML = '<span class="text-danger">' + esc(d.error || 'Fire failed') + '</span>'; return; }
+        statusEl.innerHTML = d.mode === 'burst'
+          ? '<span class="text-success">Flooded ' + hex(arbId) + ' ' + d.injected + ' times over ' + (d.burst_ms / 1000) + 's on ' + esc(d.channel) + '. Watch for the effect.</span>'
+          : '<span class="text-success">Fired ' + hex(arbId) + ' [' + (d.data || []).map(hx2).join(' ') + '] on ' + esc(d.channel) + '. Watch for the effect.</span>';
       }).catch(() => { if (statusEl) statusEl.textContent = 'Fire failed.'; });
   }
 
@@ -805,6 +810,7 @@
           + '<td>' + kindBadge(c) + '</td>'
           + '<td><button class="btn btn-success btn-sm me-1" data-addcp="' + i + '">Add to cockpit</button>'
           + '<button class="btn btn-outline-warning btn-sm me-1" data-fire="' + i + '">Test</button>'
+          + '<button class="btn btn-outline-warning btn-sm me-1" data-flood="' + i + '" title="Send it every 10ms for 1s to out-rate the real sender">Flood 1s</button>'
           + '<button class="btn btn-outline-info btn-sm me-1" data-verify="' + i + '">Verify effect</button>'
           + '<button class="btn btn-outline-success btn-sm me-1" data-savelib="' + i + '" title="Save to the command library so you can map it to a vehicle control">Save to library</button>'
           + '<button class="btn btn-outline-primary btn-sm" data-hunt="' + i + '">Bits</button></td></tr>').join('')
@@ -832,6 +838,10 @@
       huntResults.querySelectorAll('[data-fire]').forEach((b) => b.addEventListener('click', () => {
         const c = cands[parseInt(b.getAttribute('data-fire'), 10)];
         fireFrame(huntCaptures[c.channel], c.arbitration_id, c.channel, c.byte, huntStatus);
+      }));
+      huntResults.querySelectorAll('[data-flood]').forEach((b) => b.addEventListener('click', () => {
+        const c = cands[parseInt(b.getAttribute('data-flood'), 10)];
+        fireFrame(huntCaptures[c.channel], c.arbitration_id, c.channel, c.byte, huntStatus, 1000);
       }));
       huntResults.querySelectorAll('[data-verify]').forEach((b) => b.addEventListener('click', () => {
         const c = cands[parseInt(b.getAttribute('data-verify'), 10)];

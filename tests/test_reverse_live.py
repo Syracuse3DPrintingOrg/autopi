@@ -282,3 +282,23 @@ def test_verify_control_reports_inject_failure_not_no_effect(monkeypatch):
     assert body["ok"] is False
     assert body["injected"] == 0
     assert "Could not inject" in body["error"]
+
+
+def test_fire_flood_uses_burst(monkeypatch):
+    fake = _FakeProvider()
+    monkeypatch.setattr("app.routers.reverse.get_channel", lambda channel, backend="socketcan", **kw: fake)
+    monkeypatch.setattr("app.routers.reverse._capture_or_404",
+                        lambda cid: {"backend": "socketcan",
+                                     "frames": [{"arbitration_id": 0x123, "data": [1, 2, 3], "timestamp": 0.0}]})
+    calls = {}
+    def fake_burst(channel, arb, data, **kw):
+        calls.update({"channel": channel, "arb": arb, "period": kw.get("period_ms"), "duration": kw.get("duration_ms")})
+        return 42
+    monkeypatch.setattr("app.services.can_tx.burst", fake_burst)
+    client = TestClient(app)
+    resp = client.post("/reverse/fire", json={"capture_id": "x", "arbitration_id": 0x123,
+                                              "channel": "vcan0", "byte": None, "burst_ms": 1000})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True and body["mode"] == "burst" and body["injected"] == 42
+    assert calls["arb"] == 0x123 and calls["duration"] == 1000 and calls["period"] == 10
