@@ -108,7 +108,7 @@ def test_kiosk_query_param_latches_operator_for_remote_client(client):
 def test_overview_page_renders(client):
     resp = client.get("/overview")
     assert resp.status_code == 200
-    assert "Overview" in resp.text
+    assert "What do you want to do?" in resp.text
 
 
 def test_overview_page_shows_no_vehicle_selected_by_default(client):

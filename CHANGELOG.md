@@ -6,6 +6,10 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A control you find now changes only its own bits, on the message that is live on the bus.** When you test a found control or add it to a cockpit, AutoPi used to replay the whole captured frame. That overwrote the other signals sharing that message and sent a stale value the vehicle usually ignored, which is why a found button often did nothing. Now it reads the message as it is on the bus right now and flips only the bits your control owns, leaving everything else untouched. On buses that protect messages with a rolling counter or checksum, more is still needed before the vehicle will accept the change.
+
 ### Added
 
 - **Test a cockpit key without leaving the editor.** Selecting a key in the

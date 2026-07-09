@@ -434,11 +434,14 @@ class FireIn(BaseModel):
 
 @router.post("/fire")
 def fire_route(body: FireIn):
-    """Transmit a found message back onto the bus to test what it does: replays a
-    representative captured frame for that id (the 'active' state). Firing frames
-    onto a live vehicle bus can have real effects, so this is a deliberate,
-    one-off action the UI confirms first."""
+    """Actuate a found control to test what it does. When a target byte is known,
+    this changes only the bits that control owns on the frame that is live on the
+    bus right now, leaving the other signals in that message untouched. Without a
+    target byte it falls back to replaying a representative captured frame.
+    Sending onto a live vehicle bus can have real effects, so the UI confirms
+    first."""
     from ..can import Frame
+    from ..can import overlay as ov
     capture = _capture_or_404(body.capture_id)
     frames = _frames_for_id(capture, body.arbitration_id)
     if not frames:
@@ -448,17 +451,27 @@ def fire_route(body: FireIn):
     provider = get_channel(channel, backend=backend)
     if not provider.available:
         return {"ok": False, "error": getattr(provider, "last_error", None) or f"{channel} is not available."}
-    frame = _pick_active_frame(frames, body.byte)
-    data = list(frame.get("data") or [])
+    # A representative captured frame is only the fallback template, used to size
+    # the frame and to fill in when the id is not currently on the bus.
+    template = _pick_active_frame(frames, body.byte)
+    template_data = list(template.get("data") or [])
+    is_fd = bool(template.get("is_fd"))
+    is_extended_id = bool(template.get("is_extended_id"))
+    if body.byte is None:
+        data, source = template_data, "frame"
+    else:
+        spec = ov.derive_mask(frames, body.byte)
+        data, source = ov.overlaid_data(provider, body.arbitration_id, spec["byte"],
+                                        spec["mask"], spec["active"], template=template_data)
     try:
         sent = provider.send(Frame(arbitration_id=body.arbitration_id, data=data,
-                                   is_fd=bool(frame.get("is_fd")),
-                                   is_extended_id=bool(frame.get("is_extended_id"))))
+                                   is_fd=is_fd, is_extended_id=is_extended_id))
     except Exception as exc:
         return {"ok": False, "error": f"Send failed: {exc}"}
     if not sent:
         return {"ok": False, "error": "The interface did not accept the frame (is it up?)."}
-    return {"ok": True, "channel": channel, "arbitration_id": body.arbitration_id, "data": data}
+    return {"ok": True, "channel": channel, "arbitration_id": body.arbitration_id,
+            "data": data, "source": source}
 
 
 def _send_suggestion(frames: list[dict]) -> dict:
@@ -512,18 +525,28 @@ def add_to_cockpit_route(body: AddToCockpitIn):
     frames = _frames_for_id(capture, body.arbitration_id)
     if not frames:
         raise HTTPException(404, "No frames with that id in this capture")
+    from ..can import overlay as ov
     channel = body.channel or capture.get("channel") or "can0"
     frame = _pick_active_frame(frames, body.byte)
+    # The captured bytes are stored only as a resting template (the fallback the
+    # driver overlays onto when the id is not live). The control itself is stored
+    # as a bit mask so the driver changes only its bits on the live frame.
     data_hex = " ".join(f"{int(b) & 0xFF:02X}" for b in (frame.get("data") or []))
     name = (body.name or "").strip() or f"CAN {body.arbitration_id:X}"
     slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")[:32] or "can"
     action_id = f"can_{slug}_{body.arbitration_id:X}"
+    params = {"channel": channel, "arbitration_id": f"0x{body.arbitration_id:X}",
+              "data": data_hex, "is_fd": bool(frame.get("is_fd")),
+              "is_extended_id": bool(frame.get("is_extended_id")),
+              "period_ms": int(body.period_ms or 0)}
+    if body.byte is not None:
+        spec = ov.derive_mask(frames, body.byte)
+        if spec["mask"]:
+            params.update({"overlay_byte": spec["byte"], "overlay_mask": spec["mask"],
+                           "overlay_value": spec["active"]})
     action_registry.upsert_action(ActionSpec.from_dict({
         "id": action_id, "label": name, "driver": "can",
-        "params": {"channel": channel, "arbitration_id": f"0x{body.arbitration_id:X}",
-                   "data": data_hex, "is_fd": bool(frame.get("is_fd")),
-                   "is_extended_id": bool(frame.get("is_extended_id")),
-                   "period_ms": int(body.period_ms or 0)},
+        "params": params,
         "icon": "bi-dpad-fill", "color": "#F2006E", "category": "CAN",
     }))
     if body.cockpit_id:
