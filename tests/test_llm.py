@@ -116,3 +116,15 @@ def test_parse_json_response_rejects_non_object_and_garbage():
     assert llm.parse_json_response("not json") == {}
     assert llm.parse_json_response("[1, 2, 3]") == {}
     assert llm.parse_json_response("") == {}
+
+
+def test_with_context_includes_hint_and_known_signals():
+    out = llm._with_context("BODY", "2024 Stellantis high-speed", "0x1F0: VEHICLE_SPEED\n0x200: ENGINE_RPM")
+    assert "BODY" in out
+    assert "Stellantis" in out
+    assert "already decoded" in out.lower()
+    assert "0x1F0: VEHICLE_SPEED" in out
+
+
+def test_with_context_empty_when_no_extras():
+    assert llm._with_context("BODY", "", "") == "BODY"

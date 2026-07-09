@@ -8,6 +8,17 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **Signal Finder result plot.** Each signal candidate now has a Plot button that
+  overlays the decoded candidate against your reference over time, so you can see
+  at a glance whether they move together and confirm you found the right field
+  instead of trusting the fit score alone.
+- **The AI assist now uses your loaded CAN database as context.** When a database
+  is selected, the interpret and name buttons tell the model which signals the
+  vehicle already has decoded, so it suggests better names and does not re-propose
+  signals you already know.
+
+### Added
+
 - **Use a known signal as the Signal Finder reference.** If a capture already
   contains a signal you can decode (OBD2 speed or RPM, or a signal you reverse
   engineered earlier), you can now pick it as the reference and skip the manual

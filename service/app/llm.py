@@ -307,23 +307,30 @@ def _ask_json(system: str, user: str, *, max_tokens: int = 1500) -> dict[str, An
     return data
 
 
-def interpret_message(activity: dict, samples: list[dict], context_hint: str = "") -> dict[str, Any]:
-    """Ask the LLM what one message's active bytes probably carry."""
-    user = describe_message(activity, samples)
+def _with_context(user: str, context_hint: str, known_signals: str) -> str:
     hint = (context_hint or "").strip()
     if hint:
         user += f"\n\nVehicle/platform context from the technician: {hint}"
+    known = (known_signals or "").strip()
+    if known:
+        user += ("\n\nSignals already decoded in this vehicle's database (use as context, and do not "
+                 f"re-propose one of these):\n{known}")
+    return user
+
+
+def interpret_message(activity: dict, samples: list[dict], context_hint: str = "",
+                      known_signals: str = "") -> dict[str, Any]:
+    """Ask the LLM what one message's active bytes probably carry."""
+    user = _with_context(describe_message(activity, samples), context_hint, known_signals)
     user += "\n\nInterpret this message. " + _INTERPRET_SHAPE
     data = _ask_json(_INTERPRET_SYSTEM, user, max_tokens=1600)
     return {"available": True, "provider": _provider(), "model": _model(), **data}
 
 
-def suggest_name(candidate: dict, reference_hint: str = "", context_hint: str = "") -> dict[str, Any]:
+def suggest_name(candidate: dict, reference_hint: str = "", context_hint: str = "",
+                 known_signals: str = "") -> dict[str, Any]:
     """Ask the LLM to name/label a discovered candidate signal."""
-    user = describe_candidate(candidate, reference_hint)
-    hint = (context_hint or "").strip()
-    if hint:
-        user += f"\n\nVehicle/platform context from the technician: {hint}"
+    user = _with_context(describe_candidate(candidate, reference_hint), context_hint, known_signals)
     user += "\n\nPropose a name, unit, and description. " + _NAME_SHAPE
     data = _ask_json(_NAME_SYSTEM, user, max_tokens=800)
     return {"available": True, "provider": _provider(), "model": _model(), **data}

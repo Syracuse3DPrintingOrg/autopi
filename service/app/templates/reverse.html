@@ -162,6 +162,7 @@
   let currentCandidate = null;
   let currentArbId = null;
   const aiContext = () => { const el = document.getElementById('ai-context'); return el ? el.value.trim() : ''; };
+  const knownDbId = () => { const el = document.getElementById('known-db'); const v = el && el.value ? parseInt(el.value, 10) : null; return Number.isFinite(v) ? v : null; };
   let recordedReference = null;
   let recordedMode = null;
 
@@ -399,11 +400,54 @@
             + '<td>' + (c.byte_order === 'little_endian' ? 'Intel' : 'Motorola') + '</td>'
             + '<td>' + (+c.scale).toPrecision(4) + '</td><td>' + (+c.offset).toPrecision(4) + '</td>'
             + '<td>' + (+c.r2).toFixed(3) + '</td>'
-            + '<td><button class="btn btn-outline-success btn-sm" data-c="' + i + '">Save</button></td></tr>').join('')
-          + '</tbody></table>';
+            + '<td><button class="btn btn-outline-info btn-sm me-1" data-plot="' + i + '">Plot</button>'
+            + '<button class="btn btn-outline-success btn-sm" data-c="' + i + '">Save</button></td></tr>').join('')
+          + '</tbody></table><div id="verify-plot" class="mt-2"></div>';
         el.querySelectorAll('button[data-c]').forEach((b) =>
           b.addEventListener('click', () => openSave(cands[parseInt(b.getAttribute('data-c'), 10)])));
+        el.querySelectorAll('button[data-plot]').forEach((b) =>
+          b.addEventListener('click', () => verifyPlot(cands[parseInt(b.getAttribute('data-plot'), 10)])));
       }).catch(() => { el.textContent = 'Bitsearch failed.'; });
+  }
+
+  // Overlay the decoded candidate against the reference over time, each series
+  // normalized to its own range so you can see whether they move together (the
+  // article's result plot). Confirms a fit is really the signal.
+  function verifyPlot(cand) {
+    const out = document.getElementById('verify-plot');
+    out.innerHTML = '<span class="text-info">Plotting…</span>';
+    fetch('reverse/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ capture_id: captureEl.value, candidate: cand, reference: reference() }) })
+      .then((r) => r.json()).then((d) => {
+        const dec = d.decoded || [];
+        const ref = d.reference || [];
+        if (!dec.length) { out.innerHTML = '<span class="text-secondary">Nothing to plot for this candidate.</span>'; return; }
+        out.innerHTML = drawOverlay(ref, dec);
+      }).catch(() => { out.innerHTML = '<span class="text-danger">Plot failed.</span>'; });
+  }
+
+  function drawOverlay(ref, dec) {
+    const W = 520, H = 140, PAD = 6;
+    const all = ref.concat(dec);
+    const ts = all.map((p) => p.t);
+    const t0 = Math.min.apply(null, ts), t1 = Math.max.apply(null, ts);
+    const span = (t1 - t0) || 1;
+    const poly = (pts, color) => {
+      if (!pts.length) return '';
+      const vs = pts.map((p) => p.value);
+      const lo = Math.min.apply(null, vs), hi = Math.max.apply(null, vs);
+      const range = (hi - lo) || 1;
+      const coords = pts.map((p) => {
+        const x = PAD + (p.t - t0) / span * (W - 2 * PAD);
+        const y = H - PAD - (p.value - lo) / range * (H - 2 * PAD);
+        return x.toFixed(1) + ',' + y.toFixed(1);
+      }).join(' ');
+      return '<polyline fill="none" stroke="' + color + '" stroke-width="1.5" points="' + coords + '"/>';
+    };
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" style="background:#111;border-radius:.35rem">'
+      + poly(ref, '#7dd3fc') + poly(dec, '#f2006e') + '</svg>'
+      + '<div class="small mt-1"><span style="color:#7dd3fc">— reference</span> &nbsp; '
+      + '<span style="color:#f2006e">— decoded candidate</span>. If the shapes track, this is your signal.</div>';
   }
 
   function openSave(cand) {
@@ -443,7 +487,7 @@
     const out = document.getElementById('interpret-out');
     out.innerHTML = '<span class="text-info">Asking the model about ' + hex(currentArbId) + '…</span>';
     fetch('reverse/llm/interpret', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ capture_id: captureEl.value, arbitration_id: currentArbId, context_hint: aiContext() }) })
+      body: JSON.stringify({ capture_id: captureEl.value, arbitration_id: currentArbId, context_hint: aiContext(), database_id: knownDbId() }) })
       .then((r) => r.json()).then((d) => {
         if (d.available === false) { out.innerHTML = '<span class="text-warning">' + esc(d.reason || 'AI assist not configured.') + '</span>'; return; }
         if (d.error) { out.innerHTML = '<span class="text-danger">' + esc(d.error) + '</span>'; return; }
@@ -462,7 +506,7 @@
     const out = document.getElementById('save-ai-out');
     out.innerHTML = '<span class="text-info">Asking the model for a name…</span>';
     fetch('reverse/llm/name', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ candidate: currentCandidate, reference_hint: aiContext(), context_hint: aiContext() }) })
+      body: JSON.stringify({ candidate: currentCandidate, reference_hint: aiContext(), context_hint: aiContext(), database_id: knownDbId() }) })
       .then((r) => r.json()).then((d) => {
         if (d.available === false) { out.innerHTML = '<span class="text-warning">' + esc(d.reason || 'AI assist not configured.') + '</span>'; return; }
         if (d.error) { out.innerHTML = '<span class="text-danger">' + esc(d.error) + '</span>'; return; }

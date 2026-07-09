@@ -313,6 +313,27 @@ def _dbc_text_or_404(database_id: int) -> str:
         return database.dbc_text
 
 
+def _known_signals_summary(database_id: int | None, limit: int = 60) -> str:
+    """A short 'arb_id: signal' list of what a database already knows, to give
+    the LLM context so it does not re-propose known signals and hallucinates
+    less. Empty string when no database is given or it has no messages."""
+    if not database_id:
+        return ""
+    try:
+        from ..db import CanMessage
+        with session_scope() as s:
+            rows = s.query(CanMessage).filter_by(database_id=database_id).all()
+            lines = []
+            for m in rows:
+                for sig in m.signals:
+                    lines.append(f"0x{m.arbitration_id:X}: {sig.name}")
+                    if len(lines) >= limit:
+                        return "\n".join(lines)
+            return "\n".join(lines)
+    except Exception:
+        return ""
+
+
 class ReferenceFromSignalIn(BaseModel):
     capture_id: str
     database_id: int
@@ -376,6 +397,7 @@ class InterpretIn(BaseModel):
     capture_id: str
     arbitration_id: int
     context_hint: str = ""
+    database_id: int | None = None
 
 
 @router.post("/llm/interpret")
@@ -389,7 +411,8 @@ def llm_interpret(body: InterpretIn):
         raise HTTPException(404, "No frames with that arbitration id in this capture")
     activity = rev.bit_activity(frames)
     try:
-        return llm.interpret_message(activity, frames, body.context_hint)
+        return llm.interpret_message(activity, frames, body.context_hint,
+                                     known_signals=_known_signals_summary(body.database_id))
     except RuntimeError as exc:
         return {"available": True, "error": str(exc)}
 
@@ -398,6 +421,7 @@ class NameIn(BaseModel):
     candidate: dict
     reference_hint: str = ""
     context_hint: str = ""
+    database_id: int | None = None
 
 
 @router.post("/llm/name")
@@ -406,7 +430,8 @@ def llm_name(body: NameIn):
     if not ready["available"]:
         return ready
     try:
-        return llm.suggest_name(body.candidate, body.reference_hint, body.context_hint)
+        return llm.suggest_name(body.candidate, body.reference_hint, body.context_hint,
+                                known_signals=_known_signals_summary(body.database_id))
     except RuntimeError as exc:
         return {"available": True, "error": str(exc)}
 
