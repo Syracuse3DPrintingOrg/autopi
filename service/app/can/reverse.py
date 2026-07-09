@@ -394,6 +394,88 @@ def reference_from_events(event_times: Sequence[float], span: tuple[float, float
 # Pure statistics: rank correlation and least-squares fit
 # --------------------------------------------------------------------------
 
+def _last_index_before(times: list[float], target: float) -> int | None:
+    """Index of the last timestamp strictly before ``target``, or None."""
+    idx = bisect.bisect_left(times, target) - 1
+    return idx if idx >= 0 else None
+
+
+def event_responders(records: list[dict], event_times: Sequence[float], *,
+                     window: float = 0.4, max_results: int = 25) -> list[dict]:
+    """Find the CAN message that reacts when a user does an action a few times.
+
+    The intuitive alternative to recording a reference and correlating: capture
+    every active bus, have the user operate the control (a button, a switch) and
+    mark each time, and rank every ``(channel, arbitration_id)`` by how
+    consistently one of its bytes changes right after each mark versus how much
+    that byte changes on its own. A message whose byte flips on every press, and
+    rarely otherwise, rises to the top.
+
+    ``records`` are frame dicts with optional ``channel``, plus
+    ``arbitration_id``, ``data`` (list[int]) and ``timestamp``. ``event_times``
+    are the moments the user acted. Returns candidates
+    ``{channel, arbitration_id, byte, responded, events, baseline, score}``
+    sorted best-first. Pure and offline (a test drives it with synthetic
+    frames)."""
+    events = sorted(float(t) for t in event_times)
+    if not events or not records:
+        return []
+
+    groups: dict[tuple, list[dict]] = {}
+    for record in records:
+        groups.setdefault((record.get("channel"), record.get("arbitration_id")), []).append(record)
+
+    total = len(events)
+    results = []
+    for (channel, arb), frames in groups.items():
+        frames = sorted(frames, key=lambda f: f.get("timestamp", 0.0))
+        times = [float(f.get("timestamp", 0.0)) for f in frames]
+        datas = [list(f.get("data") or []) for f in frames]
+        if len(frames) < 2:
+            continue
+        n_bytes = max(len(d) for d in datas)
+
+        # Background change rate per byte: how often it differs frame-to-frame.
+        flips = [0] * n_bytes
+        for i in range(1, len(datas)):
+            prev, cur = datas[i - 1], datas[i]
+            for b in range(n_bytes):
+                if (prev[b] if b < len(prev) else 0) != (cur[b] if b < len(cur) else 0):
+                    flips[b] += 1
+        flip_rate = [f / (len(datas) - 1) for f in flips]
+
+        # For each event, which bytes changed within `window` of the mark.
+        responded = [0] * n_bytes
+        for te in events:
+            pre_idx = _last_index_before(times, te)
+            pre = datas[pre_idx] if pre_idx is not None else [0] * n_bytes
+            changed = [False] * n_bytes
+            i = (pre_idx + 1) if pre_idx is not None else 0
+            while i < len(frames) and times[i] <= te + window:
+                cur = datas[i]
+                for b in range(n_bytes):
+                    if (pre[b] if b < len(pre) else 0) != (cur[b] if b < len(cur) else 0):
+                        changed[b] = True
+                i += 1
+            for b in range(n_bytes):
+                if changed[b]:
+                    responded[b] += 1
+
+        # Best byte: most event-responsive, discounted by its background noise.
+        scored = [(responded[b] / total - flip_rate[b], b) for b in range(n_bytes)]
+        best_score, best_byte = max(scored)
+        if responded[best_byte] == 0:
+            continue
+        results.append({
+            "channel": channel, "arbitration_id": arb, "byte": best_byte,
+            "responded": responded[best_byte], "events": total,
+            "baseline": round(flip_rate[best_byte], 3), "score": round(best_score, 3),
+        })
+
+    results.sort(key=lambda r: (-r["score"], -r["responded"]))
+    return results[:max_results]
+
+
 def _default_signal_decode(dbc_text: str, arbitration_id: int, data: bytes) -> dict:
     from . import dbc as dbc_mod
     return dbc_mod.decode(dbc_text, arbitration_id, data)

@@ -8,6 +8,15 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **"Find a control" — the simple way to find a button or switch.** Press Start,
+  operate the control a few times (tapping Mark or the spacebar each time), and
+  the Signal Finder listens to every active CAN bus at once and shows the message
+  that reacted to your presses, ranked, with the byte that changed. No reference
+  sweep, no timing sync, and no need to know which bus the control is on. One
+  click jumps to searching that message's bits.
+
+### Added
+
 - **Generic OBD2 decoder overlay.** A toggle on the Monitor decodes the standard
   OBD-II signals (vehicle speed, RPM, coolant, throttle, MAF, fuel level, ...) on
   top of whatever CAN database is active, since those diagnostics responses are

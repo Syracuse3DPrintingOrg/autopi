@@ -122,6 +122,7 @@ def test_capture_live_saves_and_returns_frames(monkeypatch):
     monkeypatch.setattr("app.routers.reverse.get_channel", lambda channel, backend="socketcan", **kw: fake)
     monkeypatch.setattr(cap, "get_channel", lambda channel, backend="socketcan", **kw: fake)
     monkeypatch.setattr(cap, "open_channel", lambda channel, backend="socketcan", **kw: fake)
+    monkeypatch.setattr("app.routers.reverse._capture_factory", lambda ch, be: (lambda *a, **k: fake))
 
     for i in range(3):
         fake.push(Frame(arbitration_id=0x100, data=[i]))
@@ -140,6 +141,7 @@ def test_snapshot_summarizes_active_ids(monkeypatch):
     monkeypatch.setattr("app.routers.reverse.get_channel", lambda channel, backend="socketcan", **kw: fake)
     monkeypatch.setattr(cap, "get_channel", lambda channel, backend="socketcan", **kw: fake)
     monkeypatch.setattr(cap, "open_channel", lambda channel, backend="socketcan", **kw: fake)
+    monkeypatch.setattr("app.routers.reverse._capture_factory", lambda ch, be: (lambda *a, **k: fake))
 
     for i in range(10):
         fake.push(Frame(arbitration_id=0x200, data=[i % 3, 0xAA]))

@@ -4,8 +4,20 @@
 <div class="container-fluid">
   <h4 class="mb-1"><i class="bi bi-search me-1"></i>Signal Finder</h4>
   <p class="small text-secondary">Find an unknown signal in a CAN capture by matching it against a reference you
-    already know. Capture a bus on the CAN console, sweep a control while you note its value, then let AutoPi
-    survey the bus, search the bits, and hand you a decoded signal to save into a database.</p>
+    already know. For a button or switch, the quickest way is "Find a control" below.</p>
+
+  <div class="card mb-3 border-info"><div class="card-body">
+    <h6 class="mb-1"><i class="bi bi-magic me-1"></i>Find a control (all buses at once)</h6>
+    <p class="small text-secondary mb-2">The simplest way to find a button, switch, or knob. Press <strong>Start</strong>,
+      then operate the control a few times, tapping <strong>Mark</strong> (or the spacebar) each time you do. AutoPi
+      listens to every active bus at once and shows the CAN message that reacts to your presses. No reference, no
+      guessing which bus it is on.</p>
+    <button class="btn btn-info btn-sm" id="hunt-start">Start</button>
+    <button class="btn btn-primary btn-sm d-none" id="hunt-mark">Mark press (or spacebar)</button>
+    <button class="btn btn-outline-danger btn-sm d-none" id="hunt-stop">Stop &amp; find</button>
+    <span id="hunt-status" class="small ms-2"></span>
+    <div id="hunt-results" class="small mt-2"></div>
+  </div></div>
 
   <div class="row g-3">
     <div class="col-lg-5">
@@ -578,6 +590,70 @@
         refReady('a known signal (' + esc(sig) + ')', true);
       }).catch(() => { st.textContent = 'Failed to build reference.'; });
   });
+  // "Find a control": listen on all buses, mark presses, rank what reacted.
+  let huntCaptures = {};
+  let huntReference = [];
+  const huntStart = document.getElementById('hunt-start');
+  const huntMark = document.getElementById('hunt-mark');
+  const huntStop = document.getElementById('hunt-stop');
+  const huntStatus = document.getElementById('hunt-status');
+  const huntResults = document.getElementById('hunt-results');
+  let hunting = false;
+  function huntUi(on) {
+    hunting = on;
+    huntStart.classList.toggle('d-none', on);
+    huntMark.classList.toggle('d-none', !on);
+    huntStop.classList.toggle('d-none', !on);
+  }
+  huntStart.addEventListener('click', () => {
+    huntResults.innerHTML = '';
+    huntStatus.textContent = 'Starting…';
+    fetch('reverse/hunt/start', { method: 'POST' }).then((r) => r.json()).then((d) => {
+      if (d.ok === false) { huntStatus.innerHTML = '<span class="text-danger">' + esc(d.error) + '</span>'; return; }
+      huntUi(true);
+      huntStatus.textContent = 'Listening on ' + (d.channels || []).join(', ') + '. Operate the control and tap Mark each time.';
+    }).catch(() => { huntStatus.textContent = 'Could not start.'; });
+  });
+  function huntMarkPress() {
+    if (!hunting) return;
+    fetch('reverse/hunt/mark', { method: 'POST' }).then((r) => r.json()).then((d) => {
+      if (d.ok !== false) huntStatus.textContent = d.marks + ' press' + (d.marks === 1 ? '' : 'es') + ' marked. Keep going, then Stop.';
+    });
+  }
+  huntMark.addEventListener('click', huntMarkPress);
+  document.addEventListener('keydown', (e) => {
+    if (e.code === 'Space' && hunting && document.activeElement.tagName !== 'TEXTAREA' && document.activeElement.tagName !== 'INPUT') {
+      e.preventDefault(); huntMarkPress();
+    }
+  });
+  huntStop.addEventListener('click', () => {
+    huntStatus.textContent = 'Analyzing…';
+    fetch('reverse/hunt/stop', { method: 'POST' }).then((r) => r.json()).then((d) => {
+      huntUi(false);
+      if (d.ok === false) { huntStatus.innerHTML = '<span class="text-warning">' + esc(d.error) + '</span>'; return; }
+      huntStatus.textContent = '';
+      huntCaptures = d.capture_ids || {};
+      huntReference = d.reference || [];
+      const cands = (d.candidates || []).filter((c) => c.responded > 0);
+      if (!cands.length) { huntResults.innerHTML = '<span class="text-secondary">Nothing reacted consistently. Try more presses, or a different control.</span>'; return; }
+      huntResults.innerHTML = '<div class="mb-1">Reacted to your ' + d.events + ' presses:</div>'
+        + '<table class="table table-sm table-dark align-middle mb-0"><thead><tr><th>Message</th><th>Byte</th><th>Reacted</th><th></th></tr></thead><tbody>'
+        + cands.slice(0, 10).map((c, i) => '<tr><td class="mono">' + hex(c.arbitration_id) + (c.channel ? ' <span class="text-secondary">' + esc(c.channel) + '</span>' : '') + '</td>'
+          + '<td>byte ' + c.byte + '</td><td>' + c.responded + '/' + c.events + '</td>'
+          + '<td><button class="btn btn-outline-primary btn-sm" data-hunt="' + i + '">Search bits</button></td></tr>').join('')
+        + '</tbody></table>';
+      huntResults.querySelectorAll('[data-hunt]').forEach((b) => b.addEventListener('click', () => {
+        const c = cands[parseInt(b.getAttribute('data-hunt'), 10)];
+        const capId = huntCaptures[c.channel];
+        if (!capId) { huntStatus.textContent = 'No capture kept for ' + esc(c.channel) + '.'; return; }
+        recordedReference = huntReference; refEl.value = '';
+        reloadCapturesAndSelect(capId);
+        setTimeout(() => bitsearch(c.arbitration_id), 200);
+        document.getElementById('search-card').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }));
+    }).catch(() => { huntUi(false); huntStatus.textContent = 'Analysis failed.'; });
+  });
+
   loadKnownDbs();
   refEl.addEventListener('input', () => { recordedReference = null; refReady('your typed points', false); });
 

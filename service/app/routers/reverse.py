@@ -383,6 +383,69 @@ def verify_route(body: VerifyIn):
 
 
 # --------------------------------------------------------------------------
+# "Find a control": capture every active bus at once, have the user operate the
+# control and mark each press, and rank the message that reacts. No reference
+# sweep, no timing sync, no guessing which bus a control is on.
+# --------------------------------------------------------------------------
+
+_hunt: dict = {"active": False, "channels": [], "backend": "socketcan", "events": []}
+
+
+@router.post("/hunt/start")
+def hunt_start():
+    from ..can import detect
+    channels = [i["name"] for i in detect.list_can_interfaces() if i.get("up")]
+    if not channels:
+        return {"ok": False, "error": "No CAN interfaces are up. Bring at least one up on the CAN settings page first."}
+    started = []
+    for ch in channels:
+        session = cap.get_inhale_session(ch, backend="socketcan",
+                                         channel_factory=_capture_factory(ch, "socketcan"))
+        if session.start(f"hunt {ch}"):
+            started.append(ch)
+    if not started:
+        return {"ok": False, "error": "Could not start a capture on any bus (one may already be running)."}
+    _hunt.update({"active": True, "channels": started, "backend": "socketcan", "events": []})
+    return {"ok": True, "channels": started}
+
+
+@router.post("/hunt/mark")
+def hunt_mark():
+    if not _hunt.get("active"):
+        return {"ok": False, "error": "Not listening. Press Start first."}
+    _hunt["events"].append(time.time())
+    return {"ok": True, "marks": len(_hunt["events"])}
+
+
+@router.post("/hunt/stop")
+def hunt_stop():
+    if not _hunt.get("active"):
+        return {"ok": False, "error": "Not listening."}
+    events = list(_hunt.get("events") or [])
+    records: list[dict] = []
+    capture_ids: dict[str, str] = {}
+    for ch in _hunt.get("channels") or []:
+        session = cap.get_inhale_session(ch, backend=_hunt.get("backend", "socketcan"))
+        saved = session.stop()
+        if saved:
+            if saved.get("id"):
+                capture_ids[ch] = saved["id"]
+            for frame in saved.get("frames") or []:
+                record = dict(frame)
+                record["channel"] = ch
+                records.append(record)
+    channels = list(_hunt.get("channels") or [])
+    _hunt.update({"active": False, "channels": [], "events": []})
+    if not events:
+        return {"ok": False, "error": "No presses were marked. Press Start, do the action a few times tapping Mark "
+                "(or the spacebar) each time, then Stop.", "capture_ids": capture_ids}
+    candidates = rev.event_responders(records, events)
+    reference = rev.reference_from_events(events)
+    return {"ok": True, "events": len(events), "channels": channels,
+            "candidates": candidates, "capture_ids": capture_ids, "reference": reference}
+
+
+# --------------------------------------------------------------------------
 # Optional LLM assist (app/llm.py): name and interpret signals. Every route
 # degrades to {"available": False, ...} when no API key is configured, so the
 # UI can offer these without them ever 500-ing on an unconfigured device.

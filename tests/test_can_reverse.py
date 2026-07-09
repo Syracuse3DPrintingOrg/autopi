@@ -552,3 +552,30 @@ def test_reference_from_signal_unbound_or_undecodable_is_empty():
     assert rev.reference_from_signal([], "", 1, "X") == []
     recs = [{"arbitration_id": 1, "data": [1], "timestamp": 0.0}]
     assert rev.reference_from_signal(recs, "DBC", 1, "MISSING", decode_fn=lambda *a: {"OTHER": 1}) == []
+
+
+def test_event_responders_finds_the_reacting_message():
+    events = [1.0, 3.0, 5.0]
+    records = []
+    for i in range(60):
+        ts = round(i * 0.1, 2)
+        # 0x100 byte 2 goes high only within ~0.3s after each event mark.
+        val = 1 if any(e <= ts <= e + 0.3 for e in events) else 0
+        records.append({"channel": "can1", "arbitration_id": 0x100, "data": [0, 0, val, 0], "timestamp": ts})
+        # 0x200 byte 0 is a free-running counter (changes every frame): noise.
+        records.append({"channel": "can1", "arbitration_id": 0x200, "data": [i & 0xFF], "timestamp": ts})
+    out = rev.event_responders(records, events, window=0.35)
+    assert out, "should find at least one responder"
+    top = out[0]
+    assert top["arbitration_id"] == 0x100
+    assert top["byte"] == 2
+    assert top["responded"] == 3
+    # The noisy counter must rank below the clean responder.
+    counter = next((r for r in out if r["arbitration_id"] == 0x200), None)
+    if counter is not None:
+        assert counter["score"] < top["score"]
+
+
+def test_event_responders_empty_inputs():
+    assert rev.event_responders([], [1.0]) == []
+    assert rev.event_responders([{"arbitration_id": 1, "data": [1], "timestamp": 0.0}], []) == []
