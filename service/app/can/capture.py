@@ -109,8 +109,17 @@ def get_capture(capture_id: str) -> dict[str, Any] | None:
     return None
 
 
-def save_capture(name: str, channel: str, backend: str, frames: list[dict[str, Any]]) -> dict[str, Any]:
-    capture = {
+# The captures file holds full frame data, so a busy CAN-FD bus grows it fast.
+# Keep only the most recent captures so a repeatedly-used device does not end up
+# reading and rewriting an ever-larger JSON file on every save (which on an SD
+# card can take seconds and stall a capture's bounded stop()).
+MAX_STORED_CAPTURES = 25
+
+
+def build_capture(name: str, channel: str, backend: str, frames: list[dict[str, Any]]) -> dict[str, Any]:
+    """The in-memory capture dict, with no disk I/O, so a caller can have the
+    result immediately even when persisting it is slow."""
+    return {
         "id": _new_id(),
         "name": name or f"{channel} capture",
         "channel": channel,
@@ -118,12 +127,25 @@ def save_capture(name: str, channel: str, backend: str, frames: list[dict[str, A
         "created_at": time.time(),
         "frames": frames,
     }
+
+
+def persist_capture(capture: dict[str, Any]) -> None:
+    """Append a built capture to the store, trimming to the most recent ones.
+    Slow on a large capture; callers that are time-bounded should publish the
+    in-memory result first and call this after."""
     store = _store()
     doc = store.read()
     captures = doc.get("captures", [])
     captures.append(capture)
+    if len(captures) > MAX_STORED_CAPTURES:
+        captures = captures[-MAX_STORED_CAPTURES:]
     doc["captures"] = captures
     store.write(doc)
+
+
+def save_capture(name: str, channel: str, backend: str, frames: list[dict[str, Any]]) -> dict[str, Any]:
+    capture = build_capture(name, channel, backend, frames)
+    persist_capture(capture)
     return capture
 
 
@@ -244,13 +266,21 @@ class InhaleSession:
                 )
             if done:
                 self._running = False
-        # Persist whatever was captured, whether the loop ended because
-        # stop() was called or because a limit was reached on its own.
+        # Whatever was captured, whether the loop ended because stop() was called
+        # or because a limit was reached on its own.
         with self._lock:
             frames = list(self._frames)
-        saved = save_capture(self._name, self.channel, self.backend, frames)
+        capture = build_capture(self._name, self.channel, self.backend, frames)
+        # Publish the in-memory result BEFORE persisting it, so a caller's
+        # bounded stop()/join gets the frames even if writing thousands of them
+        # to the SD card takes longer than that bound. Persisting after means a
+        # slow disk write never makes a good capture look empty.
         with self._lock:
-            self._saved = saved
+            self._saved = capture
+        try:
+            persist_capture(capture)
+        except Exception as exc:
+            log.info("Could not persist capture on %s: %s", self.channel, exc)
 
 
 # Module-level registry, one InhaleSession per (backend, channel).

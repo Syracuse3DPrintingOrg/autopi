@@ -8,6 +8,14 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Fixed
 
+- **Captures on a busy CAN-FD bus no longer report "0 frames" when they actually
+  captured thousands.** A short capture on a fast bus collects a lot of frames,
+  and writing them all to the SD card could take longer than the capture's own
+  stop timeout, so the result came back empty even though the frames were there
+  (and every empty-looking attempt still grew the capture file, making the next
+  one slower). Captures now hand back their frames from memory before writing to
+  disk, and the on-disk capture history is capped, so a capture returns what it
+  caught right away regardless of how big it is.
 - **The Signal Finder capture now opens CAN-FD exactly like the "sniff" test
   does.** It resolves the interface's bitrate and CAN-FD setting from your saved
   config (and forces CAN-FD whenever the live link is CAN-FD) and passes them to

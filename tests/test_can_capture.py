@@ -212,6 +212,40 @@ class _FakeProvider:
             return None
 
 
+def test_inhale_session_returns_frames_even_when_persist_is_slow(monkeypatch):
+    # The frames must be available from stop() even if writing them to disk
+    # takes longer than the bounded join, since a busy CAN-FD bus makes the
+    # capture file large. Simulate a slow persist and confirm stop() still
+    # returns the captured frames.
+    slow = {"persisted": False}
+
+    def slow_persist(capture):
+        time.sleep(0.4)
+        slow["persisted"] = True
+
+    monkeypatch.setattr(cap, "persist_capture", slow_persist)
+    fake = _FakeProvider()
+    session = InhaleSession("can0", channel_factory=lambda *a, **k: fake)
+    session.start("run1")
+    fake.push(Frame(arbitration_id=0x100, data=[1]))
+    fake.push(Frame(arbitration_id=0x100, data=[2]))
+    deadline = time.time() + 2.0
+    while time.time() < deadline and session.status()["frame_count"] < 2:
+        time.sleep(0.02)
+    saved = session.stop()
+    assert saved is not None
+    assert len(saved["frames"]) == 2
+
+
+def test_persist_capture_trims_to_max_stored():
+    for i in range(cap.MAX_STORED_CAPTURES + 5):
+        cap.save_capture(f"run{i}", "can0", "socketcan", [{"arbitration_id": i, "data": [], "timestamp": 0.0}])
+    stored = cap.list_captures()
+    assert len(stored) == cap.MAX_STORED_CAPTURES
+    # The oldest were trimmed; the most recent remain.
+    assert stored[-1]["name"] == f"run{cap.MAX_STORED_CAPTURES + 4}"
+
+
 def test_inhale_session_start_stop_toggles_running():
     fake = _FakeProvider()
     session = InhaleSession("can0", channel_factory=lambda *a, **k: fake)
