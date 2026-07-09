@@ -576,6 +576,39 @@ def test_event_responders_finds_the_reacting_message():
         assert counter["score"] < top["score"]
 
 
+def test_event_responders_drops_streaming_message_that_reacts_every_time():
+    # Reproduces a real capture: 0x3E0 streams ASCII (a VIN/serial), so its byte
+    # changes on every frame and trivially "reacts" to all marks, while 0x5C6 is
+    # the real button that reacts on most presses and is quiet otherwise. The
+    # stream must not be offered as a candidate.
+    events = [1.0, 2.0, 3.0, 4.0, 5.0]
+    records = []
+    for i in range(80):
+        ts = round(i * 0.1, 2)
+        pressed = any(e <= ts <= e + 0.3 for e in events)
+        records.append({"channel": "can1", "arbitration_id": 0x5C6,
+                        "data": [1 if pressed else 0, 0x14, 0x50], "timestamp": ts})
+        # 0x3E0 byte 7 is a rolling ASCII stream: different on every single frame.
+        records.append({"channel": "can1", "arbitration_id": 0x3E0,
+                        "data": [0, 0, 0, 0, 0, 0, 0, (0x30 + (i % 16))], "timestamp": ts})
+    out = rev.event_responders(records, events, window=0.35)
+    assert out and out[0]["arbitration_id"] == 0x5C6
+    assert all(r["arbitration_id"] != 0x3E0 for r in out), "streaming message must be filtered out"
+
+
+def test_event_responders_keeps_something_when_all_look_noisy():
+    # If every candidate is a stream, do not return empty: keep the ranked list
+    # so the user still has something to try.
+    events = [1.0, 2.0, 3.0]
+    records = []
+    for i in range(60):
+        ts = round(i * 0.1, 2)
+        records.append({"channel": "can1", "arbitration_id": 0x111,
+                        "data": [i & 0xFF], "timestamp": ts})
+    out = rev.event_responders(records, events, window=0.35)
+    assert out, "must not return empty just because everything looked noisy"
+
+
 def test_event_responders_empty_inputs():
     assert rev.event_responders([], [1.0]) == []
     assert rev.event_responders([{"arbitration_id": 1, "data": [1], "timestamp": 0.0}], []) == []

@@ -400,6 +400,12 @@ def _last_index_before(times: list[float], target: float) -> int | None:
     return idx if idx >= 0 else None
 
 
+# Above this per-byte background change rate (fraction of frames where the byte
+# differs from the one before), a byte is treated as a data stream or a
+# free-running counter rather than a discrete control.
+STREAM_FLIP_RATE = 0.75
+
+
 def event_responders(records: list[dict], event_times: Sequence[float], *,
                      window: float = 0.4, max_results: int = 25) -> list[dict]:
     """Find the CAN message that reacts when a user does an action a few times.
@@ -471,6 +477,15 @@ def event_responders(records: list[dict], event_times: Sequence[float], *,
             "responded": responded[best_byte], "events": total,
             "baseline": round(flip_rate[best_byte], 3), "score": round(best_score, 3),
         })
+
+    # A byte that changes on almost every frame on its own is a data stream or a
+    # free-running counter (a VIN or serial broadcast, a rolling counter), not a
+    # discrete control. It correlates with any set of presses, so it masquerades
+    # as a strong candidate. Drop those, but never return empty just because
+    # everything looked noisy: if the filter would clear the list, keep the
+    # ranked results so the user still has something to try.
+    signal = [r for r in results if r["baseline"] <= STREAM_FLIP_RATE and r["score"] > 0]
+    results = signal or results
 
     results.sort(key=lambda r: (-r["score"], -r["responded"]))
     return results[:max_results]

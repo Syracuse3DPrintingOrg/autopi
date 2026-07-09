@@ -6,6 +6,14 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ## [Unreleased]
 
+### Changed
+
+- **Testing a found control no longer asks you to confirm first.** The Test button on the Signal Finder fires straight away so you can iterate quickly. It still only sends when you press it.
+
+### Fixed
+
+- **Find a control no longer lists streaming messages as false matches.** A message that carries a constantly changing value (a VIN or serial broadcast, a free running counter) used to show up as a strong match because its bytes change on every frame and so line up with anything you do. Those are now filtered out, so the list shows the controls that actually react to you.
+
 ### Fixed
 
 - **A control you find now changes only its own bits, on the message that is live on the bus.** When you test a found control or add it to a cockpit, AutoPi used to replay the whole captured frame. That overwrote the other signals sharing that message and sent a stale value the vehicle usually ignored, which is why a found button often did nothing. Now it reads the message as it is on the bus right now and flips only the bits your control owns, leaving everything else untouched. On buses that protect messages with a rolling counter or checksum, more is still needed before the vehicle will accept the change.
