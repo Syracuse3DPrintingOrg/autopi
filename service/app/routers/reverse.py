@@ -103,6 +103,17 @@ def _explain_empty_capture(channel: str, before: dict | None, after: dict | None
     state = after.get("operstate")
     if state not in ("up", "unknown", None):
         return f"{channel} is not up (state: {state}). Bring the interface up first."
+    # Receive errors climbing means the bus is active but the frames arrive
+    # corrupt: a CAN-FD bit-timing or termination mismatch, not an idle port and
+    # not the app. This is the error-passive case.
+    err0 = (before or {}).get("rx_errors")
+    err1 = after.get("rx_errors")
+    erroring = err0 is not None and err1 is not None and err1 > err0
+    if erroring:
+        return (f"{channel} is receiving bus errors, not clean frames (rx errors +{err1 - err0} during "
+                f"the capture) — a CAN-FD bit-timing or termination problem, not the app. Check the HAT's "
+                f"terminator jumper for this port is OFF if the bus is already terminated elsewhere, and "
+                f"that the data bitrate, sample point, and oscillator match the bus.")
     rx0 = (before or {}).get("rx_packets")
     rx1 = after.get("rx_packets")
     climbed = rx0 is not None and rx1 is not None and rx1 > rx0

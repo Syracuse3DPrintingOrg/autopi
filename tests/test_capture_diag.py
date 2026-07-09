@@ -9,7 +9,7 @@ from app.can import registry
 from app.routers.reverse import _explain_empty_capture
 
 
-def _write_link(root, name, *, mtu=16, rx=0, operstate="up"):
+def _write_link(root, name, *, mtu=16, rx=0, rx_errors=0, operstate="up"):
     d = root / name
     d.mkdir()
     (d / "mtu").write_text(f"{mtu}\n")
@@ -17,12 +17,14 @@ def _write_link(root, name, *, mtu=16, rx=0, operstate="up"):
     stats = d / "statistics"
     stats.mkdir()
     (stats / "rx_packets").write_text(f"{rx}\n")
+    (stats / "rx_errors").write_text(f"{rx_errors}\n")
 
 
 def test_link_stats_reads_sysfs(tmp_path):
-    _write_link(tmp_path, "can0", mtu=72, rx=1234, operstate="up")
+    _write_link(tmp_path, "can0", mtu=72, rx=1234, rx_errors=7, operstate="up")
     s = registry.link_stats("can0", sysfs_root=str(tmp_path))
-    assert s == {"present": True, "operstate": "up", "mtu": 72, "fd": True, "rx_packets": 1234}
+    assert s == {"present": True, "operstate": "up", "mtu": 72, "fd": True,
+                 "rx_packets": 1234, "rx_errors": 7}
 
 
 def test_link_stats_absent_interface(tmp_path):
@@ -39,10 +41,21 @@ def test_explain_down():
 
 
 def test_explain_idle_port_points_at_other_channel():
-    before = {"rx_packets": 100}
-    after = {"present": True, "operstate": "up", "mtu": 16, "fd": False, "rx_packets": 100}
+    before = {"rx_packets": 100, "rx_errors": 0}
+    after = {"present": True, "operstate": "up", "mtu": 16, "fd": False, "rx_packets": 100, "rx_errors": 0}
     msg = _explain_empty_capture("can0", before, after)
     assert "idle" in msg and "other" in msg.lower()
+
+
+def test_explain_error_passive_is_timing_or_termination():
+    # can0 up in FD, receiving errors (rx_errors climbing) but no clean frames:
+    # the error-passive case from the real device.
+    before = {"rx_packets": 0, "rx_errors": 0}
+    after = {"present": True, "operstate": "up", "mtu": 72, "fd": True,
+             "rx_packets": 0, "rx_errors": 128}
+    msg = _explain_empty_capture("can0", before, after)
+    assert "bus errors" in msg and "+128" in msg
+    assert "termination" in msg and "bit-timing" in msg
 
 
 def test_explain_fd_mode_mismatch():

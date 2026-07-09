@@ -110,6 +110,10 @@ def link_stats(channel: str, sysfs_root: str = "/sys/class/net") -> dict[str, An
         "mtu": mtu,
         "fd": (mtu or 0) >= _CANFD_MTU,
         "rx_packets": _int("statistics/rx_packets"),
+        # rx_errors climbs on receive errors (bad CRC/form/bit), which is how a
+        # CAN-FD bit-timing or termination mismatch shows up: the link is up and
+        # the bus is active, but frames arrive corrupt instead of clean.
+        "rx_errors": _int("statistics/rx_errors"),
     }
 
 

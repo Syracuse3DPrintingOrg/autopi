@@ -15,9 +15,11 @@ semantic versioning while pre-1.0 (staying in `0.x`).
   channel you happened to open the CAN monitor for.
 - **The Signal Finder says why a live snapshot came back empty.** Instead of just
   showing nothing, it now reports whether the port was idle (no frames arrived,
-  so your traffic is on the other channel) or whether frames were arriving but not
-  read (a CAN-FD versus classic mode mismatch), reading the interface's own
-  counters, so you know which knob to turn.
+  so your traffic is on the other channel), whether the bus was active but the
+  frames arrived corrupt (receive errors climbing: a CAN-FD bit-timing or
+  termination mismatch, e.g. a terminator jumper left on), or whether frames were
+  arriving but not read (a CAN-FD versus classic mode mismatch), reading the
+  interface's own counters, so you know which knob to turn.
 
 ### Fixed
 
