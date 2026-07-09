@@ -103,6 +103,11 @@
           </div>
         </div>
         <div class="small mt-2" id="known-status"></div>
+        <hr class="my-2">
+        <button class="btn btn-outline-info btn-sm" id="xcorr-btn">Auto: find signals that mirror this database</button>
+        <div class="form-text">Checks every signal this database already decodes against the capture and lists unknown
+          fields that track them (often a higher-resolution proprietary copy). No reference needed.</div>
+        <div id="xcorr-results" class="small mt-2"></div>
       </div></div>
 
       <div class="card mb-3"><div class="card-body">
@@ -154,9 +159,11 @@
     <input type="text" class="form-control form-control-sm mb-2" id="save-name" placeholder="VEHICLE_SPEED">
     <label class="form-label small mb-1">Database</label>
     <select class="form-select form-select-sm mb-2" id="save-db"></select>
+    <input type="text" class="form-control form-control-sm mb-2 d-none" id="save-newdb" placeholder="New database name, e.g. My Vehicle">
     <label class="form-label small mb-1">Unit (optional)</label>
     <input type="text" class="form-control form-control-sm mb-3" id="save-unit" placeholder="km/h">
     <button class="btn btn-primary btn-sm" id="save-confirm">Save signal</button>
+    <button class="btn btn-outline-warning btn-sm ms-2" id="save-fire">Test (fire)</button>
     {% if llm_configured %}
     <button class="btn btn-outline-info btn-sm ms-2" id="save-ai-name">Suggest name (AI)</button>
     {% endif %}
@@ -176,6 +183,23 @@
   let currentArbId = null;
   const aiContext = () => { const el = document.getElementById('ai-context'); return el ? el.value.trim() : ''; };
   const knownDbId = () => { const el = document.getElementById('known-db'); const v = el && el.value ? parseInt(el.value, 10) : null; return Number.isFinite(v) ? v : null; };
+  const hx2 = (x) => ('0' + (x & 0xFF).toString(16)).slice(-2).toUpperCase();
+
+  // Transmit a found message back onto the bus to test what it does. Confirms
+  // first, since firing frames onto a live vehicle bus can have real effects.
+  function fireFrame(captureId, arbId, channel, byte, statusEl) {
+    if (!captureId) { if (statusEl) statusEl.textContent = 'No capture to fire from.'; return; }
+    if (!confirm('Fire ' + hex(arbId) + ' back onto ' + (channel || 'the bus') + '?\n\nThis transmits a real CAN frame. Only do this on a bench or test bus, not a moving vehicle.')) return;
+    if (statusEl) statusEl.textContent = 'Firing ' + hex(arbId) + '…';
+    fetch('reverse/fire', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ capture_id: captureId, arbitration_id: arbId, channel: channel || '', byte: (byte == null ? null : byte) }) })
+      .then((r) => r.json()).then((d) => {
+        if (!statusEl) return;
+        statusEl.innerHTML = d.ok
+          ? '<span class="text-success">Fired ' + hex(arbId) + ' [' + (d.data || []).map(hx2).join(' ') + '] on ' + esc(d.channel) + '. Watch for the effect.</span>'
+          : '<span class="text-danger">' + esc(d.error || 'Fire failed') + '</span>';
+      }).catch(() => { if (statusEl) statusEl.textContent = 'Fire failed.'; });
+  }
   let recordedReference = null;
   let recordedMode = null;
 
@@ -487,20 +511,23 @@
       + ' (fit r² ' + (+cand.r2).toFixed(3) + ').';
     fetch('can/databases').then((r) => r.json()).then((d) => {
       const dbs = (d.databases || []);
-      document.getElementById('save-db').innerHTML = dbs.length
-        ? dbs.map((db) => '<option value="' + db.id + '">' + esc(db.name) + '</option>').join('')
-        : '<option value="">No databases. Create or import one on the CAN page first.</option>';
+      document.getElementById('save-db').innerHTML =
+        dbs.map((db) => '<option value="' + db.id + '">' + esc(db.name) + '</option>').join('')
+        + '<option value="new">＋ New custom database…</option>';
     });
     document.getElementById('save-status').textContent = '';
+    document.getElementById('save-newdb').classList.add('d-none');
     new bootstrap.Modal(document.getElementById('save-modal')).show();
   }
 
-  document.getElementById('save-confirm').addEventListener('click', () => {
+  const saveDbSel = document.getElementById('save-db');
+  saveDbSel.addEventListener('change', () => {
+    document.getElementById('save-newdb').classList.toggle('d-none', saveDbSel.value !== 'new');
+  });
+
+  function saveSignalTo(dbId) {
     const name = document.getElementById('save-name').value.trim();
-    const dbId = parseInt(document.getElementById('save-db').value, 10);
     const st = document.getElementById('save-status');
-    if (!name) { st.textContent = 'Name it first.'; return; }
-    if (!dbId) { st.textContent = 'Pick a database.'; return; }
     fetch('reverse/save', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ database_id: dbId, name, candidate: currentCandidate,
         unit: document.getElementById('save-unit').value.trim() }) })
@@ -508,6 +535,33 @@
         st.innerHTML = d.ok === false ? '<span class="text-danger">' + esc(d.error || d.detail || 'Save failed') + '</span>'
           : '<span class="text-success">Saved. Decode it on the Monitor now.</span>';
       }).catch(() => { st.textContent = 'Save failed.'; });
+  }
+
+  document.getElementById('save-confirm').addEventListener('click', () => {
+    const name = document.getElementById('save-name').value.trim();
+    const st = document.getElementById('save-status');
+    if (!name) { st.textContent = 'Name it first.'; return; }
+    if (saveDbSel.value === 'new') {
+      const newName = document.getElementById('save-newdb').value.trim();
+      if (!newName) { st.textContent = 'Name the new database.'; return; }
+      st.textContent = 'Creating database…';
+      fetch('can/databases', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName, source: 'custom' }) })
+        .then((r) => r.json()).then((d) => {
+          if (d.ok === false || !d.database) { st.textContent = 'Could not create the database.'; return; }
+          saveSignalTo(d.database.id);
+        }).catch(() => { st.textContent = 'Could not create the database.'; });
+      return;
+    }
+    const dbId = parseInt(saveDbSel.value, 10);
+    if (!dbId) { st.textContent = 'Pick a database.'; return; }
+    saveSignalTo(dbId);
+  });
+
+  document.getElementById('save-fire').addEventListener('click', () => {
+    if (!currentCandidate) return;
+    fireFrame(captureEl.value, currentCandidate.arbitration_id, '',
+      Math.floor((currentCandidate.start_bit || 0) / 8), document.getElementById('save-status'));
   });
 
   const interpretBtn = document.getElementById('interpret-ai');
@@ -640,8 +694,13 @@
         + '<table class="table table-sm table-dark align-middle mb-0"><thead><tr><th>Message</th><th>Byte</th><th>Reacted</th><th></th></tr></thead><tbody>'
         + cands.slice(0, 10).map((c, i) => '<tr><td class="mono">' + hex(c.arbitration_id) + (c.channel ? ' <span class="text-secondary">' + esc(c.channel) + '</span>' : '') + '</td>'
           + '<td>byte ' + c.byte + '</td><td>' + c.responded + '/' + c.events + '</td>'
-          + '<td><button class="btn btn-outline-primary btn-sm" data-hunt="' + i + '">Search bits</button></td></tr>').join('')
+          + '<td><button class="btn btn-outline-primary btn-sm me-1" data-hunt="' + i + '">Search bits</button>'
+          + '<button class="btn btn-outline-warning btn-sm" data-fire="' + i + '">Test (fire)</button></td></tr>').join('')
         + '</tbody></table>';
+      huntResults.querySelectorAll('[data-fire]').forEach((b) => b.addEventListener('click', () => {
+        const c = cands[parseInt(b.getAttribute('data-fire'), 10)];
+        fireFrame(huntCaptures[c.channel], c.arbitration_id, c.channel, c.byte, huntStatus);
+      }));
       huntResults.querySelectorAll('[data-hunt]').forEach((b) => b.addEventListener('click', () => {
         const c = cands[parseInt(b.getAttribute('data-hunt'), 10)];
         const capId = huntCaptures[c.channel];
@@ -652,6 +711,31 @@
         document.getElementById('search-card').scrollIntoView({ behavior: 'smooth', block: 'center' });
       }));
     }).catch(() => { huntUi(false); huntStatus.textContent = 'Analysis failed.'; });
+  });
+
+  document.getElementById('xcorr-btn').addEventListener('click', () => {
+    const out = document.getElementById('xcorr-results');
+    if (!captureEl.value) { out.innerHTML = '<span class="text-danger">Pick a capture first.</span>'; return; }
+    if (!knownDbId()) { out.innerHTML = '<span class="text-danger">Pick a database above.</span>'; return; }
+    out.innerHTML = '<span class="text-info">Cross-correlating every known signal against the capture… this can take a moment.</span>';
+    fetch('reverse/cross-correlate', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ capture_id: captureEl.value, database_id: knownDbId() }) })
+      .then((r) => r.json()).then((d) => {
+        const m = d.matches || [];
+        if (!m.length) { out.innerHTML = '<span class="text-secondary">No unknown fields clearly mirror a known signal in this capture.</span>'; return; }
+        out.innerHTML = '<div class="mb-1">Unknown fields that mirror a known signal:</div>'
+          + '<table class="table table-sm table-dark align-middle mb-0"><thead><tr><th>Unknown</th><th>Mirrors</th><th>Bits</th><th>fit r²</th><th></th></tr></thead><tbody>'
+          + m.slice(0, 12).map((x, i) => '<tr><td class="mono">' + hex(x.match_id) + '</td>'
+            + '<td>' + esc(x.known_signal) + ' <span class="text-secondary">(' + hex(x.known_id) + ')</span></td>'
+            + '<td>' + x.resolution_bits + '</td><td>' + (+x.candidate.r2).toFixed(3) + '</td>'
+            + '<td><button class="btn btn-outline-success btn-sm" data-xc="' + i + '">Save</button></td></tr>').join('')
+          + '</tbody></table>';
+        out.querySelectorAll('[data-xc]').forEach((b) => b.addEventListener('click', () => {
+          const x = m[parseInt(b.getAttribute('data-xc'), 10)];
+          openSave(x.candidate);
+          setTimeout(() => { document.getElementById('save-name').value = x.known_signal + '_PROP'; }, 100);
+        }));
+      }).catch(() => { out.innerHTML = '<span class="text-danger">Cross-correlate failed.</span>'; });
   });
 
   loadKnownDbs();

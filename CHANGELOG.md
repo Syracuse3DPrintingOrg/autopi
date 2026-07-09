@@ -8,6 +8,23 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **Auto cross-correlation: find proprietary copies of signals you already
+  decode.** In the Signal Finder, one button checks every signal your active
+  database already decodes against a capture and lists unknown fields that mirror
+  them, often a higher-resolution proprietary copy ("this unknown 16-bit field on
+  0x123 mirrors WHEEL_SPEED_FL"). No reference to record, no guessing which known
+  signal to compare. Each match saves in one click.
+- **Test a found message by firing it back.** Once you have found a signal (from
+  "Find a control" or a bit search), a "Test (fire)" button replays a
+  representative captured frame for that message onto the bus so you can confirm
+  it does what you think. It asks first, since transmitting on a live bus is a
+  real action.
+- **Save a found signal into a new custom database on the spot.** The save dialog
+  now has a "New custom database" option, so you can start a database for your
+  vehicle straight from the Signal Finder instead of importing one first.
+
+### Added
+
 - **"Find a control" — the simple way to find a button or switch.** Press Start,
   operate the control a few times (tapping Mark or the spacebar each time), and
   the Signal Finder listens to every active CAN bus at once and shows the message

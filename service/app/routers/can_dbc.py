@@ -36,6 +36,30 @@ def list_databases():
         return {"databases": [d.to_dict() for d in s.query(CanDatabase).all()]}
 
 
+class NewDatabaseIn(BaseModel):
+    name: str = ""
+    make: str = ""
+    model: str = ""
+    models: str = ""
+    year: int | None = None
+    years: str = ""
+    author: str = ""
+    license: str = ""
+    source: str = "custom"
+
+
+@router.post("/databases")
+def create_database(body: NewDatabaseIn):
+    """Create an empty custom database to reverse-engineer signals into."""
+    with session_scope() as s:
+        d = CanDatabase(name=body.name or "Custom database", make=body.make, model=body.model,
+                        models=body.models, year=body.year, years=body.years, author=body.author,
+                        license=body.license, source=body.source or "custom", dbc_text="")
+        s.add(d)
+        s.flush()
+        return {"ok": True, "database": d.to_dict()}
+
+
 @router.get("/databases/for-vehicle")
 def databases_for_vehicle(make: str = "", model: str = "", year: int | None = None):
     """Installed databases compatible with a vehicle's make/model/year, most

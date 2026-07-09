@@ -579,3 +579,25 @@ def test_event_responders_finds_the_reacting_message():
 def test_event_responders_empty_inputs():
     assert rev.event_responders([], [1.0]) == []
     assert rev.event_responders([{"arbitration_id": 1, "data": [1], "timestamp": 0.0}], []) == []
+
+
+def test_cross_correlate_finds_a_mirrored_signal():
+    records_by_id = {0x100: [], 0x200: [], 0x300: []}
+    import random
+    rng = random.Random(3)
+    for i in range(40):
+        t = round(i * 0.1, 2)
+        v = i  # a clean ramp 0..39
+        records_by_id[0x100].append({"arbitration_id": 0x100, "data": [v, 0], "timestamp": t})
+        records_by_id[0x200].append({"arbitration_id": 0x200, "data": [v, 0], "timestamp": t})   # mirror
+        records_by_id[0x300].append({"arbitration_id": 0x300, "data": [rng.randint(0, 255)], "timestamp": t})
+
+    def fake_decode(dbc, arb, data):
+        return {"SPEED": float(data[0])} if arb == 0x100 else {}
+
+    known = [{"arbitration_id": 0x100, "signal": "SPEED"}]
+    matches = rev.cross_correlate(records_by_id, "DBC", known, min_score=0.8, decode_fn=fake_decode)
+    assert matches, "should find the mirror"
+    assert matches[0]["match_id"] == 0x200
+    assert matches[0]["known_signal"] == "SPEED"
+    assert matches[0]["match_id"] != matches[0]["known_id"]  # never matches itself

@@ -382,6 +382,81 @@ def verify_route(body: VerifyIn):
     return {"decoded": decoded, "reference": reference}
 
 
+class CrossCorrelateIn(BaseModel):
+    capture_id: str
+    database_id: int
+
+
+@router.post("/cross-correlate")
+def cross_correlate_route(body: CrossCorrelateIn):
+    """Automatically find unknown fields that mirror a signal the database
+    already decodes (redundant or higher-resolution proprietary copies), with no
+    reference to record by hand."""
+    capture = _capture_or_404(body.capture_id)
+    dbc_text = _dbc_text_or_404(body.database_id)
+    grouped = _frames_by_id(capture)
+    from ..db import CanMessage
+    known: list[dict] = []
+    with session_scope() as s:
+        for message in s.query(CanMessage).filter_by(database_id=body.database_id).all():
+            for sig in message.signals:
+                known.append({"arbitration_id": message.arbitration_id, "signal": sig.name})
+    matches = rev.cross_correlate(grouped, dbc_text, known)
+    return {"matches": matches, "known_count": len(known)}
+
+
+def _pick_active_frame(frames: list[dict], byte: int | None) -> dict:
+    """A representative 'the control was active' frame to replay: the one whose
+    target byte is furthest from its resting (most common) value, so firing it
+    reproduces the pressed state. Falls back to the last frame."""
+    if byte is None or not frames:
+        return frames[-1] if frames else {}
+    from collections import Counter
+    vals = []
+    for f in frames:
+        data = f.get("data") or []
+        vals.append(data[byte] if byte < len(data) else 0)
+    resting = Counter(vals).most_common(1)[0][0]
+    best = max(range(len(frames)), key=lambda i: abs(vals[i] - resting))
+    return frames[best]
+
+
+class FireIn(BaseModel):
+    capture_id: str
+    arbitration_id: int
+    channel: str = ""
+    byte: int | None = None
+
+
+@router.post("/fire")
+def fire_route(body: FireIn):
+    """Transmit a found message back onto the bus to test what it does: replays a
+    representative captured frame for that id (the 'active' state). Firing frames
+    onto a live vehicle bus can have real effects, so this is a deliberate,
+    one-off action the UI confirms first."""
+    from ..can import Frame
+    capture = _capture_or_404(body.capture_id)
+    frames = _frames_for_id(capture, body.arbitration_id)
+    if not frames:
+        raise HTTPException(404, "No frames with that id in this capture")
+    channel = body.channel or capture.get("channel") or "can0"
+    backend = capture.get("backend") or "socketcan"
+    provider = get_channel(channel, backend=backend)
+    if not provider.available:
+        return {"ok": False, "error": getattr(provider, "last_error", None) or f"{channel} is not available."}
+    frame = _pick_active_frame(frames, body.byte)
+    data = list(frame.get("data") or [])
+    try:
+        sent = provider.send(Frame(arbitration_id=body.arbitration_id, data=data,
+                                   is_fd=bool(frame.get("is_fd")),
+                                   is_extended_id=bool(frame.get("is_extended_id"))))
+    except Exception as exc:
+        return {"ok": False, "error": f"Send failed: {exc}"}
+    if not sent:
+        return {"ok": False, "error": "The interface did not accept the frame (is it up?)."}
+    return {"ok": True, "channel": channel, "arbitration_id": body.arbitration_id, "data": data}
+
+
 # --------------------------------------------------------------------------
 # "Find a control": capture every active bus at once, have the user operate the
 # control and mark each press, and rank the message that reacts. No reference

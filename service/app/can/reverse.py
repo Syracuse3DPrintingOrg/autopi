@@ -726,6 +726,52 @@ def survey(records_by_id: dict[int, list[dict]], reference: list[dict], opts: di
     return results
 
 
+def cross_correlate(records_by_id: dict[int, list[dict]], dbc_text: str,
+                    known_signals: Sequence[dict], *, min_score: float = 0.9,
+                    max_signals: int = 40, max_matches: int = 25, decode_fn=None) -> list[dict]:
+    """Automatically find, for each signal a database already decodes, an unknown
+    field elsewhere on the bus that tracks it, with no human input.
+
+    For every known signal, decode it into a reference (``reference_from_signal``)
+    and survey/bitsearch the *other* ids for a field that moves with it. A strong
+    match means the proprietary bus carries a redundant (often higher-resolution)
+    copy of that signal, e.g. a 16-bit wheel speed mirroring a coarser known one.
+
+    ``known_signals`` are ``{arbitration_id, signal}`` dicts. Returns matches
+    ``{known_signal, known_id, match_id, resolution_bits, candidate, score}``
+    sorted strongest first. Pure over its arguments (a test drives it with a
+    stubbed ``decode_fn``); reuses the same statistics as the manual flow."""
+    matches: list[dict] = []
+    for known in list(known_signals)[:max_signals]:
+        arb = known.get("arbitration_id")
+        signal = known.get("signal")
+        reference = reference_from_signal(records_by_id.get(arb, []), dbc_text, arb, signal, decode_fn=decode_fn)
+        if len(reference) < 5:
+            continue
+        # Constant references cannot be matched against anything.
+        values = {round(p["value"], 6) for p in reference}
+        if len(values) < 2:
+            continue
+        others = {aid: recs for aid, recs in records_by_id.items() if aid != arb}
+        for entry in survey(others, reference, {})[:3]:
+            if entry["score"] < min_score:
+                break
+            candidates = bitsearch(others[entry["arbitration_id"]], reference,
+                                   {"min_score": min_score, "max_candidates": 1})
+            if not candidates or candidates[0]["score"] < min_score:
+                continue
+            candidate = candidates[0]
+            matches.append({
+                "known_signal": signal, "known_id": arb,
+                "match_id": entry["arbitration_id"],
+                "resolution_bits": candidate["length"],
+                "candidate": candidate, "score": candidate["score"],
+            })
+            break  # one best match per known signal
+    matches.sort(key=lambda m: -m["score"])
+    return matches[:max_matches]
+
+
 # --------------------------------------------------------------------------
 # Scale/offset derivation and DBC export
 # --------------------------------------------------------------------------
