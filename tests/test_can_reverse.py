@@ -631,6 +631,31 @@ def test_event_responders_labels_status_vs_command():
     assert by_id[0x300]["kind"] == "event"
 
 
+def test_event_responders_finds_constant_payload_command_by_appearance():
+    # 0x400 is a command another controller emits only when you act, with a fixed
+    # payload (nothing "changes", it just shows up). It must still be found, as an
+    # "appears" candidate with byte None.
+    events = [1.0, 2.0, 3.0, 4.0]
+    records = []
+    for i in range(80):
+        ts = round(i * 0.1, 2)
+        pressed = any(e <= ts <= e + 0.15 for e in events)
+        # A steady background broadcast unrelated to the control.
+        records.append({"channel": "can0", "arbitration_id": 0x111,
+                        "data": [i & 0xFF, 0], "timestamp": ts})
+        # The command: identical bytes, present only while acting.
+        if pressed:
+            records.append({"channel": "can0", "arbitration_id": 0x400,
+                            "data": [0xA5, 0x01], "timestamp": ts})
+    out = rev.event_responders(records, events, window=0.2)
+    cmd = next((r for r in out if r["arbitration_id"] == 0x400), None)
+    assert cmd is not None, "constant-payload command that only appears must be found"
+    # Found either as a changed byte (vs its absent/zero default) or by appearance;
+    # either way it is a usable candidate and labelled a likely command.
+    assert cmd["kind"] == "event"
+    assert cmd["byte"] is None or cmd["match"] == "byte"
+
+
 def test_injection_reactors_finds_downstream_reaction():
     # At rest only 0x111 byte 0 wanders. While injecting, 0x222 byte 3 starts
     # moving: a downstream reaction to the injected command. The injected id

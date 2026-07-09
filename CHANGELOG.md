@@ -8,6 +8,10 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **Find a control also catches commands that just appear.** Some controls are driven by a command another module sends with a fixed payload, so nothing in the message "changes", it only shows up while you act. Those are now detected and listed (marked "appears") instead of being missed, so a button whose command is a constant frame can still be found and replayed.
+
+### Added
+
 - **Find a control now tells you whether you found a command or just a status.** Each result is labelled: a "likely status" is what a module reports (replaying it usually does nothing), while a "likely command" appears mainly when you act on the control. A new "Verify effect" button proves it: AutoPi listens to every bus at rest, injects the candidate for a few seconds, and tells you whether anything on any bus actually reacted. If nothing reacts, you found a status and the real command is a different message, usually on another bus.
 
 ### Changed

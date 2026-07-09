@@ -471,6 +471,24 @@ def event_responders(records: list[dict], event_times: Sequence[float], *,
         scored = [(responded[b] / total - flip_rate[b], b) for b in range(n_bytes)]
         best_score, best_byte = max(scored)
         if responded[best_byte] == 0:
+            # No byte changed in response, but the message itself may appear only
+            # when you act: a command another controller emits on trigger, often
+            # with a constant payload (so nothing "changes", it just shows up).
+            # Detect that by presence: present for most of your actions, scarce
+            # otherwise.
+            appear = sum(1 for e in events if any(abs(t - e) <= window for t in times))
+            away = sum(1 for t in times if all(abs(t - e) > window for e in events))
+            need = max(2, (3 * total + 4) // 5)  # ceil(0.6 * total)
+            if appear >= need and away <= appear:
+                results.append({
+                    "channel": channel, "arbitration_id": arb, "byte": None,
+                    "responded": appear, "events": total, "baseline": 0.0,
+                    "score": round(appear / total, 3), "kind": "event",
+                    "match": "appears", "steady": 0.0,
+                    "hint": ("This message appears mainly when you act and is otherwise "
+                             "rare, so another controller is likely emitting it as the "
+                             "command with a fixed payload. Replay it or use Verify effect."),
+                })
             continue
         # Status vs command: is this id broadcast steadily the whole time, or
         # does it appear only around your presses? A byte on a steady broadcast
@@ -493,7 +511,7 @@ def event_responders(records: list[dict], event_times: Sequence[float], *,
             "channel": channel, "arbitration_id": arb, "byte": best_byte,
             "responded": responded[best_byte], "events": total,
             "baseline": round(flip_rate[best_byte], 3), "score": round(best_score, 3),
-            "kind": kind, "steady": round(steady, 3), "hint": hint,
+            "kind": kind, "steady": round(steady, 3), "hint": hint, "match": "byte",
         })
 
     # A byte that changes on almost every frame on its own is a data stream or a

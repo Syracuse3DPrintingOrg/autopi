@@ -801,7 +801,7 @@
       huntResults.innerHTML = '<div class="mb-1">Reacted to your ' + d.events + ' presses:</div>'
         + '<table class="table table-sm table-dark align-middle mb-0"><thead><tr><th>Message</th><th>Byte</th><th>Reacted</th><th>Kind</th><th></th></tr></thead><tbody>'
         + cands.slice(0, 10).map((c, i) => '<tr><td class="mono">' + hex(c.arbitration_id) + (c.channel ? ' <span class="text-secondary">' + esc(c.channel) + '</span>' : '') + '</td>'
-          + '<td>byte ' + c.byte + '</td><td>' + c.responded + '/' + c.events + '</td>'
+          + '<td>' + (c.byte == null ? '<span class="text-info" title="This whole message appears when you act">appears</span>' : 'byte ' + c.byte) + '</td><td>' + c.responded + '/' + c.events + '</td>'
           + '<td>' + kindBadge(c) + '</td>'
           + '<td><button class="btn btn-success btn-sm me-1" data-addcp="' + i + '">Add to cockpit</button>'
           + '<button class="btn btn-outline-warning btn-sm me-1" data-fire="' + i + '">Test</button>'
