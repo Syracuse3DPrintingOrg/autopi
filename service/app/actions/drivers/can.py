@@ -62,7 +62,12 @@ class CanDriver(Driver):
             return DriverResult.failure(frame_params)
 
         channel_name = frame_params["channel"]
-        channel = get_channel(channel_name)
+        # A CAN-FD action must transmit on an fd=True socket; a classic socket
+        # rejects the FD frame and sends nothing. Force fd for an FD frame and
+        # leave classic frames on the channel's configured mode (fd=None does
+        # not override the resolved setting).
+        channel = get_channel(channel_name,
+                              fd=True if frame_params["is_fd"] else None)
         overlay = frame_params.get("overlay")
 
         # Resolve the bytes actually put on the bus. A control saved with a bit

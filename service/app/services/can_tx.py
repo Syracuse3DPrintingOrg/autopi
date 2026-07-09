@@ -84,7 +84,10 @@ def stop_all() -> None:
 def _loop(channel: str, arbitration_id: int, data, period_ms: int,
           is_fd: bool, is_extended_id: bool, stop_ev: threading.Event) -> None:
     from ..can import Frame, get_channel
-    provider = get_channel(channel)
+    # A CAN-FD frame needs an fd=True socket; a classic socket rejects it and the
+    # periodic send transmits nothing. Force fd for an FD frame and leave classic
+    # frames on the channel's configured mode (fd=None does not override).
+    provider = get_channel(channel, fd=True if is_fd else None)
     frame = Frame(arbitration_id=arbitration_id, data=data, is_fd=is_fd, is_extended_id=is_extended_id)
     interval = period_ms / 1000.0
     while not stop_ev.wait(interval):

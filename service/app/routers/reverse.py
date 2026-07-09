@@ -448,15 +448,19 @@ def fire_route(body: FireIn):
         raise HTTPException(404, "No frames with that id in this capture")
     channel = body.channel or capture.get("channel") or "can0"
     backend = capture.get("backend") or "socketcan"
-    provider = get_channel(channel, backend=backend)
-    if not provider.available:
-        return {"ok": False, "error": getattr(provider, "last_error", None) or f"{channel} is not available."}
     # A representative captured frame is only the fallback template, used to size
     # the frame and to fill in when the id is not currently on the bus.
     template = _pick_active_frame(frames, body.byte)
     template_data = list(template.get("data") or [])
     is_fd = bool(template.get("is_fd"))
     is_extended_id = bool(template.get("is_extended_id"))
+    # A CAN-FD frame must go out on a socket opened fd=True; a classic socket
+    # rejects it and the send silently transmits nothing. Force fd when the
+    # frame is FD so an FD control actually fires (classic frames pass fd=None,
+    # leaving the channel's configured mode untouched).
+    provider = get_channel(channel, backend=backend, fd=True if is_fd else None)
+    if not provider.available:
+        return {"ok": False, "error": getattr(provider, "last_error", None) or f"{channel} is not available."}
     if body.byte is None:
         data, source = template_data, "frame"
     else:
@@ -707,14 +711,17 @@ def verify_control_route(body: VerifyControlIn):
     frames = _frames_for_id(capture, body.arbitration_id)
     if not frames:
         raise HTTPException(404, "No frames with that id in this capture")
-    provider = get_channel(body.channel, backend=capture.get("backend") or "socketcan")
-    if not provider.available:
-        return {"ok": False, "error": getattr(provider, "last_error", None) or f"{body.channel} is not available."}
-
     template = _pick_active_frame(frames, body.byte)
     template_data = list(template.get("data") or [])
     is_fd = bool(template.get("is_fd"))
     is_extended_id = bool(template.get("is_extended_id"))
+    # Open the transmit channel fd=True for a CAN-FD frame; a classic socket
+    # rejects the FD send and injects 0 frames, which used to read as "no
+    # effect" and made a real control look like a status mirror.
+    provider = get_channel(body.channel, backend=capture.get("backend") or "socketcan",
+                           fd=True if is_fd else None)
+    if not provider.available:
+        return {"ok": False, "error": getattr(provider, "last_error", None) or f"{body.channel} is not available."}
     if body.byte is None:
         send_data = template_data
     else:

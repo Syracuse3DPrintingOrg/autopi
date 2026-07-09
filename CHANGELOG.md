@@ -8,6 +8,10 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Fixed
 
+- **Firing a CAN-FD control now actually sends.** Injecting a found control on a CAN-FD bus could report "could not inject" and transmit nothing, while a shorter classic control on the same bus fired fine. The transmit was going out on a socket opened in classic mode, which the kernel refuses for a CAN-FD frame. Firing a control, verifying its effect, and holding a control down (repeat send) now open the bus in CAN-FD mode whenever the frame is CAN-FD, so the frame goes out. Classic frames are unaffected.
+
+### Fixed
+
 - **Find a control now shows only what actually reacts to you, and how consistently.** On a busy bus, the old detection listed almost every message because they are all on the bus near each press. It now keys off whether a message appears right when you act and was absent just before, which is what tells a real command apart from a broadcast that is always there. A message you operated on 6 of 9 presses now reads 6/9, and messages that are simply always present no longer show up at all.
 
 ### Fixed

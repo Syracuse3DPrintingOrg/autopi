@@ -158,6 +158,108 @@ def test_snapshot_summarizes_active_ids(monkeypatch):
     assert 0 in hit["changing_bytes"]
 
 
+def test_fire_opens_fd_channel_for_fd_frame(monkeypatch):
+    # A CAN-FD frame (>8 data bytes) must be transmitted on an fd=True channel;
+    # a classic socket rejects it and sends nothing.
+    fake = _FakeProvider()
+    seen: dict = {}
+
+    def _get_channel(channel, backend="socketcan", **kw):
+        seen["fd"] = kw.get("fd")
+        return fake
+
+    monkeypatch.setattr("app.routers.reverse.get_channel", _get_channel)
+    monkeypatch.setattr("app.routers.reverse._capture_or_404",
+                        lambda cid: {"backend": "socketcan", "channel": "vcan0"})
+    monkeypatch.setattr("app.routers.reverse._frames_for_id",
+                        lambda cap_, aid: [{"arbitration_id": 0x123,
+                                            "data": list(range(12)), "is_fd": True,
+                                            "timestamp": 0.0}])
+    client = TestClient(app)
+    resp = client.post("/reverse/fire",
+                       json={"capture_id": "x", "arbitration_id": 0x123,
+                             "channel": "vcan0", "byte": None})
+    assert resp.status_code == 200
+    assert resp.json()["ok"] is True
+    assert seen["fd"] is True
+
+
+def test_fire_leaves_channel_mode_untouched_for_classic_frame(monkeypatch):
+    # A classic frame must not force fd (fd=None leaves the channel's configured
+    # mode alone), so classic sends keep working exactly as before.
+    fake = _FakeProvider()
+    seen: dict = {}
+
+    def _get_channel(channel, backend="socketcan", **kw):
+        seen["fd"] = kw.get("fd")
+        return fake
+
+    monkeypatch.setattr("app.routers.reverse.get_channel", _get_channel)
+    monkeypatch.setattr("app.routers.reverse._capture_or_404",
+                        lambda cid: {"backend": "socketcan", "channel": "vcan0"})
+    monkeypatch.setattr("app.routers.reverse._frames_for_id",
+                        lambda cap_, aid: [{"arbitration_id": 0x123,
+                                            "data": [1, 2, 3], "is_fd": False,
+                                            "timestamp": 0.0}])
+    client = TestClient(app)
+    resp = client.post("/reverse/fire",
+                       json={"capture_id": "x", "arbitration_id": 0x123,
+                             "channel": "vcan0", "byte": None})
+    assert resp.status_code == 200
+    assert resp.json()["ok"] is True
+    assert seen["fd"] is None
+
+
+def test_verify_control_opens_fd_channel_for_fd_frame(monkeypatch):
+    fake = _FakeProvider()
+    seen: dict = {}
+
+    def _get_channel(channel, backend="socketcan", **kw):
+        seen["fd"] = kw.get("fd")
+        return fake
+
+    monkeypatch.setattr("app.routers.reverse.get_channel", _get_channel)
+    monkeypatch.setattr(cap, "get_channel", lambda channel, backend="socketcan", **kw: fake)
+    monkeypatch.setattr(cap, "open_channel", lambda channel, backend="socketcan", **kw: fake)
+    monkeypatch.setattr("app.routers.reverse._capture_factory", lambda ch, be: (lambda *a, **k: fake))
+    monkeypatch.setattr("app.can.detect.list_can_interfaces", lambda: [{"name": "vcan0", "up": True}])
+    monkeypatch.setattr("app.routers.reverse._capture_or_404",
+                        lambda cid: {"backend": "socketcan",
+                                     "frames": [{"arbitration_id": 0x123,
+                                                 "data": list(range(12)), "is_fd": True,
+                                                 "timestamp": 0.0}]})
+    client = TestClient(app)
+    resp = client.post("/reverse/verify-control",
+                       json={"capture_id": "x", "arbitration_id": 0x123, "channel": "vcan0",
+                             "byte": None, "baseline_s": 0.02, "inject_s": 0.2, "period_ms": 10})
+    assert resp.status_code == 200
+    assert seen["fd"] is True
+
+
+def test_can_tx_loop_opens_fd_channel_for_fd_frame(monkeypatch):
+    # The periodic sender must also request an fd=True channel for an FD frame.
+    from app.services import can_tx
+    import threading
+
+    seen: dict = {}
+    fake = _FakeProvider()
+
+    def _get_channel(channel, **kw):
+        seen["fd"] = kw.get("fd")
+        return fake
+
+    monkeypatch.setattr("app.can.get_channel", _get_channel)
+    stop_ev = threading.Event()
+    stop_ev.set()  # stop immediately after the provider is resolved
+    can_tx._loop("vcan0", 0x123, list(range(12)), 10, True, False, stop_ev)
+    assert seen["fd"] is True
+
+    stop_ev2 = threading.Event()
+    stop_ev2.set()
+    can_tx._loop("vcan0", 0x123, [1, 2, 3], 10, False, False, stop_ev2)
+    assert seen["fd"] is None
+
+
 def test_verify_control_reports_inject_failure_not_no_effect(monkeypatch):
     # Regression: a silent send failure used to be reported as "no effect", which
     # reads as "it is a status". It must instead say the injection failed.
