@@ -243,7 +243,8 @@
         } else {
           statusEl.innerHTML = '<span class="text-warning">No effect. Nothing on any bus reacted while ' + hex(arbId)
             + ' was injected (' + d.injected + ' frames sent). This is almost certainly a status the module reports, '
-            + 'not the command. The command is likely a different message, often on another bus.</span>';
+            + 'not the command. Often the module drives the function itself and only announces the state on CAN, so there '
+            + 'may be no command frame to replay for it at all.</span>';
         }
       }).catch(() => { if (btnEl) { btnEl.disabled = false; } if (statusEl) statusEl.textContent = 'Verify failed.'; });
   }

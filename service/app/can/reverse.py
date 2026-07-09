@@ -482,8 +482,9 @@ def event_responders(records: list[dict], event_times: Sequence[float], *,
         steady = away / len(times) if times else 0.0
         kind = "status" if steady > 0.5 else "event"
         hint = ("Looks like a status the module broadcasts, not the command. "
-                "Replaying it rarely does anything; the command is usually a "
-                "different message, often on another bus."
+                "Replaying it rarely does anything. Often the function is driven "
+                "by the module itself and CAN only carries the status, so there "
+                "may be no command frame to replay at all."
                 if kind == "status" else
                 "Appears mainly when you act, so this is more likely the command "
                 "itself. Test it, and if nothing happens see the contention and "
