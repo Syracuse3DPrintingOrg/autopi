@@ -6,6 +6,10 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ## [Unreleased]
 
+### Changed
+
+- **A denser, more technical look across the whole app.** AutoPi now wears a dark cockpit theme built around its pink accent: tighter tables and forms fit more on screen, panels sit on glass-style surfaces over a faint engineering grid, labels and readouts use a monospace technical type, and the top bar, menus, and scrollbars match. The operator screen and Start page share the same look, so the touchscreen and the workbench feel like one instrument. Everything stays high-contrast and readable.
+
 ### Fixed
 
 - **"Verify effect" no longer mistakes a failed send for "no effect".** If the frame could not actually be transmitted (for example a CAN-FD frame on a classic channel, or an interface that is not up for sending), the tool now says the injection failed and why, instead of reporting that nothing reacted (which wrongly suggested the message was only a status). It also returns a clear message instead of an error when it cannot start listening.
