@@ -1,18 +1,23 @@
-"""Optional LLM assist for the Signal Finder.
+"""Optional LLM assist for the Signal Finder, multi-provider.
 
 The Signal Finder works purely on statistics: it never needs a network or an
-API key. This module is the thin, entirely optional layer on top that uses the
-Anthropic Claude API to make reverse engineering easier, mirroring the "let an
-LLM name the signals" idea from CSS Electronics' AI CAN reverse-engineering
-write-up:
+API key. This module is the optional layer on top that asks a hosted (or local)
+LLM to make reverse engineering easier, mirroring the "let an LLM name the
+signals" idea from CSS Electronics' AI CAN reverse-engineering write-up:
 
 - interpret which real quantity a message's active bytes probably carry, and
 - propose a name, unit, and description for a candidate the search turned up.
 
-Everything degrades gracefully. With no key configured, every entry point
-returns ``{"available": False, "reason": ...}`` and the rest of the Signal
-Finder is unaffected. The context-building and response-parsing helpers are
-pure so they stay testable without touching the network.
+Several providers are supported. Google **Gemini** is the default; Anthropic
+Claude, OpenAI, and a local Ollama server are also available, chosen from the
+AI Assist settings section. Every provider is reached over plain HTTPS with the
+``httpx`` the app already ships, so a Raspberry Pi appliance needs no extra
+vendor SDKs.
+
+Everything degrades gracefully. With no key configured (or, for Ollama, no
+server), every entry point returns ``{"available": False, "reason": ...}`` and
+the rest of the Signal Finder is unaffected. The context-building and
+response-parsing helpers are pure so they stay testable without the network.
 """
 from __future__ import annotations
 
@@ -21,49 +26,21 @@ from typing import Any
 
 from .config import settings
 
-# Claude Opus 4.8 is the default; a bench user can point at a cheaper/faster
-# model (e.g. claude-haiku-4-5) from the AI settings section.
-DEFAULT_MODEL = "claude-opus-4-8"
-
-# Only the Anthropic Claude API is wired up today. The provider field exists so
-# the setting is stable if other backends are added later.
-SUPPORTED_PROVIDER = "anthropic"
-
-_INTERPRET_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "message_guess": {"type": "string"},
-        "fields": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "bytes": {"type": "string"},
-                    "guess": {"type": "string"},
-                    "confidence": {"type": "string", "enum": ["low", "medium", "high"]},
-                },
-                "required": ["bytes", "guess", "confidence"],
-                "additionalProperties": False,
-            },
-        },
-        "notes": {"type": "string"},
-    },
-    "required": ["message_guess", "fields", "notes"],
-    "additionalProperties": False,
+# Provider -> default model when the user leaves the model field blank.
+DEFAULT_MODELS = {
+    "gemini": "gemini-2.0-flash",
+    "anthropic": "claude-opus-4-8",
+    "openai": "gpt-4o-mini",
+    "ollama": "llama3.1",
 }
 
-_NAME_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "name": {"type": "string"},
-        "unit": {"type": "string"},
-        "description": {"type": "string"},
-        "plausible": {"type": "boolean"},
-        "reason": {"type": "string"},
-    },
-    "required": ["name", "unit", "description", "plausible", "reason"],
-    "additionalProperties": False,
-}
+# Providers the settings UI offers, Gemini first (the default).
+PROVIDERS = ("gemini", "anthropic", "openai", "ollama")
+
+# Ollama runs locally with no key; every other provider needs an API key.
+_KEYLESS = {"ollama"}
+
+_DEFAULT_OLLAMA_BASE = "http://localhost:11434"
 
 _INTERPRET_SYSTEM = (
     "You are a vehicle CAN bus reverse-engineering assistant helping a bench "
@@ -85,34 +62,53 @@ _NAME_SYSTEM = (
     "it terse."
 )
 
+_INTERPRET_SHAPE = (
+    'Respond with ONLY a JSON object, no prose and no markdown fences: '
+    '{"message_guess": string, "fields": [{"bytes": string, "guess": string, '
+    '"confidence": "low"|"medium"|"high"}], "notes": string}.'
+)
+
+_NAME_SHAPE = (
+    'Respond with ONLY a JSON object, no prose and no markdown fences: '
+    '{"name": string in UPPER_SNAKE_CASE, "unit": string, "description": string, '
+    '"plausible": boolean, "reason": string}.'
+)
+
 
 def _provider() -> str:
-    return (getattr(settings, "llm_provider", "") or SUPPORTED_PROVIDER).strip().lower()
+    return (getattr(settings, "llm_provider", "") or "gemini").strip().lower()
 
 
 def _model() -> str:
-    return (getattr(settings, "llm_model", "") or DEFAULT_MODEL).strip()
+    explicit = (getattr(settings, "llm_model", "") or "").strip()
+    if explicit:
+        return explicit
+    return DEFAULT_MODELS.get(_provider(), "")
 
 
 def _api_key() -> str:
     return (getattr(settings, "llm_api_key", "") or "").strip()
 
 
+def _base_url() -> str:
+    return (getattr(settings, "llm_base_url", "") or "").strip()
+
+
 def status() -> dict[str, Any]:
     """Whether the LLM assist can run, and why not if it cannot. Safe to call
     from any surface (a template flag, a UI gate) without side effects."""
     provider = _provider()
-    if provider != SUPPORTED_PROVIDER:
+    if provider not in PROVIDERS:
         return {"available": False, "provider": provider, "model": _model(),
-                "reason": f"Only the {SUPPORTED_PROVIDER!r} provider is supported."}
-    if not _api_key():
-        return {"available": False, "provider": provider, "model": _model(),
-                "reason": "No API key set. Add one in Settings under AI assist."}
+                "reason": f"Unknown AI provider {provider!r}. Pick one in Settings, AI Assist."}
     try:
-        import anthropic  # noqa: F401
+        import httpx  # noqa: F401
     except Exception:
         return {"available": False, "provider": provider, "model": _model(),
-                "reason": "The 'anthropic' package is not installed on this device."}
+                "reason": "The 'httpx' package is not installed on this device."}
+    if provider not in _KEYLESS and not _api_key():
+        return {"available": False, "provider": provider, "model": _model(),
+                "reason": "No API key set. Add one in Settings under AI assist."}
     return {"available": True, "provider": provider, "model": _model(), "reason": ""}
 
 
@@ -171,7 +167,8 @@ def describe_candidate(candidate: dict, reference_hint: str = "") -> str:
 
 def parse_json_response(text: str) -> dict[str, Any]:
     """Parse a model reply that should be a JSON object, tolerating an
-    accidental ```json fence. Returns ``{}`` when it is not usable."""
+    accidental ```json fence or surrounding prose. Returns ``{}`` when it is
+    not usable."""
     if not text:
         return {}
     stripped = text.strip()
@@ -182,48 +179,128 @@ def parse_json_response(text: str) -> dict[str, Any]:
     try:
         data = json.loads(stripped)
     except (ValueError, TypeError):
-        return {}
+        # Last resort: grab the first {...} block if the model wrapped it.
+        start, end = stripped.find("{"), stripped.rfind("}")
+        if start == -1 or end <= start:
+            return {}
+        try:
+            data = json.loads(stripped[start:end + 1])
+        except (ValueError, TypeError):
+            return {}
     return data if isinstance(data, dict) else {}
 
 
 # --------------------------------------------------------------------------
-# The one network call, and the two shaped entry points
+# Provider transports (one HTTPS call each, uniform text in / text out)
 # --------------------------------------------------------------------------
 
-def _ask_json(system: str, user: str, schema: dict, *, max_tokens: int = 1500) -> dict[str, Any]:
-    """Single Claude Messages call constrained to a JSON schema. Raises
-    ``RuntimeError`` with a bench-friendly message on any failure so callers
-    can surface it verbatim."""
+def _post_json(url: str, *, headers: dict | None = None, params: dict | None = None,
+               payload: dict, timeout: float = 60.0) -> dict:
+    import httpx
+    try:
+        resp = httpx.post(url, headers=headers, params=params, json=payload, timeout=timeout)
+    except httpx.HTTPError as exc:
+        raise RuntimeError(f"Could not reach the AI provider: {exc}") from exc
+    if resp.status_code >= 400:
+        detail = resp.text[:300]
+        raise RuntimeError(f"AI provider error ({resp.status_code}): {detail}")
+    try:
+        return resp.json()
+    except ValueError as exc:
+        raise RuntimeError("AI provider returned a non-JSON response.") from exc
+
+
+def _call_gemini(system: str, user: str, model: str, max_tokens: int) -> str:
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+    payload = {
+        "system_instruction": {"parts": [{"text": system}]},
+        "contents": [{"role": "user", "parts": [{"text": user}]}],
+        "generationConfig": {
+            "responseMimeType": "application/json",
+            "temperature": 0.2,
+            "maxOutputTokens": max_tokens,
+        },
+    }
+    data = _post_json(url, params={"key": _api_key()}, payload=payload)
+    candidates = data.get("candidates") or []
+    if not candidates:
+        raise RuntimeError("The model returned no answer (a safety block or a bad model name?).")
+    parts = (candidates[0].get("content") or {}).get("parts") or []
+    return "".join(p.get("text", "") for p in parts)
+
+
+def _call_anthropic(system: str, user: str, model: str, max_tokens: int) -> str:
+    url = "https://api.anthropic.com/v1/messages"
+    headers = {
+        "x-api-key": _api_key(),
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+    }
+    payload = {
+        "model": model,
+        "max_tokens": max_tokens,
+        "system": system,
+        "messages": [{"role": "user", "content": user}],
+    }
+    data = _post_json(url, headers=headers, payload=payload)
+    if data.get("stop_reason") == "refusal":
+        raise RuntimeError("The model declined this request.")
+    blocks = data.get("content") or []
+    return "".join(b.get("text", "") for b in blocks if b.get("type") == "text")
+
+
+def _call_openai(system: str, user: str, model: str, max_tokens: int) -> str:
+    url = "https://api.openai.com/v1/chat/completions"
+    headers = {"Authorization": f"Bearer {_api_key()}", "content-type": "application/json"}
+    payload = {
+        "model": model,
+        "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+        "response_format": {"type": "json_object"},
+        "max_tokens": max_tokens,
+        "temperature": 0.2,
+    }
+    data = _post_json(url, headers=headers, payload=payload)
+    choices = data.get("choices") or []
+    if not choices:
+        raise RuntimeError("The model returned no answer.")
+    return (choices[0].get("message") or {}).get("content", "")
+
+
+def _call_ollama(system: str, user: str, model: str, max_tokens: int) -> str:
+    base = _base_url() or _DEFAULT_OLLAMA_BASE
+    url = f"{base.rstrip('/')}/api/chat"
+    payload = {
+        "model": model,
+        "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+        "format": "json",
+        "stream": False,
+        "options": {"temperature": 0.2, "num_predict": max_tokens},
+    }
+    data = _post_json(url, payload=payload)
+    return (data.get("message") or {}).get("content", "")
+
+
+_CALLERS = {
+    "gemini": _call_gemini,
+    "anthropic": _call_anthropic,
+    "openai": _call_openai,
+    "ollama": _call_ollama,
+}
+
+
+# --------------------------------------------------------------------------
+# The one shaped call, and the two entry points
+# --------------------------------------------------------------------------
+
+def _ask_json(system: str, user: str, *, max_tokens: int = 1500) -> dict[str, Any]:
+    """Ask the configured provider for a JSON object. Raises ``RuntimeError``
+    with a bench-friendly message on any failure so callers can surface it
+    verbatim."""
     ready = status()
     if not ready["available"]:
         raise RuntimeError(ready["reason"])
-    try:
-        import anthropic
-    except Exception as exc:  # pragma: no cover - covered by status()
-        raise RuntimeError("The 'anthropic' package is not installed.") from exc
-
-    client = anthropic.Anthropic(api_key=_api_key())
-    try:
-        resp = client.messages.create(
-            model=_model(),
-            max_tokens=max_tokens,
-            system=system,
-            output_config={
-                "format": {"type": "json_schema", "schema": schema},
-                "effort": "medium",
-            },
-            messages=[{"role": "user", "content": user}],
-        )
-    except anthropic.APIStatusError as exc:
-        raise RuntimeError(f"Claude API error ({exc.status_code}): {exc.message}") from exc
-    except anthropic.APIConnectionError as exc:
-        raise RuntimeError("Could not reach the Claude API (no internet?).") from exc
-    except Exception as exc:
-        raise RuntimeError(f"LLM request failed: {exc}") from exc
-
-    if getattr(resp, "stop_reason", None) == "refusal":
-        raise RuntimeError("The model declined this request.")
-    text = next((b.text for b in resp.content if getattr(b, "type", None) == "text"), "")
+    caller = _CALLERS[_provider()]
+    text = caller(system, user, _model(), max_tokens)
     data = parse_json_response(text)
     if not data:
         raise RuntimeError("The model did not return a usable answer.")
@@ -236,9 +313,9 @@ def interpret_message(activity: dict, samples: list[dict], context_hint: str = "
     hint = (context_hint or "").strip()
     if hint:
         user += f"\n\nVehicle/platform context from the technician: {hint}"
-    user += "\n\nInterpret this message."
-    data = _ask_json(_INTERPRET_SYSTEM, user, _INTERPRET_SCHEMA, max_tokens=1600)
-    return {"available": True, "model": _model(), **data}
+    user += "\n\nInterpret this message. " + _INTERPRET_SHAPE
+    data = _ask_json(_INTERPRET_SYSTEM, user, max_tokens=1600)
+    return {"available": True, "provider": _provider(), "model": _model(), **data}
 
 
 def suggest_name(candidate: dict, reference_hint: str = "", context_hint: str = "") -> dict[str, Any]:
@@ -247,6 +324,6 @@ def suggest_name(candidate: dict, reference_hint: str = "", context_hint: str = 
     hint = (context_hint or "").strip()
     if hint:
         user += f"\n\nVehicle/platform context from the technician: {hint}"
-    user += "\n\nPropose a name, unit, and description."
-    data = _ask_json(_NAME_SYSTEM, user, _NAME_SCHEMA, max_tokens=800)
-    return {"available": True, "model": _model(), **data}
+    user += "\n\nPropose a name, unit, and description. " + _NAME_SHAPE
+    data = _ask_json(_NAME_SYSTEM, user, max_tokens=800)
+    return {"available": True, "provider": _provider(), "model": _model(), **data}

@@ -13,35 +13,57 @@ from app.config import settings
 
 @pytest.fixture(autouse=True)
 def _clear_llm_settings(monkeypatch):
-    """Every test starts from an unconfigured provider unless it opts in."""
-    monkeypatch.setattr(settings, "llm_provider", "anthropic")
+    """Every test starts from the default provider (gemini), no key."""
+    monkeypatch.setattr(settings, "llm_provider", "gemini")
     monkeypatch.setattr(settings, "llm_api_key", "")
     monkeypatch.setattr(settings, "llm_model", "")
+    monkeypatch.setattr(settings, "llm_base_url", "")
+
+
+def test_default_provider_is_gemini():
+    assert llm._provider() == "gemini"
+    assert llm.PROVIDERS[0] == "gemini"
 
 
 def test_status_no_key_reports_unavailable():
     st = llm.status()
     assert st["available"] is False
+    assert st["provider"] == "gemini"
     assert "key" in st["reason"].lower()
-    assert st["model"] == llm.DEFAULT_MODEL
+    assert st["model"] == llm.DEFAULT_MODELS["gemini"]
 
 
-def test_status_unsupported_provider():
-    settings.llm_provider = "openai"
+def test_status_unknown_provider():
+    settings.llm_provider = "cohere"
     st = llm.status()
     assert st["available"] is False
-    assert "supported" in st["reason"].lower()
+    assert "provider" in st["reason"].lower()
 
 
-def test_model_falls_back_to_default_then_override():
-    assert llm._model() == llm.DEFAULT_MODEL
+def test_ollama_is_available_without_a_key():
+    settings.llm_provider = "ollama"
+    st = llm.status()
+    assert st["available"] is True
+    assert st["model"] == llm.DEFAULT_MODELS["ollama"]
+
+
+def test_model_default_is_per_provider_then_overridable():
+    assert llm._model() == llm.DEFAULT_MODELS["gemini"]
+    settings.llm_provider = "anthropic"
+    assert llm._model() == llm.DEFAULT_MODELS["anthropic"]
     settings.llm_model = "claude-haiku-4-5"
     assert llm._model() == "claude-haiku-4-5"
 
 
+def test_every_provider_has_a_default_model_and_caller():
+    for provider in llm.PROVIDERS:
+        assert provider in llm.DEFAULT_MODELS
+        assert provider in llm._CALLERS
+
+
 def test_interpret_without_key_raises_runtime_error():
     with pytest.raises(RuntimeError):
-        llm._ask_json("sys", "user", {"type": "object"})
+        llm._ask_json("sys", "user")
 
 
 def test_describe_message_includes_id_bytes_and_samples():

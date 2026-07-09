@@ -13,7 +13,7 @@ from typing import Any
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 APP_NAME = "AutoPi"
-APP_VERSION = "0.1.53"
+APP_VERSION = "0.1.54"
 
 # Where the setup page writes persisted settings and where state files live.
 _DEFAULT_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -37,6 +37,7 @@ _SAVEABLE = (
     "llm_provider",
     "llm_api_key",
     "llm_model",
+    "llm_base_url",
 )
 
 
@@ -77,11 +78,14 @@ class Settings(BaseSettings):
     ui_mode: str = "auto"
 
     # Optional AI assist for the Signal Finder (app/llm.py). Entirely optional:
-    # with no key the Signal Finder still works on statistics alone. Only the
-    # Anthropic Claude API is wired up today.
-    llm_provider: str = "anthropic"
+    # with no key the Signal Finder still works on statistics alone. Google
+    # Gemini is the default; Anthropic Claude, OpenAI, and a local Ollama server
+    # are also selectable. llm_base_url is only used by Ollama (defaults to the
+    # local server).
+    llm_provider: str = "gemini"
     llm_api_key: str = ""
     llm_model: str = ""
+    llm_base_url: str = ""
 
     def load_saved(self) -> None:
         """Layer settings.json over the current values (in place)."""

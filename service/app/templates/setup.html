@@ -378,28 +378,37 @@
 
         <div class="tab-pane fade" id="pane-ai" role="tabpanel" data-title="AI Assist">
           <div class="section-title"><i class="bi bi-stars"></i>AI Assist</div>
-          <p class="pane-intro">The Signal Finder works on its own with no account needed. Add a Claude
-            API key here and it can also suggest names and units for the signals it finds and interpret
-            what a message is carrying. Nothing is sent anywhere until you use one of those buttons, and
-            the key stays on this device.</p>
+          <p class="pane-intro">The Signal Finder works on its own with no account needed. Add an API key
+            here and it can also suggest names and units for the signals it finds and interpret what a
+            message is carrying. Nothing is sent anywhere until you use one of those buttons, and the key
+            stays on this device.</p>
           <div class="section-card">
-            <div class="subsection-title mb-2">Claude API</div>
+            <div class="subsection-title mb-2">AI provider</div>
             <label class="form-label">Provider</label>
             <select class="form-select" style="max-width: 16rem"
                     data-setting="llm_provider" data-type="str">
-              <option value="anthropic" {% if s.llm_provider == 'anthropic' or not s.llm_provider %}selected{% endif %}>Anthropic (Claude)</option>
+              <option value="gemini" {% if s.llm_provider == 'gemini' or not s.llm_provider %}selected{% endif %}>Google Gemini (default)</option>
+              <option value="anthropic" {% if s.llm_provider == 'anthropic' %}selected{% endif %}>Anthropic (Claude)</option>
+              <option value="openai" {% if s.llm_provider == 'openai' %}selected{% endif %}>OpenAI</option>
+              <option value="ollama" {% if s.llm_provider == 'ollama' %}selected{% endif %}>Ollama (local, no key)</option>
             </select>
             <label class="form-label mt-3">API key</label>
             <input type="password" class="form-control" style="max-width: 32rem"
                    data-setting="llm_api_key" data-type="str" value="{{ s.llm_api_key }}"
-                   placeholder="sk-ant-…" autocomplete="off">
-            <div class="form-text">Get a key at console.anthropic.com. Leave blank to turn the AI help off.</div>
+                   placeholder="paste your provider key" autocomplete="off">
+            <div class="form-text">Gemini: aistudio.google.com. Claude: console.anthropic.com. OpenAI:
+              platform.openai.com. Ollama needs no key. Leave blank to turn the AI help off.</div>
             <label class="form-label mt-3">Model</label>
             <input type="text" class="form-control" style="max-width: 24rem"
                    data-setting="llm_model" data-type="str" value="{{ s.llm_model }}"
-                   placeholder="claude-opus-4-8">
-            <div class="form-text">Leave blank for the default (claude-opus-4-8). Use claude-haiku-4-5 for a
-              faster, cheaper option.</div>
+                   placeholder="gemini-2.0-flash">
+            <div class="form-text">Leave blank for the provider default (Gemini: gemini-2.0-flash, Claude:
+              claude-opus-4-8, OpenAI: gpt-4o-mini, Ollama: llama3.1).</div>
+            <label class="form-label mt-3">Server URL (Ollama only, optional)</label>
+            <input type="text" class="form-control" style="max-width: 24rem"
+                   data-setting="llm_base_url" data-type="str" value="{{ s.llm_base_url }}"
+                   placeholder="http://localhost:11434">
+            <div class="form-text">Only used with Ollama. Leave blank for the local server.</div>
             <div class="mt-3">
               <button class="btn btn-primary btn-sm save-btn">Save</button>
               <button type="button" class="btn btn-outline-secondary btn-sm ms-2" id="ai-test-btn">Test</button>
