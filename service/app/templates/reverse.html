@@ -223,6 +223,31 @@
       }).catch(() => { if (statusEl) statusEl.textContent = 'Fire failed.'; });
   }
 
+  // Prove whether a candidate is a real command or just a status the module
+  // reports: listen to every bus at rest, inject the candidate for a moment, and
+  // report any byte that starts moving only while it is being sent.
+  function verifyControl(captureId, arbId, channel, byte, btnEl, statusEl) {
+    if (!captureId) { if (statusEl) statusEl.textContent = 'No capture to verify from.'; return; }
+    if (btnEl) { btnEl.disabled = true; }
+    if (statusEl) statusEl.textContent = 'Verifying ' + hex(arbId) + ': listening, then injecting for a few seconds…';
+    fetch('reverse/verify-control', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ capture_id: captureId, arbitration_id: arbId, channel: channel || '', byte: (byte == null ? null : byte) }) })
+      .then((r) => r.json()).then((d) => {
+        if (btnEl) { btnEl.disabled = false; }
+        if (!statusEl) return;
+        if (d.ok === false) { statusEl.innerHTML = '<span class="text-danger">' + esc(d.error || 'Verify failed') + '</span>'; return; }
+        if (d.effect) {
+          const list = (d.reactors || []).map((r) => hex(r.arbitration_id) + ' ' + esc(r.channel) + ' byte ' + r.byte).join(', ');
+          statusEl.innerHTML = '<span class="text-success">Effect detected. Injecting ' + hex(arbId)
+            + ' made these react: ' + esc(list) + '. This looks like a real command.</span>';
+        } else {
+          statusEl.innerHTML = '<span class="text-warning">No effect. Nothing on any bus reacted while ' + hex(arbId)
+            + ' was injected (' + d.injected + ' frames sent). This is almost certainly a status the module reports, '
+            + 'not the command. The command is likely a different message, often on another bus.</span>';
+        }
+      }).catch(() => { if (btnEl) { btnEl.disabled = false; } if (statusEl) statusEl.textContent = 'Verify failed.'; });
+  }
+
   // Find -> save -> cockpit in a couple presses. Opens a dialog prefilled with a
   // one-shot/periodic suggestion, creates a CAN action, and drops it on a cockpit.
   let caddCtx = null;
@@ -769,14 +794,20 @@
       huntReference = d.reference || [];
       const cands = (d.candidates || []).filter((c) => c.responded > 0);
       if (!cands.length) { huntResults.innerHTML = '<span class="text-secondary">Nothing reacted consistently. Try more presses, or a different control.</span>'; return; }
+      const kindBadge = (c) => c.kind === 'status'
+        ? '<span class="badge bg-secondary" title="' + esc(c.hint || '') + '">likely status</span>'
+        : '<span class="badge bg-info text-dark" title="' + esc(c.hint || '') + '">likely command</span>';
       huntResults.innerHTML = '<div class="mb-1">Reacted to your ' + d.events + ' presses:</div>'
-        + '<table class="table table-sm table-dark align-middle mb-0"><thead><tr><th>Message</th><th>Byte</th><th>Reacted</th><th></th></tr></thead><tbody>'
+        + '<table class="table table-sm table-dark align-middle mb-0"><thead><tr><th>Message</th><th>Byte</th><th>Reacted</th><th>Kind</th><th></th></tr></thead><tbody>'
         + cands.slice(0, 10).map((c, i) => '<tr><td class="mono">' + hex(c.arbitration_id) + (c.channel ? ' <span class="text-secondary">' + esc(c.channel) + '</span>' : '') + '</td>'
           + '<td>byte ' + c.byte + '</td><td>' + c.responded + '/' + c.events + '</td>'
+          + '<td>' + kindBadge(c) + '</td>'
           + '<td><button class="btn btn-success btn-sm me-1" data-addcp="' + i + '">Add to cockpit</button>'
           + '<button class="btn btn-outline-warning btn-sm me-1" data-fire="' + i + '">Test</button>'
+          + '<button class="btn btn-outline-info btn-sm me-1" data-verify="' + i + '">Verify effect</button>'
           + '<button class="btn btn-outline-primary btn-sm" data-hunt="' + i + '">Bits</button></td></tr>').join('')
-        + '</tbody></table>';
+        + '</tbody></table>'
+        + '<div class="small text-secondary mt-1">A "likely status" message is what a module reports, not the command that drives the actuator. Replaying it usually does nothing. Use "Verify effect" to inject it and see whether anything on any bus actually reacts.</div>';
       huntResults.querySelectorAll('[data-addcp]').forEach((b) => b.addEventListener('click', () => {
         const c = cands[parseInt(b.getAttribute('data-addcp'), 10)];
         openAddToCockpit(huntCaptures[c.channel], c.arbitration_id, c.byte, c.channel, hex(c.arbitration_id) + ' button');
@@ -784,6 +815,10 @@
       huntResults.querySelectorAll('[data-fire]').forEach((b) => b.addEventListener('click', () => {
         const c = cands[parseInt(b.getAttribute('data-fire'), 10)];
         fireFrame(huntCaptures[c.channel], c.arbitration_id, c.channel, c.byte, huntStatus);
+      }));
+      huntResults.querySelectorAll('[data-verify]').forEach((b) => b.addEventListener('click', () => {
+        const c = cands[parseInt(b.getAttribute('data-verify'), 10)];
+        verifyControl(huntCaptures[c.channel], c.arbitration_id, c.channel, c.byte, b, huntStatus);
       }));
       huntResults.querySelectorAll('[data-hunt]').forEach((b) => b.addEventListener('click', () => {
         const c = cands[parseInt(b.getAttribute('data-hunt'), 10)];

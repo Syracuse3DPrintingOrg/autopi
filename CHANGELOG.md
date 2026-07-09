@@ -6,6 +6,10 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ## [Unreleased]
 
+### Added
+
+- **Find a control now tells you whether you found a command or just a status.** Each result is labelled: a "likely status" is what a module reports (replaying it usually does nothing), while a "likely command" appears mainly when you act on the control. A new "Verify effect" button proves it: AutoPi listens to every bus at rest, injects the candidate for a few seconds, and tells you whether anything on any bus actually reacted. If nothing reacts, you found a status and the real command is a different message, usually on another bus.
+
 ### Changed
 
 - **Testing a found control no longer asks you to confirm first.** The Test button on the Signal Finder fires straight away so you can iterate quickly. It still only sends when you press it.

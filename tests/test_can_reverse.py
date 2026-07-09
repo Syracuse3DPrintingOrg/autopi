@@ -609,6 +609,54 @@ def test_event_responders_keeps_something_when_all_look_noisy():
     assert out, "must not return empty just because everything looked noisy"
 
 
+def test_event_responders_labels_status_vs_command():
+    # 0x100 is broadcast steadily the whole time (a status the module reports);
+    # its byte 2 just mirrors the press. 0x300 appears only around the marks (an
+    # event message, more likely the command itself).
+    events = [2.0, 5.0, 8.0]
+    records = []
+    for i in range(100):
+        ts = round(i * 0.1, 2)
+        pressed = any(e <= ts <= e + 0.3 for e in events)
+        # Steady broadcast, present at every tick.
+        records.append({"channel": "can1", "arbitration_id": 0x100,
+                        "data": [0, 0, 1 if pressed else 0], "timestamp": ts})
+        # Event message: only on the bus while pressed.
+        if pressed:
+            records.append({"channel": "can1", "arbitration_id": 0x300,
+                            "data": [1, 0], "timestamp": ts})
+    out = rev.event_responders(records, events, window=0.35)
+    by_id = {r["arbitration_id"]: r for r in out}
+    assert by_id[0x100]["kind"] == "status"
+    assert by_id[0x300]["kind"] == "event"
+
+
+def test_injection_reactors_finds_downstream_reaction():
+    # At rest only 0x111 byte 0 wanders. While injecting, 0x222 byte 3 starts
+    # moving: a downstream reaction to the injected command. The injected id
+    # itself (0x900) is excluded.
+    baseline = []
+    for i in range(20):
+        baseline.append({"channel": "can1", "arbitration_id": 0x111, "data": [i & 0xFF, 0], "timestamp": i})
+        baseline.append({"channel": "can1", "arbitration_id": 0x222, "data": [0, 0, 0, 7], "timestamp": i})
+    during = []
+    for i in range(20):
+        during.append({"channel": "can1", "arbitration_id": 0x111, "data": [i & 0xFF, 0], "timestamp": 100 + i})
+        during.append({"channel": "can1", "arbitration_id": 0x222, "data": [0, 0, 0, i & 0xFF], "timestamp": 100 + i})
+        during.append({"channel": "can1", "arbitration_id": 0x900, "data": [i & 0xFF], "timestamp": 100 + i})
+    reactors = rev.injection_reactors(baseline, during, exclude=("can1", 0x900))
+    assert {"channel": "can1", "arbitration_id": 0x222, "byte": 3} in reactors
+    assert all(r["arbitration_id"] != 0x900 for r in reactors)
+    assert all(r["arbitration_id"] != 0x111 for r in reactors)  # already moving at rest
+
+
+def test_injection_reactors_none_when_only_a_status_mirror():
+    # Nothing new moves during injection: the candidate did not cause an effect.
+    baseline = [{"channel": "can1", "arbitration_id": 0x50, "data": [0, 0], "timestamp": i} for i in range(10)]
+    during = [{"channel": "can1", "arbitration_id": 0x50, "data": [0, 0], "timestamp": 100 + i} for i in range(10)]
+    assert rev.injection_reactors(baseline, during, exclude=("can1", 0x999)) == []
+
+
 def test_event_responders_empty_inputs():
     assert rev.event_responders([], [1.0]) == []
     assert rev.event_responders([{"arbitration_id": 1, "data": [1], "timestamp": 0.0}], []) == []

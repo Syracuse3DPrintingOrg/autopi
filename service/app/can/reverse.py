@@ -472,10 +472,27 @@ def event_responders(records: list[dict], event_times: Sequence[float], *,
         best_score, best_byte = max(scored)
         if responded[best_byte] == 0:
             continue
+        # Status vs command: is this id broadcast steadily the whole time, or
+        # does it appear only around your presses? A byte on a steady broadcast
+        # that just tracks your press is usually the module reporting a STATUS,
+        # not the command that drives the actuator, so replaying it does nothing.
+        # A message that shows up only when you act is far more likely to be the
+        # command (or a request) itself.
+        away = sum(1 for t in times if all(abs(t - e) > window for e in events))
+        steady = away / len(times) if times else 0.0
+        kind = "status" if steady > 0.5 else "event"
+        hint = ("Looks like a status the module broadcasts, not the command. "
+                "Replaying it rarely does anything; the command is usually a "
+                "different message, often on another bus."
+                if kind == "status" else
+                "Appears mainly when you act, so this is more likely the command "
+                "itself. Test it, and if nothing happens see the contention and "
+                "checksum notes.")
         results.append({
             "channel": channel, "arbitration_id": arb, "byte": best_byte,
             "responded": responded[best_byte], "events": total,
             "baseline": round(flip_rate[best_byte], 3), "score": round(best_score, 3),
+            "kind": kind, "steady": round(steady, 3), "hint": hint,
         })
 
     # A byte that changes on almost every frame on its own is a data stream or a
@@ -489,6 +506,43 @@ def event_responders(records: list[dict], event_times: Sequence[float], *,
 
     results.sort(key=lambda r: (-r["score"], -r["responded"]))
     return results[:max_results]
+
+
+def _changing_bytes(records: list[dict]) -> set[tuple]:
+    """Set of ``(channel, arbitration_id, byte)`` that took more than one value
+    across ``records``. Used to compare a bus at rest against the same bus while
+    a candidate is being injected. Pure."""
+    seen: dict[tuple, set] = {}
+    for r in records:
+        key0 = (r.get("channel"), r.get("arbitration_id"))
+        data = list(r.get("data") or [])
+        for b, val in enumerate(data):
+            seen.setdefault((key0[0], key0[1], b), set()).add(int(val))
+    return {k for k, vals in seen.items() if len(vals) > 1}
+
+
+def injection_reactors(baseline_records: list[dict], inject_records: list[dict],
+                       *, exclude: tuple | None = None) -> list[dict]:
+    """Find bytes that started changing only while a candidate was being injected.
+
+    Compares which ``(channel, arbitration_id, byte)`` change on their own
+    (``baseline_records``, the bus at rest) against which change while the
+    candidate frame is being sent (``inject_records``). A byte that is steady at
+    rest but moves during injection is a downstream reaction, which is real
+    evidence the injected frame is a command that does something rather than a
+    status mirror. ``exclude`` is the injected id itself (``(channel, arb)``), so
+    the frame you are sending does not count as its own effect. Pure and offline.
+    """
+    at_rest = _changing_bytes(baseline_records)
+    while_injecting = _changing_bytes(inject_records)
+    new = while_injecting - at_rest
+    reactors = []
+    for channel, arb, byte in new:
+        if exclude is not None and (channel, arb) == exclude:
+            continue
+        reactors.append({"channel": channel, "arbitration_id": arb, "byte": byte})
+    reactors.sort(key=lambda r: (str(r["channel"]), r["arbitration_id"], r["byte"]))
+    return reactors
 
 
 def _default_signal_decode(dbc_text: str, arbitration_id: int, data: bytes) -> dict:

@@ -621,6 +621,89 @@ def hunt_stop():
             "candidates": candidates, "capture_ids": capture_ids, "reference": reference}
 
 
+class VerifyControlIn(BaseModel):
+    capture_id: str
+    arbitration_id: int
+    channel: str
+    byte: int | None = None
+    baseline_s: float = 1.2
+    inject_s: float = 1.5
+    period_ms: int = 20
+
+
+@router.post("/verify-control")
+def verify_control_route(body: VerifyControlIn):
+    """Prove whether a found control is a real command or just a status mirror.
+
+    Listens to every bus at rest, then injects the candidate for a moment while
+    still listening, and reports any byte that starts moving only while the
+    candidate is being sent. A downstream reaction means the frame actually does
+    something; no reaction means it is almost certainly a status the module
+    reports and the real command is elsewhere. This transmits on a live bus, so
+    it is a deliberate action."""
+    from ..can import Frame, detect
+    from ..can import overlay as ov
+    capture = _capture_or_404(body.capture_id)
+    frames = _frames_for_id(capture, body.arbitration_id)
+    if not frames:
+        raise HTTPException(404, "No frames with that id in this capture")
+    provider = get_channel(body.channel, backend=capture.get("backend") or "socketcan")
+    if not provider.available:
+        return {"ok": False, "error": getattr(provider, "last_error", None) or f"{body.channel} is not available."}
+
+    template = _pick_active_frame(frames, body.byte)
+    template_data = list(template.get("data") or [])
+    is_fd = bool(template.get("is_fd"))
+    is_extended_id = bool(template.get("is_extended_id"))
+    if body.byte is None:
+        send_data = template_data
+    else:
+        spec = ov.derive_mask(frames, body.byte)
+        send_data = ov.apply_overlay(template_data, spec["byte"], spec["mask"], spec["active"])
+    send_frame = Frame(arbitration_id=body.arbitration_id, data=send_data,
+                       is_fd=is_fd, is_extended_id=is_extended_id)
+
+    channels = [i["name"] for i in detect.list_can_interfaces() if i.get("up")] or [body.channel]
+    started = []
+    for ch in channels:
+        session = cap.get_inhale_session(ch, backend="socketcan",
+                                         channel_factory=_capture_factory(ch, "socketcan"))
+        if session.start(f"verify {ch}"):
+            started.append(ch)
+    if not started:
+        return {"ok": False, "error": "Could not listen on any bus (a capture may already be running)."}
+
+    injected = 0
+    try:
+        time.sleep(max(0.0, min(5.0, body.baseline_s)))
+        inject_start = time.time()
+        period = max(0.005, body.period_ms / 1000.0)
+        deadline = inject_start + max(0.1, min(5.0, body.inject_s))
+        while time.time() < deadline:
+            try:
+                if provider.send(send_frame):
+                    injected += 1
+            except Exception:
+                break
+            time.sleep(period)
+    finally:
+        records: list[dict] = []
+        for ch in started:
+            session = cap.get_inhale_session(ch, backend="socketcan")
+            saved = session.stop()
+            for frame in (saved or {}).get("frames") or []:
+                rec_frame = dict(frame)
+                rec_frame["channel"] = ch
+                records.append(rec_frame)
+
+    baseline = [r for r in records if float(r.get("timestamp", 0.0)) < inject_start]
+    during = [r for r in records if float(r.get("timestamp", 0.0)) >= inject_start]
+    reactors = rev.injection_reactors(baseline, during, exclude=(body.channel, body.arbitration_id))
+    return {"ok": True, "channel": body.channel, "arbitration_id": body.arbitration_id,
+            "injected": injected, "buses": started, "data": send_data,
+            "effect": bool(reactors), "reactors": reactors[:25]}
+
+
 # --------------------------------------------------------------------------
 # Optional LLM assist (app/llm.py): name and interpret signals. Every route
 # degrades to {"available": False, ...} when no API key is configured, so the
