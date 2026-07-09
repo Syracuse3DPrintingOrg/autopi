@@ -6,6 +6,21 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ## [Unreleased]
 
+### Fixed
+
+- **The CAN HAT interfaces now keep the board's names.** The kernel used to name
+  the Waveshare HAT's two ports in whatever order it found them, which often
+  landed Linux "can0" on the board's CAN1 connector and vice versa, so the app,
+  the monitor, and `ip` all disagreed with the label printed on the board. Setup
+  now pins each name to its physical port, so can0 is the board's CAN0 connector
+  and can1 is CAN1. Re-run the CAN setup and reboot once to apply it. This also
+  fixes captures that "produced nothing" while the monitor saw traffic: they were
+  running on the other, quiet port.
+- **Captures on a CAN-FD bus set up outside the app no longer come back empty.**
+  If a bus was brought up in CAN-FD mode by the boot service (not the in-app
+  interface form), a capture on it opened a plain socket that never receives FD
+  frames. The app now notices an FD link and opens it in FD mode either way.
+
 ### Added
 
 - **Optional AI help in the Signal Finder.** Add an API key under Settings, AI

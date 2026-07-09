@@ -9,9 +9,16 @@ way. ``lin`` and ``doip`` are registered as NOT-YET-IMPLEMENTED stubs (see
 """
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from .base import CanProvider
+
+# The kernel's CAN-FD frame MTU. A link brought up "fd on" has MTU 72; a classic
+# CAN link has MTU 16. A classic SocketCAN socket never receives a bus's FD
+# frames, so we must open FD sockets on an FD link even when the app has no saved
+# interface config for it.
+_CANFD_MTU = 72
 from .doip import DoipProvider
 from .lin import LinProvider
 from .pcan import PcanProvider
@@ -62,6 +69,18 @@ def create_provider(backend: str, channel: str, **kwargs: Any) -> CanProvider:
     return cls(channel, **kwargs)
 
 
+def _link_is_fd(channel: str, sysfs_root: str = "/sys/class/net") -> bool:
+    """Whether a live SocketCAN link is up in CAN-FD mode, read from its MTU.
+    Lets a bus brought up in FD mode outside the app (the boot bring-up service,
+    or a manual ``ip link``) still be opened in FD mode, so a capture on it is
+    not a silent classic socket that receives nothing."""
+    try:
+        mtu = int(Path(f"{sysfs_root}/{channel}/mtu").read_text().strip())
+    except (OSError, ValueError):
+        return False
+    return mtu >= _CANFD_MTU
+
+
 def _configured_settings(channel: str, backend: str) -> dict[str, Any]:
     """The fd/bitrate a configured interface uses, so any caller opens the bus
     the way the user set it up. A CAN-FD bus MUST be opened with fd=True or the
@@ -80,6 +99,11 @@ def _configured_settings(channel: str, backend: str) -> dict[str, Any]:
                 return out
     except Exception:
         pass
+    # No saved app config for this channel. For a SocketCAN link, still default
+    # fd from the live link's MTU so a capture or the monitor opens FD mode on an
+    # FD bus instead of a classic socket that would receive nothing.
+    if backend == "socketcan" and _link_is_fd(channel):
+        return {"fd": True}
     return {}
 
 
