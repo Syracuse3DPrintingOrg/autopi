@@ -8,6 +8,20 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **Find a button and put it on the cockpit in a couple of presses.** In the
+  Signal Finder's "Find a control", each result now has an "Add to cockpit"
+  button: it turns the found message into a CAN-send button and drops it on a
+  cockpit (existing or new) in one step, ready to press. The same button is on
+  the save dialog for a bit-searched signal.
+- **Send once or keep sending, with a suggestion.** When you add a found message
+  to the cockpit, you choose whether the key sends it once per press (one-shot) or
+  keeps sending it at a set rate and toggles on/off (needed for controls the ECU
+  expects every cycle). AutoPi suggests which to use based on how often the
+  message is already on the bus. A repeat rate is now a field on the CAN action
+  driver too.
+
+### Added
+
 - **Auto cross-correlation: find proprietary copies of signals you already
   decode.** In the Signal Finder, one button checks every signal your active
   database already decodes against a capture and lists unknown fields that mirror

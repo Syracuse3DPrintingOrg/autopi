@@ -8,17 +8,21 @@ plain lists of frame records and reference points.
 """
 from __future__ import annotations
 
+import re
 import time
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from .. import llm
+from ..actions import registry as action_registry
+from ..actions.registry import ActionSpec
 from ..can import capture as cap
 from ..can import get_channel
 from ..can import registry as can_registry
 from ..can import reverse as rev
 from ..db import CanDatabase, session_scope
+from ..services import cockpit as cockpit_svc
 from ..services import ref_recorder as rec
 
 router = APIRouter(prefix="/reverse", tags=["can-reverse"])
@@ -455,6 +459,80 @@ def fire_route(body: FireIn):
     if not sent:
         return {"ok": False, "error": "The interface did not accept the frame (is it up?)."}
     return {"ok": True, "channel": channel, "arbitration_id": body.arbitration_id, "data": data}
+
+
+def _send_suggestion(frames: list[dict]) -> dict:
+    """Suggest one-shot vs periodic from how often the message is on the bus. A
+    message sent many times a second is usually a state the ECU expects every
+    cycle (periodic to have effect); a sparse message is a one-off event."""
+    ts = sorted(float(f.get("timestamp", 0.0)) for f in frames)
+    if len(ts) < 3 or (ts[-1] - ts[0]) <= 0:
+        return {"mode": "oneshot", "period_ms": 0, "rate_hz": 0.0,
+                "reason": "This message appears rarely, so a single send per press is likely right."}
+    rate = (len(ts) - 1) / (ts[-1] - ts[0])
+    if rate >= 5:
+        period = max(10, int(round((1000.0 / rate) / 10.0)) * 10)
+        return {"mode": "periodic", "period_ms": period, "rate_hz": round(rate, 1),
+                "reason": f"This message is sent about {round(rate)} times a second, so it likely needs to be "
+                          f"sent continuously (every {period} ms) to have an effect."}
+    return {"mode": "oneshot", "period_ms": 0, "rate_hz": round(rate, 1),
+            "reason": "This message appears only occasionally, so sending it once per press is likely right."}
+
+
+class SendSuggestionIn(BaseModel):
+    capture_id: str
+    arbitration_id: int
+
+
+@router.post("/send-suggestion")
+def send_suggestion_route(body: SendSuggestionIn):
+    capture = _capture_or_404(body.capture_id)
+    frames = _frames_for_id(capture, body.arbitration_id)
+    if not frames:
+        raise HTTPException(404, "No frames with that id in this capture")
+    return _send_suggestion(frames)
+
+
+class AddToCockpitIn(BaseModel):
+    capture_id: str
+    arbitration_id: int
+    channel: str = ""
+    byte: int | None = None
+    name: str
+    period_ms: int = 0
+    cockpit_id: int | None = None
+    new_cockpit_name: str = ""
+
+
+@router.post("/add-to-cockpit")
+def add_to_cockpit_route(body: AddToCockpitIn):
+    """Find -> save -> cockpit in one call: make a CAN-send action from the
+    found message (one-shot or periodic) and drop it on a cockpit as a key."""
+    capture = _capture_or_404(body.capture_id)
+    frames = _frames_for_id(capture, body.arbitration_id)
+    if not frames:
+        raise HTTPException(404, "No frames with that id in this capture")
+    channel = body.channel or capture.get("channel") or "can0"
+    frame = _pick_active_frame(frames, body.byte)
+    data_hex = " ".join(f"{int(b) & 0xFF:02X}" for b in (frame.get("data") or []))
+    name = (body.name or "").strip() or f"CAN {body.arbitration_id:X}"
+    slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")[:32] or "can"
+    action_id = f"can_{slug}_{body.arbitration_id:X}"
+    action_registry.upsert_action(ActionSpec.from_dict({
+        "id": action_id, "label": name, "driver": "can",
+        "params": {"channel": channel, "arbitration_id": f"0x{body.arbitration_id:X}",
+                   "data": data_hex, "is_fd": bool(frame.get("is_fd")),
+                   "is_extended_id": bool(frame.get("is_extended_id")),
+                   "period_ms": int(body.period_ms or 0)},
+        "icon": "bi-dpad-fill", "color": "#F2006E", "category": "CAN",
+    }))
+    if body.cockpit_id:
+        cockpit_id = body.cockpit_id
+    else:
+        cockpit_id = cockpit_svc.create_cockpit(name=(body.new_cockpit_name or "My cockpit"))["id"]
+    element = cockpit_svc.add_element(cockpit_id, {"type": "key", "action_id": action_id, "label": name})
+    return {"ok": True, "action_id": action_id, "cockpit_id": cockpit_id,
+            "periodic": bool(body.period_ms), "data": data_hex, "element": element}
 
 
 # --------------------------------------------------------------------------

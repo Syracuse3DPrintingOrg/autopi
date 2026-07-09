@@ -163,12 +163,36 @@
     <label class="form-label small mb-1">Unit (optional)</label>
     <input type="text" class="form-control form-control-sm mb-3" id="save-unit" placeholder="km/h">
     <button class="btn btn-primary btn-sm" id="save-confirm">Save signal</button>
+    <button class="btn btn-success btn-sm ms-2" id="save-addcp">Add to cockpit</button>
     <button class="btn btn-outline-warning btn-sm ms-2" id="save-fire">Test (fire)</button>
     {% if llm_configured %}
     <button class="btn btn-outline-info btn-sm ms-2" id="save-ai-name">Suggest name (AI)</button>
     {% endif %}
     <span id="save-status" class="small ms-2"></span>
     <div id="save-ai-out" class="small text-secondary mt-2"></div>
+  </div>
+</div></div></div>
+
+<div class="modal fade" id="cockpit-add-modal" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+  <div class="modal-body">
+    <h6 class="mb-2">Add this button to a cockpit</h6>
+    <div id="cadd-summary" class="small text-secondary mb-2"></div>
+    <label class="form-label small mb-1">Button label</label>
+    <input type="text" class="form-control form-control-sm mb-2" id="cadd-name" placeholder="Volume up">
+    <label class="form-label small mb-1">When pressed</label>
+    <div class="mb-1">
+      <div class="form-check"><input class="form-check-input" type="radio" name="cadd-mode" id="cadd-oneshot" value="oneshot" checked>
+        <label class="form-check-label small" for="cadd-oneshot">Send once per press (one-shot)</label></div>
+      <div class="form-check"><input class="form-check-input" type="radio" name="cadd-mode" id="cadd-periodic" value="periodic">
+        <label class="form-check-label small" for="cadd-periodic">Keep sending while on, every
+          <input type="number" class="form-control form-control-sm d-inline-block" style="width:5rem" id="cadd-period" value="100"> ms (toggle)</label></div>
+    </div>
+    <div id="cadd-suggestion" class="small text-info mb-2"></div>
+    <label class="form-label small mb-1">Cockpit</label>
+    <select class="form-select form-select-sm mb-2" id="cadd-cockpit"></select>
+    <input type="text" class="form-control form-control-sm mb-2 d-none" id="cadd-newname" placeholder="New cockpit name">
+    <button class="btn btn-primary btn-sm" id="cadd-confirm">Add to cockpit</button>
+    <span id="cadd-status" class="small ms-2"></span>
   </div>
 </div></div></div>
 {% endblock %}
@@ -200,6 +224,58 @@
           : '<span class="text-danger">' + esc(d.error || 'Fire failed') + '</span>';
       }).catch(() => { if (statusEl) statusEl.textContent = 'Fire failed.'; });
   }
+
+  // Find -> save -> cockpit in a couple presses. Opens a dialog prefilled with a
+  // one-shot/periodic suggestion, creates a CAN action, and drops it on a cockpit.
+  let caddCtx = null;
+  function openAddToCockpit(captureId, arbId, byte, channel, defaultName) {
+    if (!captureId) { alert('No capture to build this button from.'); return; }
+    caddCtx = { captureId, arbId, byte, channel };
+    document.getElementById('cadd-name').value = defaultName || ('CAN ' + hex(arbId));
+    document.getElementById('cadd-summary').innerHTML = 'Message ' + hex(arbId) + (channel ? ' on ' + esc(channel) : '')
+      + '. The key sends the frame captured when the control was active.';
+    document.getElementById('cadd-status').textContent = '';
+    document.getElementById('cadd-suggestion').textContent = '';
+    document.getElementById('cadd-oneshot').checked = true;
+    fetch('reverse/send-suggestion', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ capture_id: captureId, arbitration_id: arbId }) })
+      .then((r) => r.json()).then((s) => {
+        if (s.mode === 'periodic') { document.getElementById('cadd-periodic').checked = true; document.getElementById('cadd-period').value = s.period_ms || 100; }
+        if (s.reason) document.getElementById('cadd-suggestion').textContent = 'Suggestion: ' + s.reason;
+      }).catch(() => {});
+    fetch('cockpit').then((r) => r.json()).then((d) => {
+      const cps = d.cockpits || [];
+      document.getElementById('cadd-cockpit').innerHTML =
+        cps.map((c) => '<option value="' + c.id + '">' + esc(c.name) + '</option>').join('')
+        + '<option value="new">＋ New cockpit…</option>';
+      document.getElementById('cadd-newname').classList.toggle('d-none', cps.length > 0);
+    }).catch(() => {});
+    new bootstrap.Modal(document.getElementById('cockpit-add-modal')).show();
+  }
+  document.getElementById('cadd-cockpit').addEventListener('change', (e) => {
+    document.getElementById('cadd-newname').classList.toggle('d-none', e.target.value !== 'new');
+  });
+  document.getElementById('cadd-confirm').addEventListener('click', () => {
+    const st = document.getElementById('cadd-status');
+    if (!caddCtx) return;
+    const periodic = document.getElementById('cadd-periodic').checked;
+    const body = {
+      capture_id: caddCtx.captureId, arbitration_id: caddCtx.arbId,
+      byte: (caddCtx.byte == null ? null : caddCtx.byte), channel: caddCtx.channel || '',
+      name: document.getElementById('cadd-name').value.trim(),
+      period_ms: periodic ? (parseInt(document.getElementById('cadd-period').value, 10) || 100) : 0,
+    };
+    const cp = document.getElementById('cadd-cockpit').value;
+    if (cp === 'new' || !cp) body.new_cockpit_name = document.getElementById('cadd-newname').value.trim() || 'My cockpit';
+    else body.cockpit_id = parseInt(cp, 10);
+    st.textContent = 'Adding…';
+    fetch('reverse/add-to-cockpit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .then((r) => r.json()).then((d) => {
+        st.innerHTML = d.ok
+          ? '<span class="text-success">Added' + (d.periodic ? ' (toggles periodic send)' : '') + '. <a href="ui/cockpit/' + d.cockpit_id + '" target="_blank">Open the cockpit</a></span>'
+          : '<span class="text-danger">' + esc(d.error || 'Failed') + '</span>';
+      }).catch(() => { st.textContent = 'Failed.'; });
+  });
   let recordedReference = null;
   let recordedMode = null;
 
@@ -563,6 +639,11 @@
     fireFrame(captureEl.value, currentCandidate.arbitration_id, '',
       Math.floor((currentCandidate.start_bit || 0) / 8), document.getElementById('save-status'));
   });
+  document.getElementById('save-addcp').addEventListener('click', () => {
+    if (!currentCandidate) return;
+    openAddToCockpit(captureEl.value, currentCandidate.arbitration_id,
+      Math.floor((currentCandidate.start_bit || 0) / 8), '', document.getElementById('save-name').value.trim());
+  });
 
   const interpretBtn = document.getElementById('interpret-ai');
   if (interpretBtn) interpretBtn.addEventListener('click', () => {
@@ -694,9 +775,14 @@
         + '<table class="table table-sm table-dark align-middle mb-0"><thead><tr><th>Message</th><th>Byte</th><th>Reacted</th><th></th></tr></thead><tbody>'
         + cands.slice(0, 10).map((c, i) => '<tr><td class="mono">' + hex(c.arbitration_id) + (c.channel ? ' <span class="text-secondary">' + esc(c.channel) + '</span>' : '') + '</td>'
           + '<td>byte ' + c.byte + '</td><td>' + c.responded + '/' + c.events + '</td>'
-          + '<td><button class="btn btn-outline-primary btn-sm me-1" data-hunt="' + i + '">Search bits</button>'
-          + '<button class="btn btn-outline-warning btn-sm" data-fire="' + i + '">Test (fire)</button></td></tr>').join('')
+          + '<td><button class="btn btn-success btn-sm me-1" data-addcp="' + i + '">Add to cockpit</button>'
+          + '<button class="btn btn-outline-warning btn-sm me-1" data-fire="' + i + '">Test</button>'
+          + '<button class="btn btn-outline-primary btn-sm" data-hunt="' + i + '">Bits</button></td></tr>').join('')
         + '</tbody></table>';
+      huntResults.querySelectorAll('[data-addcp]').forEach((b) => b.addEventListener('click', () => {
+        const c = cands[parseInt(b.getAttribute('data-addcp'), 10)];
+        openAddToCockpit(huntCaptures[c.channel], c.arbitration_id, c.byte, c.channel, hex(c.arbitration_id) + ' button');
+      }));
       huntResults.querySelectorAll('[data-fire]').forEach((b) => b.addEventListener('click', () => {
         const c = cands[parseInt(b.getAttribute('data-fire'), 10)];
         fireFrame(huntCaptures[c.channel], c.arbitration_id, c.channel, c.byte, huntStatus);

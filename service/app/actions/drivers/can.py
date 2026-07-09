@@ -41,6 +41,10 @@ class CanDriver(Driver):
          "default": False},
         {"key": "is_extended_id", "label": "Extended (29-bit) id", "type": "bool",
          "required": False, "default": False},
+        {"key": "period_ms", "label": "Repeat every (ms, 0 = one-shot)", "type": "number",
+         "required": False, "default": 0,
+         "help": "0 sends the frame once per press. A value keeps sending it at that rate "
+                 "and the key toggles it on/off (needed for controls the ECU expects every cycle)."},
     ]
 
     @property
@@ -68,6 +72,23 @@ class CanDriver(Driver):
             return DriverResult.failure(error)
 
         channel_name = frame_params["channel"]
+
+        # A repeat rate turns this into a toggle: press once to start sending the
+        # frame every period_ms (to hold a control state), press again to stop.
+        try:
+            period_ms = int(params.get("period_ms") or 0)
+        except (TypeError, ValueError):
+            period_ms = 0
+        if period_ms > 0:
+            from app.services import can_tx
+            now_on = can_tx.toggle(channel_name, frame_params["arbitration_id"], frame_params["data"],
+                                   period_ms=period_ms, is_fd=frame_params["is_fd"],
+                                   is_extended_id=frame_params["is_extended_id"])
+            return DriverResult.success(
+                (f"Sending {frame.format()} on {channel_name} every {period_ms} ms" if now_on
+                 else f"Stopped sending {frame.format()} on {channel_name}"),
+                periodic=now_on, **frame_params)
+
         channel = get_channel(channel_name)
         if not channel.available:
             return DriverResult.success(
