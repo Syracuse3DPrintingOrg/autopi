@@ -8,6 +8,10 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **The Signal Finder now spots protected messages and rebuilds valid frames.** Many command messages carry a rolling counter and a checksum, and the vehicle rejects any frame whose counter does not advance or whose checksum is wrong, which is why a plain replay (even flooded) does nothing. A found control that is protected now shows a "protected" badge, and Test and Flood regenerate each frame with a fresh, advancing counter and a recomputed checksum so it can be accepted. If the checksum uses a scheme AutoPi does not recognize yet, the badge warns you that the vehicle may still drop it, so you are not left guessing.
+
+### Added
+
 - **Pick which databases your vehicle uses, right on the Databases page.** With a vehicle selected in the top bar, each installed database shows a "Use with" button, and the ones already in use carry an "In use" badge with a one-click Remove. The choice is saved with the vehicle, so its linked databases follow it everywhere.
 - **Flood a command to out-rate the real sender.** Some controls are broadcast continuously by another module, so sending your found command once loses to the next real frame and nothing happens. The Signal Finder now has a "Flood 1s" button that sends the command every 10 ms for a second to win that contest, and a control saved to a cockpit can be set to flood on each press (a "Flood on press" option on the CAN action). This is what a momentary command like mute usually needs.
 

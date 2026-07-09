@@ -471,20 +471,27 @@ def fire_route(body: FireIn):
         spec = ov.derive_mask(frames, body.byte)
         data, source = ov.overlaid_data(provider, body.arbitration_id, spec["byte"],
                                         spec["mask"], spec["active"], template=template_data)
-    # Flood: out-rate the genuine broadcaster for a short window so the command
-    # is accepted, instead of a single send that the next real frame overwrites.
+    # If the message carries a rolling counter and/or checksum, an ECU rejects a
+    # frame whose counter is stale or whose checksum is wrong (overlaying a bit
+    # breaks it). Regenerate a valid frame: fix the checksum for a single send,
+    # and advance the counter per frame during a flood.
+    protection = rev.message_protection([list(f.get("data") or []) for f in frames[:120]],
+                                        body.arbitration_id)
     if body.burst_ms and body.burst_ms > 0:
         from ..services import can_tx
         period = max(2, int(body.period_ms or 10))
         duration = min(5000, int(body.burst_ms))
         n = can_tx.burst(channel, body.arbitration_id, data, period_ms=period,
-                         duration_ms=duration, is_fd=is_fd, is_extended_id=is_extended_id)
+                         duration_ms=duration, is_fd=is_fd, is_extended_id=is_extended_id,
+                         protection=protection if protection["protected"] else None)
         if n == 0:
             return {"ok": False, "error": f"Could not flood 0x{body.arbitration_id:X} on {channel} "
                     "(interface not accepting the frame; classic vs CAN-FD?)."}
         return {"ok": True, "channel": channel, "arbitration_id": body.arbitration_id,
                 "data": data, "source": source, "mode": "burst", "injected": n,
-                "period_ms": period, "burst_ms": duration}
+                "period_ms": period, "burst_ms": duration, "protected": protection["protected"]}
+    if protection["protected"]:
+        data = rev.apply_protection(data, body.arbitration_id, protection, tick=0)
     try:
         sent = provider.send(Frame(arbitration_id=body.arbitration_id, data=data,
                                    is_fd=is_fd, is_extended_id=is_extended_id))
@@ -493,7 +500,7 @@ def fire_route(body: FireIn):
     if not sent:
         return {"ok": False, "error": "The interface did not accept the frame (is it up?)."}
     return {"ok": True, "channel": channel, "arbitration_id": body.arbitration_id,
-            "data": data, "source": source, "mode": "single"}
+            "data": data, "source": source, "mode": "single", "protected": protection["protected"]}
 
 
 def _send_suggestion(frames: list[dict]) -> dict:

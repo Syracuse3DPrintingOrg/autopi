@@ -747,3 +747,41 @@ def test_cross_correlate_finds_a_mirrored_signal():
     assert matches[0]["match_id"] == 0x200
     assert matches[0]["known_signal"] == "SPEED"
     assert matches[0]["match_id"] != matches[0]["known_id"]  # never matches itself
+
+
+def test_detect_counter_full_byte_and_nibble():
+    full = [[i % 256, 0x10, 0x20] for i in range(12)]
+    c = rev.detect_counter(full)
+    assert c == {"byte": 0, "mod": 256, "nibble": False}
+    # Low nibble counts 0..15 while the high nibble changes independently, so the
+    # full byte does not increment by one but the low nibble does.
+    nib = [[(((i * 3) % 16) << 4) | (i % 16), 0x10] for i in range(20)]
+    c = rev.detect_counter(nib)
+    assert c == {"byte": 0, "mod": 16, "nibble": True}
+    assert rev.detect_counter([[0, 0], [0, 0], [0, 0], [0, 0]]) is None  # static, no counter
+
+
+def test_identify_checksum_sum8_and_apply():
+    # byte 3 is an 8-bit sum of bytes 0..2 (and it varies).
+    payloads = []
+    for i in range(10):
+        b0, b1, b2 = (i * 7) & 0xFF, (i * 3) & 0xFF, (i * 5) & 0xFF
+        payloads.append([b0, b1, b2, (b0 + b1 + b2) & 0xFF])
+    cs = rev.identify_checksum(payloads, 0x123)
+    assert cs == {"byte": 3, "algorithm": "sum8"}
+    prot = rev.message_protection(payloads, 0x123)
+    assert prot["protected"] and prot["checksum"]["byte"] == 3
+    # Overlaying a bit on byte 0 must trigger a recomputed checksum.
+    fixed = rev.apply_protection([0x10, 0x00, 0x00, 0x99], 0x123, prot, tick=0)
+    assert fixed[3] == (0x10 + 0x00 + 0x00) & 0xFF
+
+
+def test_apply_protection_advances_counter_each_tick():
+    prot = {"counter": {"byte": 0, "mod": 256, "nibble": False}, "checksum": None, "protected": True}
+    assert rev.apply_protection([5, 1, 2], 0x1, prot, tick=0)[0] == 5
+    assert rev.apply_protection([5, 1, 2], 0x1, prot, tick=3)[0] == 8
+    assert rev.apply_protection([254, 0], 0x1, prot, tick=3)[0] == 1  # wraps mod 256
+
+
+def test_apply_protection_noop_without_protection():
+    assert rev.apply_protection([1, 2, 3], 0x1, None, tick=5) == [1, 2, 3]

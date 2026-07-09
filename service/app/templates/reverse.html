@@ -803,11 +803,22 @@
       const kindBadge = (c) => c.kind === 'status'
         ? '<span class="badge bg-secondary" title="' + esc(c.hint || '') + '">likely status</span>'
         : '<span class="badge bg-info text-dark" title="' + esc(c.hint || '') + '">likely command</span>';
+      const protBadge = (c) => {
+        if (!c.protected || !c.protection) return '';
+        const p = c.protection;
+        const bits = [];
+        if (p.counter) bits.push('counter@byte' + p.counter.byte);
+        if (p.checksum) bits.push('checksum@byte' + p.checksum.byte + ' (' + esc(p.checksum.algorithm) + ')');
+        return ' <span class="badge bg-warning text-dark" title="This message is protected by a rolling '
+          + 'counter and/or checksum: ' + bits.join(', ') + '. A plain replay is rejected; Test and Flood '
+          + 'regenerate a valid counter and checksum, but if the checksum is a scheme AutoPi does not know, '
+          + 'the ECU will still drop it.">protected</span>';
+      };
       huntResults.innerHTML = '<div class="mb-1">Reacted to your ' + d.events + ' presses:</div>'
         + '<table class="table table-sm table-dark align-middle mb-0"><thead><tr><th>Message</th><th>Byte</th><th>Reacted</th><th>Kind</th><th></th></tr></thead><tbody>'
         + cands.slice(0, 10).map((c, i) => '<tr><td class="mono">' + hex(c.arbitration_id) + (c.channel ? ' <span class="text-secondary">' + esc(c.channel) + '</span>' : '') + '</td>'
           + '<td>' + (c.byte == null ? '<span class="text-info" title="This whole message appears when you act">appears</span>' : 'byte ' + c.byte) + '</td><td>' + c.responded + '/' + c.events + '</td>'
-          + '<td>' + kindBadge(c) + '</td>'
+          + '<td>' + kindBadge(c) + protBadge(c) + '</td>'
           + '<td><button class="btn btn-success btn-sm me-1" data-addcp="' + i + '">Add to cockpit</button>'
           + '<button class="btn btn-outline-warning btn-sm me-1" data-fire="' + i + '">Test</button>'
           + '<button class="btn btn-outline-warning btn-sm me-1" data-flood="' + i + '" title="Send it every 10ms for 1s to out-rate the real sender">Flood 1s</button>'

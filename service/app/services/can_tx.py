@@ -75,31 +75,47 @@ def toggle(channel: str, arbitration_id: int, data, period_ms: int = 100,
 
 
 def burst(channel: str, arbitration_id: int, data, *, period_ms: int = 10,
-          duration_ms: int = 1000, is_fd: bool = False, is_extended_id: bool = False) -> int:
+          duration_ms: int = 1000, is_fd: bool = False, is_extended_id: bool = False,
+          protection: dict | None = None) -> int:
     """Send the frame every ``period_ms`` for ``duration_ms``, then stop.
 
     A momentary command that fights a genuine broadcaster (an ECU resending the
     real value every ~100 ms) loses if you send it once: the real value arrives
     right after and wins. Flooding the command faster than the broadcaster for a
-    short window gets it accepted. Returns the number of frames actually sent (0
-    when the channel is unavailable). Blocks for up to ``duration_ms``; callers
-    that must not block (a cockpit key press) run this in a thread."""
+    short window gets it accepted. When ``protection`` is given (a rolling counter
+    and/or checksum spec from the analyzer), each frame gets a fresh, advancing
+    counter and a recomputed checksum, so a protected message is not rejected.
+    Returns the number of frames actually sent (0 when the channel is
+    unavailable). Blocks for up to ``duration_ms``; callers that must not block (a
+    cockpit key press) run this in a thread."""
     from ..can import Frame, get_channel
     provider = get_channel(channel, fd=True if is_fd else None)
     if not getattr(provider, "available", False):
         return 0
-    frame = Frame(arbitration_id=arbitration_id, data=list(data or []),
-                  is_fd=bool(is_fd), is_extended_id=bool(is_extended_id))
+    base = list(data or [])
+    fixed_frame = None
+    if not protection:
+        fixed_frame = Frame(arbitration_id=arbitration_id, data=base,
+                            is_fd=bool(is_fd), is_extended_id=bool(is_extended_id))
     period = max(0.002, int(period_ms) / 1000.0)
     deadline = time.monotonic() + max(0.0, int(duration_ms) / 1000.0)
     sent = 0
+    tick = 0
     while time.monotonic() < deadline:
+        if fixed_frame is not None:
+            frame = fixed_frame
+        else:
+            from ..can import reverse as rev
+            frame = Frame(arbitration_id=arbitration_id,
+                          data=rev.apply_protection(base, arbitration_id, protection, tick),
+                          is_fd=bool(is_fd), is_extended_id=bool(is_extended_id))
         try:
             if provider.send(frame):
                 sent += 1
         except Exception as exc:  # a bus that drops out should not raise to the caller
             log.info("burst CAN tx failed on %s: %s", channel, exc)
             break
+        tick += 1
         time.sleep(period)
     return sent
 

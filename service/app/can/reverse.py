@@ -405,6 +405,121 @@ def _last_index_before(times: list[float], target: float) -> int | None:
 # free-running counter rather than a discrete control.
 STREAM_FLIP_RATE = 0.75
 
+
+# --------------------------------------------------------------------------
+# Message protection: rolling counter + checksum. Many command messages carry a
+# counter that increments every frame and a checksum over the payload; an ECU
+# rejects a frame whose counter does not advance or whose checksum is wrong. So
+# a plain replay (or an overlaid bit on a captured frame) is dropped no matter
+# how fast it is flooded. Detect these so we can regenerate valid frames, and
+# so the UI can warn when a control is protected. All pure over frame payloads.
+# --------------------------------------------------------------------------
+
+def detect_counter(payloads: list[list[int]]) -> dict | None:
+    """Find a byte (or its low nibble) that increments by one every frame.
+
+    Returns ``{"byte": i, "mod": 16|256, "nibble": bool}`` or None. Needs the
+    step to hold across almost all consecutive frames, so a noisy data byte that
+    happens to rise once is not mistaken for a counter."""
+    if len(payloads) < 4:
+        return None
+    width = min((len(p) for p in payloads), default=0)
+    for b in range(width):
+        vals = [int(p[b]) for p in payloads]
+        full_ok = sum(1 for i in range(1, len(vals)) if (vals[i] - vals[i - 1]) % 256 == 1)
+        if full_ok >= (len(vals) - 1) * 0.9 and len(set(vals)) > 2:
+            return {"byte": b, "mod": 256, "nibble": False}
+        nib = [v & 0x0F for v in vals]
+        nib_ok = sum(1 for i in range(1, len(nib)) if (nib[i] - nib[i - 1]) % 16 == 1)
+        if nib_ok >= (len(nib) - 1) * 0.9 and len(set(nib)) > 2:
+            return {"byte": b, "mod": 16, "nibble": True}
+    return None
+
+
+def _checksum_algorithms():
+    """Common 8-bit automotive checksums as ``name -> f(other_bytes, arb_id)``."""
+    return {
+        "sum8": lambda other, arb: sum(other) & 0xFF,
+        "xor8": lambda other, arb: _xor(other),
+        "sum8_id": lambda other, arb: (sum(other) + (arb & 0xFF) + ((arb >> 8) & 0xFF)) & 0xFF,
+        "twos_sum8": lambda other, arb: (-sum(other)) & 0xFF,
+    }
+
+
+def _xor(vals: list[int]) -> int:
+    acc = 0
+    for v in vals:
+        acc ^= int(v) & 0xFF
+    return acc
+
+
+def identify_checksum(payloads: list[list[int]], arbitration_id: int,
+                      counter_byte: int | None = None) -> dict | None:
+    """Find a byte that equals a known checksum of the other bytes on every frame.
+
+    Returns ``{"byte": i, "algorithm": name}`` or None. The checksum is computed
+    over all payload bytes except the checksum byte itself (the counter is
+    included, since real checksums cover it)."""
+    if len(payloads) < 4:
+        return None
+    width = min((len(p) for p in payloads), default=0)
+    algos = _checksum_algorithms()
+    for c in range(width):
+        if c == counter_byte:
+            continue
+        # A checksum byte should actually vary; a constant byte is not one.
+        if len({int(p[c]) for p in payloads}) < 3:
+            continue
+        for name, fn in algos.items():
+            ok = True
+            for p in payloads:
+                other = [int(p[i]) for i in range(width) if i != c]
+                if fn(other, arbitration_id) != (int(p[c]) & 0xFF):
+                    ok = False
+                    break
+            if ok:
+                return {"byte": c, "algorithm": name}
+    return None
+
+
+def message_protection(payloads: list[list[int]], arbitration_id: int) -> dict:
+    """Detect the rolling counter and checksum of a message, if any.
+
+    Returns ``{"counter": {...}|None, "checksum": {...}|None, "protected": bool}``.
+    ``protected`` is True if either is present, meaning a plain replay will be
+    rejected and frames must be regenerated with a fresh counter and checksum."""
+    counter = detect_counter(payloads)
+    checksum = identify_checksum(payloads, arbitration_id,
+                                 counter_byte=counter["byte"] if counter else None)
+    return {"counter": counter, "checksum": checksum,
+            "protected": bool(counter or checksum)}
+
+
+def apply_protection(data: list[int], arbitration_id: int, protection: dict | None,
+                     tick: int) -> list[int]:
+    """Return a copy of ``data`` with the counter advanced by ``tick`` and the
+    checksum recomputed, so a regenerated frame is accepted. A no-op when there
+    is no protection. ``tick`` is the frame number in a burst (0, 1, 2, ...)."""
+    if not protection:
+        return list(data)
+    out = [int(b) & 0xFF for b in data]
+    counter = protection.get("counter")
+    if counter and counter["byte"] < len(out):
+        b = counter["byte"]
+        if counter.get("nibble"):
+            base = out[b] & 0x0F
+            out[b] = (out[b] & 0xF0) | ((base + tick) % 16)
+        else:
+            out[b] = (out[b] + tick) % 256
+    checksum = protection.get("checksum")
+    if checksum and checksum["byte"] < len(out):
+        c = checksum["byte"]
+        fn = _checksum_algorithms().get(checksum["algorithm"])
+        if fn is not None:
+            other = [out[i] for i in range(len(out)) if i != c]
+            out[c] = fn(other, arbitration_id) & 0xFF
+    return out
+
 def _appearance(times: list[float], events: Sequence[float], window: float) -> int:
     """How many marks the message NEWLY appeared at: absent in ``window`` before
     the mark, present in ``window`` after it.
@@ -458,6 +573,7 @@ def event_responders(records: list[dict], event_times: Sequence[float], *,
 
     total = len(events)
     results = []
+    payloads_by_key: dict[tuple, list[list[int]]] = {}
     for (channel, arb), frames in groups.items():
         frames = sorted(frames, key=lambda f: f.get("timestamp", 0.0))
         times = [float(f.get("timestamp", 0.0)) for f in frames]
@@ -465,6 +581,7 @@ def event_responders(records: list[dict], event_times: Sequence[float], *,
         if len(frames) < 2:
             continue
         n_bytes = max(len(d) for d in datas)
+        payloads_by_key[(channel, arb)] = datas
 
         # Background change rate per byte: how often it differs frame-to-frame.
         flips = [0] * n_bytes
@@ -556,7 +673,17 @@ def event_responders(records: list[dict], event_times: Sequence[float], *,
     results = signal or results
 
     results.sort(key=lambda r: (-r["score"], -r["responded"]))
-    return results[:max_results]
+    final = results[:max_results]
+    # Detect counter/checksum protection only for the few candidates we return,
+    # not every message group: on a CAN-FD bus (64-byte frames) the checksum
+    # search is costly, and running it over every id would bog down the analysis.
+    for r in final:
+        datas = payloads_by_key.get((r["channel"], r["arbitration_id"])) or []
+        arb = int(r["arbitration_id"]) if r["arbitration_id"] is not None else 0
+        prot = message_protection(datas[:120], arb)
+        r["protected"] = prot["protected"]
+        r["protection"] = prot
+    return final
 
 
 def _changing_bytes(records: list[dict]) -> set[tuple]:
