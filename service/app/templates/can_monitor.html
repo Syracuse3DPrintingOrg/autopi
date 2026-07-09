@@ -39,6 +39,10 @@
         <select class="form-select form-select-sm" id="f-database">
           <option value="">(none)</option>
         </select>
+        <div class="form-check form-switch mt-1">
+          <input class="form-check-input" type="checkbox" id="f-obd2" {% if s and s.obd2_overlay %}checked{% endif %}>
+          <label class="form-check-label small" for="f-obd2">OBD2 overlay (standard PIDs on any bus)</label>
+        </div>
       </div>
       <div class="col-md-3 btn-group">
         <button id="btn-start" class="btn btn-sm btn-outline-success"><i class="bi bi-play-fill me-1"></i>Start</button>
@@ -114,6 +118,8 @@
     const backend = backendEl.value || 'socketcan';
     const params = new URLSearchParams({ channel, backend });
     if (databaseSel.value) params.set('database_id', databaseSel.value);
+    const obd2El = document.getElementById('f-obd2');
+    params.set('obd2', obd2El && obd2El.checked ? '1' : '0');
     let body;
     try {
       const res = await fetch('can/monitor/frames?' + params.toString());
@@ -171,6 +177,12 @@
   channelEl.addEventListener('change', () => { clearedAt = 0; refreshFrames(); });
   backendEl.addEventListener('change', () => { clearedAt = 0; refreshFrames(); });
   databaseSel.addEventListener('change', refreshFrames);
+  const obd2El = document.getElementById('f-obd2');
+  if (obd2El) obd2El.addEventListener('change', () => {
+    fetch('setup/save', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ obd2_overlay: obd2El.checked }) }).catch(() => {});
+    refreshFrames();
+  });
 
   loadDatabases();
   refreshFrames();

@@ -38,7 +38,7 @@ async def save_settings(request: Request):
     updates: dict = {}
     for key, value in body.items():
         if key in {"start_page_enabled", "kiosk_enabled", "require_pin", "streamdeck_enabled",
-                   "logging_enabled"}:
+                   "logging_enabled", "obd2_overlay"}:
             updates[key] = bool(value)
         elif key in {"deck_rotation", "deck_brightness", "deck_model", "log_retention_days"}:
             try:

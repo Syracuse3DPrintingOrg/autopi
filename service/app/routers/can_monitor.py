@@ -49,14 +49,18 @@ def status():
 
 
 @router.get("/frames")
-def frames(channel: str = "can0", backend: str = "socketcan", database_id: int | None = None):
+def frames(channel: str = "can0", backend: str = "socketcan", database_id: int | None = None,
+           obd2: bool | None = None):
+    from ..config import settings
+    obd2_overlay = settings.obd2_overlay if obd2 is None else bool(obd2)
     monitor = mon.get_monitor(channel, backend=backend)
     dbc_text = _resolve_dbc_text(database_id) if database_id else None
     records = []
     for record in monitor.frames():
         entry = dict(record)
-        entry["decoded"] = decode_record(record, dbc_text) if dbc_text else None
+        entry["decoded"] = (decode_record(record, dbc_text, obd2_overlay=obd2_overlay)
+                            if (dbc_text or obd2_overlay) else None)
         records.append(entry)
     # Newest first: easier to watch live traffic without the table scrolling.
     records.reverse()
-    return {"status": monitor.status(), "frames": records}
+    return {"status": monitor.status(), "frames": records, "obd2_overlay": obd2_overlay}

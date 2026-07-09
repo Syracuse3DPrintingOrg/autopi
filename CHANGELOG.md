@@ -8,6 +8,14 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **Generic OBD2 decoder overlay.** A toggle on the Monitor decodes the standard
+  OBD-II signals (vehicle speed, RPM, coolant, throttle, MAF, fuel level, ...) on
+  top of whatever CAN database is active, since those diagnostics responses are
+  the same on every vehicle and need no vehicle-specific database. Turn it on to
+  read standard signals on any bus, alongside a proprietary database's signals.
+
+### Added
+
 - **A dedicated Databases page.** CAN databases now have their own page (in the
   top nav) instead of being buried on the CAN page. Each database is tagged with
   the vehicle it fits (make, model(s), years) plus source, author, and license,

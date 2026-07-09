@@ -13,7 +13,7 @@ from typing import Any
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 APP_NAME = "AutoPi"
-APP_VERSION = "0.1.64"
+APP_VERSION = "0.1.65"
 
 # Where the setup page writes persisted settings and where state files live.
 _DEFAULT_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -38,6 +38,7 @@ _SAVEABLE = (
     "llm_api_key",
     "llm_model",
     "llm_base_url",
+    "obd2_overlay",
 )
 
 
@@ -86,6 +87,11 @@ class Settings(BaseSettings):
     llm_api_key: str = ""
     llm_model: str = ""
     llm_base_url: str = ""
+
+    # Overlay the standard OBD-II diagnostics signals (speed, RPM, coolant, ...)
+    # on top of whatever CAN database is active, decoded generically since OBD-II
+    # responses are the same on every vehicle. See can/diagnostics.decode_obd2_frame.
+    obd2_overlay: bool = False
 
     def load_saved(self) -> None:
         """Layer settings.json over the current values (in place)."""

@@ -249,6 +249,35 @@ OBD_PIDS: dict[int, dict[str, Any]] = {
 }
 
 
+# OBD-II mode-01 responses come back on 0x7E8..0x7EF (one per ECU).
+OBD_RESPONSE_IDS = frozenset(range(0x7E8, 0x7F0))
+
+
+def decode_obd2_frame(arbitration_id: int, data) -> dict[str, Any]:
+    """Decode a raw CAN frame as an OBD-II mode-01 single-frame response, for the
+    OBD2 overlay: a standard diagnostics response the same on every vehicle, so
+    it decodes without any vehicle-specific database.
+
+    Returns ``{signal_name: value}`` (same shape as a DBC decode) for a
+    recognized response, or ``{}`` for anything that is not one, so it can be
+    merged on top of a database decode without disturbing it. Pure and offline;
+    a test drives it with byte lists."""
+    data = list(data or [])
+    if arbitration_id not in OBD_RESPONSE_IDS or len(data) < 3:
+        return {}
+    pci = data[0]
+    if (pci >> 4) != 0:  # only ISO-TP single frames (high nibble 0); length in low nibble
+        return {}
+    length = pci & 0x0F
+    payload = data[1:1 + length]
+    if len(payload) < 2 or payload[0] != 0x41:  # positive mode-01 response is 0x41
+        return {}
+    decoded = decode_obd_response(payload, mode=0x01)
+    if not decoded.get("ok") or "value" not in decoded:
+        return {}
+    return {decoded["name"]: decoded["value"]}
+
+
 def build_obd_request(pid: int, mode: int = 0x01) -> list[int]:
     """The ISO-TP payload for a mode-01 PID request: [mode, pid]. This is
     the application-layer user data handed to the ISO-TP transport; the

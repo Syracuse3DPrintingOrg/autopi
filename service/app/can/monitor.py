@@ -66,22 +66,32 @@ def ingest_frame(
     return record
 
 
-def decode_record(record: dict[str, Any], dbc_text: str | None) -> dict[str, Any] | None:
-    """Decode one frame record's data against a DBC, or None if it cannot be.
+def decode_record(record: dict[str, Any], dbc_text: str | None,
+                  *, obd2_overlay: bool = False) -> dict[str, Any] | None:
+    """Decode one frame record against a DBC, and (when ``obd2_overlay`` is on)
+    also as a standard OBD-II response, merging the two. Returns ``None`` if
+    neither produces anything.
 
     Never raises: an id the database does not define, a malformed DBC, or a
     missing ``dbc_text`` all just mean "no decode available" for this frame,
     which is the normal case for most traffic on a bus until the right
-    database is picked.
+    database is picked. The OBD2 overlay adds the standard diagnostics signals
+    (speed, RPM, coolant, ...) on top of whatever database is active, since those
+    responses decode the same on any vehicle without a vehicle-specific database.
     """
-    if not dbc_text:
-        return None
-    from . import dbc as dbc_mod
-
-    try:
-        return dbc_mod.decode(dbc_text, record["arbitration_id"], bytes(record["data"]))
-    except Exception:
-        return None
+    out: dict[str, Any] = {}
+    if dbc_text:
+        from . import dbc as dbc_mod
+        try:
+            decoded = dbc_mod.decode(dbc_text, record["arbitration_id"], bytes(record["data"]))
+            if decoded:
+                out.update(decoded)
+        except Exception:
+            pass
+    if obd2_overlay:
+        from . import diagnostics
+        out.update(diagnostics.decode_obd2_frame(record["arbitration_id"], record.get("data") or []))
+    return out or None
 
 
 class MonitorChannel:
