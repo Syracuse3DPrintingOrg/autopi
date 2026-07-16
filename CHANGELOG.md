@@ -8,6 +8,11 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Fixed
 
+- **The Dashboard camera explains itself instead of failing cryptically.** Browsers only allow camera access on a secure page (https, or the device's own screen at localhost), so over a plain LAN address the camera could not open and showed a confusing error. It now tells you plainly what is needed, and it no longer leaves a reference recording running with no camera. On-device capture for a USB camera plugged into the AutoPi box is coming separately.
+- **Settings search now finds settings, not just section names.** Typing in the settings search box now matches the actual settings inside each section (so searching "theme", "bitrate", or "brightness" finds the right section), and it opens the section when only one matches.
+
+### Fixed
+
 - **Style and script updates now take effect without a hard refresh.** The app's stylesheet and scripts are versioned per release, so after an update your browser fetches the new files instead of a stale cached copy. This is what was hiding the top-menu dropdown fix: the browser kept using the old cached stylesheet, so the menus still opened behind the page until now.
 
 ### Fixed

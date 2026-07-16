@@ -482,12 +482,20 @@
 
     async function startVision() {
       const what = (document.getElementById('ref-vision-what').value || 'speed').trim();
+      // The secure-context check happens before the recording starts (in the
+      // Start handler); here we only handle the camera being blocked/denied at
+      // the OS/permission level, which happens after the recording has begun.
       try {
         visionStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
         visionVideo.srcObject = visionStream;
         await visionVideo.play();
       } catch (e) {
-        statusEl.innerHTML = '<span class="text-danger">Could not open a camera: ' + esc(e.message || e) + '</span>';
+        // The reference recording already started; stop it so state stays sane.
+        stopVision();
+        fetch('reverse/reference/stop', { method: 'POST' }).catch(function () {});
+        setRecordingUi(false);
+        statusEl.innerHTML = '<span class="text-danger">Could not open a camera: ' + esc(e.message || e)
+          + '. Allow camera access for this site and try again.</span>';
         return;
       }
       const canvas = document.createElement('canvas');
@@ -569,6 +577,17 @@
 
     startBtn.addEventListener('click', () => {
       const m = mode();
+      // Vision needs a camera, which the browser only exposes over a secure page
+      // (https or the device's own localhost). Check before we start a recording
+      // so we do not leave one running with no camera feeding it.
+      if (m === 'vision' && (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia)) {
+        statusEl.innerHTML = '<span class="text-warning">Your browser will not open a camera on this connection. '
+          + 'Camera access needs a secure page: open AutoPi over <strong>https</strong>, or on the device\'s own '
+          + 'screen at <strong>http://localhost:' + (location.port || '80') + '</strong>. A USB camera plugged into '
+          + 'the AutoPi device itself is not reachable from a browser this way (that needs on-device capture, which '
+          + 'is planned). For now use a sweep or a known signal as the reference instead.</span>';
+        return;
+      }
       // Vision records sweep-style points (a value per camera read), so it starts
       // a sweep reference under the hood and drives the marks from the camera.
       const backendMode = (m === 'vision') ? 'sweep' : m;

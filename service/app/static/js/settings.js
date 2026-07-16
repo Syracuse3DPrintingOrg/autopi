@@ -10,15 +10,26 @@
     }
   };
 
-  // Filter the side menu to pills whose label or pane title matches.
+  // Filter the side menu to sections whose name, title, OR any setting inside
+  // them matches, so searching an actual setting (e.g. "theme", "bitrate")
+  // finds the section that holds it, not just sections named that. If exactly
+  // one section matches, open it so the result is on screen.
   window.settingsSearch = function (query) {
     const q = (query || '').trim().toLowerCase();
-    document.querySelectorAll('.side-menu .nav-link').forEach((pill) => {
+    const pills = Array.from(document.querySelectorAll('.side-menu .nav-link'));
+    let matched = null;
+    let matchCount = 0;
+    pills.forEach((pill) => {
       const target = pill.getAttribute('data-bs-target');
       const pane = target && document.querySelector(target);
-      const hay = (pill.textContent + ' ' + (pane ? (pane.getAttribute('data-title') || '') : '')).toLowerCase();
-      pill.style.display = !q || hay.indexOf(q) !== -1 ? '' : 'none';
+      const hay = (pill.textContent + ' '
+        + (pane ? (pane.getAttribute('data-title') || '') : '') + ' '
+        + (pane ? pane.textContent : '')).toLowerCase();
+      const hit = !q || hay.indexOf(q) !== -1;
+      pill.style.display = hit ? '' : 'none';
+      if (q && hit) { matched = target; matchCount += 1; }
     });
+    if (q && matchCount === 1 && matched) { window.openPane(matched.slice(1)); }
   };
 
   // Collect [data-setting] fields inside a pane and POST them to /setup/save.
