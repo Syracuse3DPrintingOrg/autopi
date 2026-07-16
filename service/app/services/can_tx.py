@@ -155,6 +155,46 @@ def fuzz(channel: str, arbitration_id: int, template, fuzz_bytes, *, count: int 
     return sent
 
 
+def replay(channel: str, frames: list[dict], *, speed: float = 1.0, backend: str = "socketcan",
+           max_frames: int = 20000, max_seconds: float = 60.0) -> int:
+    """Replay captured frames onto ``channel`` at their original relative timing
+    (scaled by ``speed``), for reproducing a sequence while probing. Bounded by
+    ``max_frames`` and ``max_seconds`` so a huge capture cannot run away. Returns
+    the number of frames sent. Blocking; a deliberate action."""
+    from ..can import Frame, get_channel
+    ordered = sorted((f for f in frames if f.get("data") is not None),
+                     key=lambda f: float(f.get("timestamp", 0.0)))[:max(1, int(max_frames))]
+    if not ordered:
+        return 0
+    any_fd = any(f.get("is_fd") for f in ordered)
+    provider = get_channel(channel, backend=backend, fd=True if any_fd else None)
+    if not getattr(provider, "available", False):
+        return 0
+    speed = max(0.1, min(float(speed), 100.0))
+    t0 = float(ordered[0].get("timestamp", 0.0))
+    started = time.monotonic()
+    sent = 0
+    for f in ordered:
+        target = (float(f.get("timestamp", 0.0)) - t0) / speed
+        while True:
+            elapsed = time.monotonic() - started
+            if elapsed >= max_seconds:
+                return sent
+            wait = target - elapsed
+            if wait <= 0:
+                break
+            time.sleep(min(wait, 0.25))
+        frame = Frame(arbitration_id=int(f.get("arbitration_id") or 0), data=list(f.get("data") or []),
+                      is_fd=bool(f.get("is_fd")), is_extended_id=bool(f.get("is_extended_id")))
+        try:
+            if provider.send(frame):
+                sent += 1
+        except Exception as exc:
+            log.info("replay CAN tx failed on %s: %s", channel, exc)
+            break
+    return sent
+
+
 def burst_async(channel: str, arbitration_id: int, data, **kwargs) -> None:
     """Fire-and-forget burst on a background thread, for a control press that
     must return immediately."""

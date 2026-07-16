@@ -8,6 +8,10 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **Replay a capture back onto the bus.** Any saved capture can be replayed onto the bus at its original timing (or faster), so you can reproduce a sequence while you probe for what a message does. It is bounded in length so a big capture cannot run away.
+
+### Added
+
 - **Fuzz an id to see what reacts.** The Simulate / send page has a new fuzzer: pick an id and a template, choose which bytes to randomize, and send a bounded run of frames. Every frame it sends is listed, so when something on the car reacts you can trace it straight back to the exact bytes that caused it. Meant for a bench or a bus you control.
 
 ### Added

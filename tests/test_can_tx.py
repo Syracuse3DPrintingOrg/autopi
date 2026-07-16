@@ -98,3 +98,32 @@ def test_fuzz_unavailable_channel_sends_nothing(monkeypatch):
             raise AssertionError("must not send")
     monkeypatch.setattr(can_pkg, "get_channel", lambda ch, **kw: _Down())
     assert can_tx.fuzz("can0", 0x100, [0], [0], count=10) == []
+
+
+def test_replay_sends_frames_in_order(monkeypatch):
+    from app import can as can_pkg
+    sent = []
+    class _Fake:
+        available = True
+        def send(self, frame):
+            sent.append(frame.arbitration_id)
+            return True
+    monkeypatch.setattr(can_pkg, "get_channel", lambda ch, **kw: _Fake())
+    frames = [
+        {"arbitration_id": 0x30, "data": [1], "timestamp": 0.20},
+        {"arbitration_id": 0x10, "data": [2], "timestamp": 0.00},
+        {"arbitration_id": 0x20, "data": [3], "timestamp": 0.05},
+    ]
+    n = can_tx.replay("can0", frames, speed=100.0)  # fast so the test is quick
+    assert n == 3
+    assert sent == [0x10, 0x20, 0x30]  # replayed in timestamp order
+
+
+def test_replay_unavailable_channel_sends_nothing(monkeypatch):
+    from app import can as can_pkg
+    class _Down:
+        available = False
+        def send(self, frame):
+            raise AssertionError("must not send")
+    monkeypatch.setattr(can_pkg, "get_channel", lambda ch, **kw: _Down())
+    assert can_tx.replay("can0", [{"arbitration_id": 1, "data": [0], "timestamp": 0.0}]) == 0

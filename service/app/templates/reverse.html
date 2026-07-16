@@ -47,6 +47,15 @@
         <h6 class="mb-2">1. Capture</h6>
         <select class="form-select form-select-sm mb-2" id="capture"></select>
         <div class="small text-secondary" id="capture-info"></div>
+        <div class="d-flex align-items-center gap-2 mt-2">
+          <button class="btn btn-outline-secondary btn-sm" id="replay-btn" title="Replay this capture's frames back onto the bus at their original timing">Replay to bus</button>
+          <label class="small mb-0">speed</label>
+          <select class="form-select form-select-sm w-auto" id="replay-speed">
+            <option value="0.5">0.5x</option><option value="1" selected>1x</option>
+            <option value="2">2x</option><option value="5">5x</option>
+          </select>
+          <span class="small" id="replay-status"></span>
+        </div>
       </div></div>
 
       <div class="card mb-3"><div class="card-body">
@@ -390,6 +399,21 @@
       ? 'Capture selected. Enter a reference that spans its time range.' : '';
   }
   captureEl.addEventListener('change', captureInfo);
+
+  document.getElementById('replay-btn').addEventListener('click', () => {
+    const rs = document.getElementById('replay-status');
+    if (!captureEl.value) { rs.textContent = 'Pick a capture first.'; return; }
+    const btn = document.getElementById('replay-btn');
+    btn.disabled = true; rs.textContent = 'Replaying…';
+    fetch('reverse/replay', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ capture_id: captureEl.value, speed: parseFloat(document.getElementById('replay-speed').value) }) })
+      .then((r) => r.json()).then((d) => {
+        btn.disabled = false;
+        rs.innerHTML = d.ok
+          ? '<span class="text-success">Replayed ' + d.sent + ' frames on ' + esc(d.channel) + '.</span>'
+          : '<span class="text-danger">' + esc(d.error || 'Replay failed') + '</span>';
+      }).catch(() => { btn.disabled = false; rs.textContent = 'Replay failed.'; });
+  });
 
   // Show, near the Survey button, that a reference is loaded and what to do
   // next, and bring that step into view so the flow is not a mystery.

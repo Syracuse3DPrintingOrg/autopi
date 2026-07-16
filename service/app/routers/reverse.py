@@ -678,6 +678,30 @@ def save_command_route(body: SaveCommandIn):
     return {"ok": True, "saved": saved, "name": name, "command": command}
 
 
+class ReplayIn(BaseModel):
+    capture_id: str
+    channel: str = ""
+    speed: float = 1.0
+
+
+@router.post("/replay")
+def replay_route(body: ReplayIn):
+    """Replay a saved capture's frames back onto the bus at their original timing
+    (scaled by speed), to reproduce a sequence while probing. Transmits on a live
+    bus, so it is a deliberate action, and it is bounded in frames and duration."""
+    from ..services import can_tx
+    capture = _capture_or_404(body.capture_id)
+    frames = capture.get("frames") or []
+    if not frames:
+        return {"ok": False, "error": "This capture has no frames to replay."}
+    channel = body.channel or capture.get("channel") or "can0"
+    backend = capture.get("backend") or "socketcan"
+    n = can_tx.replay(channel, frames, speed=body.speed, backend=backend)
+    if n == 0:
+        return {"ok": False, "error": f"Could not replay onto {channel} (interface not available?)."}
+    return {"ok": True, "channel": channel, "sent": n, "speed": body.speed}
+
+
 class ToWorkbenchIn(BaseModel):
     capture_id: str
     arbitration_id: int
