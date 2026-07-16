@@ -690,12 +690,15 @@
             + '<td>' + (+c.scale).toPrecision(4) + '</td><td>' + (+c.offset).toPrecision(4) + '</td>'
             + r2Cell(c.r2)
             + '<td><button class="btn btn-outline-info btn-sm me-1" data-plot="' + i + '">Plot</button>'
+            + '<button class="btn btn-outline-info btn-sm me-1" data-graph="' + i + '" title="Plot this field over time on its own">Graph</button>'
             + '<button class="btn btn-outline-success btn-sm" data-c="' + i + '">Save</button></td></tr>').join('')
           + '</tbody></table><div id="verify-plot" class="mt-2"></div>';
         el.querySelectorAll('button[data-c]').forEach((b) =>
           b.addEventListener('click', () => openSave(cands[parseInt(b.getAttribute('data-c'), 10)])));
         el.querySelectorAll('button[data-plot]').forEach((b) =>
           b.addEventListener('click', () => verifyPlot(cands[parseInt(b.getAttribute('data-plot'), 10)])));
+        el.querySelectorAll('button[data-graph]').forEach((b) =>
+          b.addEventListener('click', () => graphField(cands[parseInt(b.getAttribute('data-graph'), 10)])));
         }
         // Multiplexed message: offer to search within one selector value, so a
         // signal that only exists for that value is not averaged away.
@@ -720,6 +723,23 @@
   // Overlay the decoded candidate against the reference over time, each series
   // normalized to its own range so you can see whether they move together (the
   // article's result plot). Confirms a fit is really the signal.
+  // Plot one field's decoded value over the capture timeline, on its own (no
+  // reference needed), so a signal's trend and glitches are visible.
+  function graphField(cand) {
+    const out = document.getElementById('verify-plot');
+    out.innerHTML = '<span class="text-info">Graphing…</span>';
+    fetch('reverse/graph', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ capture_id: captureEl.value, arbitration_id: cand.arbitration_id,
+        start_bit: cand.start_bit, length: cand.length, byte_order: cand.byte_order,
+        signed: cand.signed, scale: cand.scale, offset: cand.offset }) })
+      .then((r) => r.json()).then((d) => {
+        const pts = d.points || [];
+        if (!pts.length) { out.innerHTML = '<span class="text-secondary">Nothing to graph.</span>'; return; }
+        out.innerHTML = '<div class="small text-secondary">' + hex(cand.arbitration_id) + ' @' + cand.start_bit
+          + ' len ' + cand.length + ' over time</div>' + drawOverlay([], pts);
+      }).catch(() => { out.innerHTML = '<span class="text-danger">Graph failed.</span>'; });
+  }
+
   function verifyPlot(cand) {
     const out = document.getElementById('verify-plot');
     out.innerHTML = '<span class="text-info">Plotting…</span>';

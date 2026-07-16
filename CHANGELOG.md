@@ -8,6 +8,10 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **Graph a signal over time.** Each bit-search candidate now has a "Graph" button that plots that field's decoded value across the capture on its own timeline, so you can see the trend and spot glitches, without needing a reference to compare against.
+
+### Added
+
 - **Replay a capture back onto the bus.** Any saved capture can be replayed onto the bus at its original timing (or faster), so you can reproduce a sequence while you probe for what a message does. It is bounded in length so a big capture cannot run away.
 
 ### Added

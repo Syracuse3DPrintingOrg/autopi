@@ -345,3 +345,17 @@ def test_vision_frame_handles_unreadable(monkeypatch):
     resp = client.post("/reverse/reference/vision-frame", json={"image": "rawbase64", "what": "rpm"})
     assert resp.json()["ok"] is True and resp.json()["value"] is None
     rec.stop()
+
+
+def test_graph_endpoint_decodes_field_over_time(monkeypatch):
+    monkeypatch.setattr("app.routers.reverse._capture_or_404",
+                        lambda cid: {"frames": [
+                            {"arbitration_id": 0x100, "data": [i, 0], "timestamp": float(i)} for i in range(5)]})
+    client = TestClient(app)
+    resp = client.post("/reverse/graph", json={"capture_id": "x", "arbitration_id": 0x100,
+                                               "start_bit": 0, "length": 8, "scale": 2.0, "offset": 1.0})
+    assert resp.status_code == 200
+    pts = resp.json()["points"]
+    assert len(pts) == 5
+    assert pts[0] == {"t": 0.0, "value": 1.0}   # 0*2+1
+    assert pts[3] == {"t": 3.0, "value": 7.0}   # 3*2+1

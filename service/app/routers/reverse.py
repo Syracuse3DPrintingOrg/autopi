@@ -678,6 +678,33 @@ def save_command_route(body: SaveCommandIn):
     return {"ok": True, "saved": saved, "name": name, "command": command}
 
 
+class GraphIn(BaseModel):
+    capture_id: str
+    arbitration_id: int
+    start_bit: int
+    length: int
+    byte_order: str = "little_endian"
+    signed: bool = False
+    scale: float = 1.0
+    offset: float = 0.0
+
+
+@router.post("/graph")
+def graph_route(body: GraphIn):
+    """Decode one field across a capture and return its value over time, so a
+    signal can be plotted on its own timeline (no reference needed). Works for a
+    found candidate or any bit range you name."""
+    capture = _capture_or_404(body.capture_id)
+    frames = _frames_for_id(capture, body.arbitration_id)
+    if not frames:
+        raise HTTPException(404, "No frames with that id in this capture")
+    field = {"start_bit": body.start_bit, "length": body.length,
+             "byte_order": body.byte_order, "signed": body.signed}
+    series = rev.field_series(frames, field)
+    points = [{"t": t, "value": raw * body.scale + body.offset} for t, raw in series]
+    return {"points": points}
+
+
 class ReplayIn(BaseModel):
     capture_id: str
     channel: str = ""
