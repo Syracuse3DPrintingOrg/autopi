@@ -276,6 +276,7 @@ class AutoDecodeIn(BaseModel):
     reference: list[ReferencePoint] = []
     context_hint: str = ""
     top_ids: int = 3
+    opts: dict = {}
 
 
 @router.post("/auto-decode")
@@ -289,7 +290,13 @@ def auto_decode_route(body: AutoDecodeIn):
     if len(reference) < 3:
         return {"ok": False, "error": "Record at least a few reference points first."}
     grouped = _frames_by_id(capture)
-    candidates = rev.auto_decode(grouped, reference, {"top_ids": body.top_ids})
+    # This one-pass flow takes a hand-typed reference, which a person often logs a
+    # beat after the value was true. Sweep a few candidate lags by default so that
+    # reaction delay is absorbed (resample keeps the lag whose alignment correlates
+    # best, so an unlagged reference still resolves to lag 0). Any caller-supplied
+    # opts win; top_ids stays a first-class field for back-compat.
+    opts = {"lags": [0.0, 0.25, 0.5, 0.75, 1.0], **(body.opts or {}), "top_ids": body.top_ids}
+    candidates = rev.auto_decode(grouped, reference, opts)
     best = candidates[0] if candidates else None
     named = None
     if best is not None and llm.status().get("available"):

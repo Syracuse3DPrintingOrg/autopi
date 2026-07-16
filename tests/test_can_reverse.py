@@ -200,10 +200,12 @@ def test_resample_linear_interpolation():
 
 
 def test_resample_searches_lag_for_best_correlation():
-    # The decoded series leads the reference by exactly 2 seconds; searching
-    # lags should find lag=2 gives a clean alignment.
-    series = [(t, t) for t in range(0, 20)]
-    reference = [{"t": t + 2, "value": t} for t in range(0, 20)]
+    # The decoded series leads the reference by exactly 2 seconds; searching lags
+    # should find lag=2 gives a clean alignment. The signal is non-monotonic (a
+    # pure ramp would correlate at every lag, so the lag would be unidentifiable).
+    shape = [0, 5, 9, 3, 7, 12, 2, 8, 14, 4, 11, 1, 6, 13, 10, 15, 18, 16, 19, 17]
+    series = [(float(t), shape[t]) for t in range(20)]
+    reference = [{"t": t + 2.0, "value": shape[t]} for t in range(20)]
     aligned = resample(series, reference, lags=[0, 1, 2, 3])
     assert aligned["lag"] == 2
 
@@ -368,6 +370,69 @@ def test_bitsearch_prefers_shorter_field_on_tied_score():
         "max_candidates": 10,
     })
     assert candidates[0]["length"] == 4
+
+
+def test_sample_at_drops_points_outside_capture_span():
+    ts = [1.0, 2.0, 3.0]
+    vs = [10.0, 20.0, 30.0]
+    # Inside the span (and within the tiny float-jitter slack) still samples.
+    assert rev._sample_at(ts, vs, 1.0, "nearest") == 10.0
+    assert rev._sample_at(ts, vs, 3.0, "nearest") == 30.0
+    # A point clearly before the first or after the last frame is dropped, not
+    # clamped to the boundary value (which would invent data the capture never saw).
+    assert rev._sample_at(ts, vs, 0.5, "nearest") is None
+    assert rev._sample_at(ts, vs, 3.5, "nearest") is None
+
+
+def test_is_nice_scale_and_alignment_penalty():
+    assert rev._is_nice_scale(0.01) and rev._is_nice_scale(0.05) and rev._is_nice_scale(1.0)
+    # A truncated alias's power-of-two-off scale is not a scale an OEM would pick.
+    assert not rev._is_nice_scale(0.16) and not rev._is_nice_scale(0.003125)
+    # Byte/nibble-aligned starts are unpenalized; a mid-byte wide field is penalized.
+    assert rev._alignment_penalty("little_endian", 8, 16) == 0
+    assert rev._alignment_penalty("little_endian", 4, 12) == 0
+    assert rev._alignment_penalty("little_endian", 5, 12) == 1
+    # Short flag-like fields sit anywhere in a byte, so they are never penalized.
+    assert rev._alignment_penalty("little_endian", 5, 2) == 0
+
+
+def test_rerank_tied_promotes_the_plausible_candidate_within_the_band():
+    # Three candidates fitting within RANK_EPS: the alias (garbage scale) sorted
+    # first by raw score must lose to the nice-scale, byte-aligned true field.
+    alias = {"scale": 0.16, "start_bit": 12, "length": 10, "byte_order": "little_endian", "distinct": 300}
+    true = {"scale": 0.01, "start_bit": 8, "length": 16, "byte_order": "little_endian", "distinct": 900}
+    other = {"scale": 0.003125, "start_bit": 0, "length": 16, "byte_order": "little_endian", "distinct": 500}
+    band = [(0.9999, alias), (0.9998, true), (0.99985, other)]
+    band.sort(key=lambda c: -c[0])
+    reranked = rev._rerank_tied(band, lambda c: c[0], lambda c: rev._plausibility_key(c[1]))
+    assert reranked[0][1] is true
+    # A candidate outside the RANK_EPS band keeps its score position.
+    far = [(0.9999, alias), (0.5, true)]
+    assert rev._rerank_tied(far, lambda c: c[0], lambda c: rev._plausibility_key(c[1]))[0][1] is alias
+
+
+def test_bitsearch_reports_true_scale_not_a_power_of_two_alias():
+    # A 16-bit LE field at start_bit 8, scale 0.01, carrying a 0..120 triangle
+    # (raw 0..12000, so the top bits never toggle). A shifted/truncated alias fits
+    # equally well at scale 0.16; the finder must still report the true anchor
+    # (start_bit 8, scale 0.01), even if the width comes back narrower because the
+    # unused top bits cannot be distinguished.
+    n = 400
+    records, values = [], []
+    for i in range(n):
+        t = i / 20.0
+        val = 120.0 * (t / 10.0 if t < 10.0 else 2 - t / 10.0)  # triangle 0->120->0
+        raw = int(round(val / 0.01))
+        data = [i & 0xFF, 0, 0, 0, 0, 0, 0, 0]
+        fi = int.from_bytes(bytes(data), "little")
+        fi = (fi & ~(0xFFFF << 8)) | ((raw & 0xFFFF) << 8)
+        records.append({"arbitration_id": 0x244, "data": list(fi.to_bytes(8, "little")), "timestamp": t})
+        values.append(val)
+    reference = [{"t": i / 1.0, "value": 120.0 * ((i / 1.0) / 10.0 if i < 10 else 2 - (i / 1.0) / 10.0)}
+                 for i in range(21)]
+    best = bitsearch(records, reference, {"byte_orders": ["little_endian"]})[0]
+    assert best["start_bit"] == 8, f"got start_bit {best['start_bit']} (an alias, not the true anchor)"
+    assert derive_scale_offset(best)["scale"] == 0.01, "must report the OEM scale, not a power-of-two alias"
 
 
 def test_survey_ranks_the_correlated_id_first():

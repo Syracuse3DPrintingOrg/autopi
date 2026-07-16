@@ -257,8 +257,15 @@ def activity_survey(records_by_id: dict[int, list[dict]]) -> list[dict]:
 # Reference alignment
 # --------------------------------------------------------------------------
 
-def _sample_at(timestamps: list[float], values: list[float], target: float, method: str) -> float | None:
+def _sample_at(timestamps: list[float], values: list[float], target: float, method: str,
+               slack: float = 1e-6) -> float | None:
     if not timestamps:
+        return None
+    if target < timestamps[0] - slack or target > timestamps[-1] + slack:
+        # The capture does not cover this reference point; matching it to the
+        # first/last frame anyway would invent data the capture never saw and
+        # skew the fit toward a truncated alias. Drop it; the lags mechanism
+        # already absorbs a reference logged a beat late by shifting in-span.
         return None
     if target <= timestamps[0]:
         return values[0]
@@ -903,6 +910,65 @@ def _search_start_bits(n_bits: int, opts: dict) -> range:
     return range(0, n_bits, step)
 
 
+# Candidates whose fit scores are closer than this are statistically
+# indistinguishable on a typical hand-recorded reference (a few dozen noisy
+# points): the gap between a field and its own truncated/shifted aliases is
+# smaller than the reference reading error, so score order inside this band is
+# chance and must not decide the winner on its own.
+RANK_EPS = 2e-3
+
+
+def _is_nice_scale(slope: float) -> bool:
+    """Whether a fitted slope lands on a scale an OEM would actually pick. A
+    truncated alias of a real field fits with the true scale times a power of two
+    (e.g. 0.16 for a true 0.01), which is almost never a real scale, so this
+    separates the true field from its aliases in a statistically tied band."""
+    return any(abs(slope - nice) / nice < 0.05 for nice in NICE_SCALES if nice)
+
+
+def _alignment_penalty(byte_order: str, start_bit: int, length: int) -> int:
+    """0 when the field starts on a byte or nibble boundary, 1 mid-byte. Real OEM
+    fields overwhelmingly start on one of those; a mid-byte candidate in a tied
+    band is usually the true field shifted by a stray neighbor bit. Flag bits
+    legitimately sit anywhere in a byte, so short fields (< 4 bits) are never
+    penalized."""
+    if length < 4:
+        return 0
+    bit = start_bit % 8
+    if byte_order == "big_endian":
+        bit = 7 - bit
+    return 0 if bit % 4 == 0 else 1
+
+
+def _plausibility_key(candidate: dict):
+    """Order statistically tied candidates by OEM plausibility: a nice scale first
+    (a truncated alias rarely fits a scale an OEM would pick), then bit alignment,
+    then the highest-resolution decode (a truncation collapses distinct raw
+    values), then the shortest field (drops static padding bits that decode
+    identically)."""
+    return (
+        0 if _is_nice_scale(candidate.get("scale") or 0.0) else 1,
+        _alignment_penalty(candidate.get("byte_order", "little_endian"),
+                           candidate.get("start_bit", 0), candidate.get("length", 0)),
+        -(candidate.get("distinct") or 0),
+        candidate.get("length", 0),
+        candidate.get("start_bit", 0),
+    )
+
+
+def _rerank_tied(candidates: list, score_of, key_of) -> list:
+    """Re-order the leading band of candidates whose scores are within RANK_EPS of
+    the best by plausibility; the rest keep their score order. ``candidates`` must
+    already be sorted best-score-first."""
+    if not candidates:
+        return candidates
+    best = score_of(candidates[0])
+    n = 0
+    while n < len(candidates) and best - score_of(candidates[n]) <= RANK_EPS:
+        n += 1
+    return sorted(candidates[:n], key=key_of) + candidates[n:]
+
+
 def _fits(byte_order: str, start_bit: int, length: int, n_bits: int) -> bool:
     if byte_order == "little_endian":
         return start_bit + length <= n_bits
@@ -922,10 +988,13 @@ def bitsearch(records_for_id: list[dict], reference: list[dict], opts: dict | No
     ``start_step``/``method`` (advanced tuning).
 
     Each candidate is ``{arbitration_id, start_bit, length, byte_order,
-    signed, scale, offset, r2, correlation, lag}``. Ranked by fit quality
-    (the stronger of |correlation| and R^2), and on a tie the shorter field
-    wins, since a longer field that happens to score the same usually just
-    dragged in a neighboring static or noisy bit.
+    signed, scale, offset, r2, correlation, lag, distinct}``. Ranked by fit
+    quality (the stronger of |correlation| and R^2); candidates whose scores are
+    statistically tied (within :data:`RANK_EPS`) are then ordered by OEM
+    plausibility (a nice scale, byte/nibble alignment, decode resolution, then the
+    shortest field), because on a noisy hand-recorded reference a real field and
+    its truncated/shifted aliases fit within a hair of each other and raw score
+    order inside that band is chance.
     """
     opts = opts or {}
     if not records_for_id:
@@ -987,15 +1056,22 @@ def bitsearch(records_for_id: list[dict], reference: list[dict], opts: dict | No
                         "correlation": round(correlation, 6),
                         "lag": aligned["lag"],
                         "score": round(raw_score, 6),
+                        # decode resolution: how many distinct raw values this
+                        # field takes across the capture (a truncated alias of a
+                        # real signal collapses them), used to break score ties.
+                        "distinct": len({v for _, v in series}),
                     }))
 
-    # Sort on the un-rounded score first: two candidates that are only
-    # different in, say, the fifth decimal place both round the same way for
-    # display, but that tiny gap is exactly what separates the true field
-    # from a neighboring one that dragged in a stray bit, so the shorter-field
-    # tiebreak below must not be reached before that real difference is
-    # honored.
+    # Sort on the un-rounded score first, then re-rank the statistically tied
+    # leading band by plausibility. A real signal drags a cloud of aliases along
+    # with it (its own field shifted or truncated by a few bits), all fitting
+    # within a hair of each other; score order inside that band is decided by
+    # reference noise, not by which field is real, so the band is ordered by nice
+    # scale / alignment / resolution instead. This is what keeps the true 16-bit
+    # 0.01 field ahead of, say, a 10-bit alias that fits equally well at scale
+    # 0.16 (a scale no OEM would use).
     candidates.sort(key=lambda c: (-c[0], c[1], c[2]))
+    candidates = _rerank_tied(candidates, lambda c: c[0], lambda c: _plausibility_key(c[3]))
     return [c[3] for c in candidates[:max_candidates]]
 
 
@@ -1065,7 +1141,18 @@ def auto_decode(records_by_id: dict[int, list[dict]], reference: list[dict],
                     c = dict(c)
                     c["mux"] = {"byte": mux["byte"], "value": v}
                     out.append(c)
-    out.sort(key=lambda c: -(c.get("r2") or 0))
+    # Rank the merged list by the same fit key bitsearch uses (the stronger of
+    # |correlation| and R^2), not by r2 alone: r2 alone reshuffles a tied band by
+    # chance-level differences and can float a weaker-correlating candidate above
+    # the true field. Then re-rank the tied leading band by plausibility, exactly
+    # as bitsearch does, so the one-pass endpoint agrees with a hand search.
+    def _fit_score(c: dict) -> float:
+        s = c.get("score")
+        if s is not None:
+            return s
+        return max(abs(c.get("correlation") or 0.0), c.get("r2") or 0.0)
+    out.sort(key=lambda c: (-_fit_score(c), c.get("length") or 0, c.get("start_bit") or 0))
+    out = _rerank_tied(out, _fit_score, _plausibility_key)
     seen: set = set()
     deduped: list[dict] = []
     for c in out:
