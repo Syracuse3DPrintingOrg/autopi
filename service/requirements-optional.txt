@@ -20,6 +20,12 @@ pymodbus>=3.5
 can-isotp>=2.0
 udsoncan>=1.22
 
+# Local OCR for the Dashboard camera reference (app/services/ocr.py): read a
+# number off the cropped dash without an LLM round-trip, so reads are fast and
+# work offline. Needs the tesseract binary too (installed in the Dockerfile);
+# absent either, the reader falls back to the vision AI. Apache-2.0.
+pytesseract>=0.3.10
+
 # The optional AI assist for the Signal Finder (app/llm.py) talks to Gemini,
 # Claude, OpenAI, or a local Ollama over plain HTTPS with the httpx that ships
 # in the core requirements, so it needs no extra vendor SDK here.

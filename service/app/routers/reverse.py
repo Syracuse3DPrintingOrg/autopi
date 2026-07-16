@@ -23,6 +23,7 @@ from ..can import registry as can_registry
 from ..can import reverse as rev
 from ..db import CanDatabase, session_scope
 from ..services import cockpit as cockpit_svc
+from ..services import dash_reader
 from ..services import ref_recorder as rec
 from ..services import vision_crop
 
@@ -1081,6 +1082,7 @@ class VisionFrameIn(BaseModel):
     image: str            # data URL ("data:image/jpeg;base64,...") or raw base64
     what: str = "speed"
     roi: dict | None = None   # {x, y, w, h} fractions to crop to before reading
+    reader: str = "auto"      # "auto" (OCR then AI), "local" (OCR only), or "ai"
 
 
 @router.post("/reference/vision-frame")
@@ -1105,15 +1107,15 @@ def reference_vision_frame(body: VisionFrameIn):
         return {"ok": False, "error": "No image data."}
     raw, mime = vision_crop.crop_region(raw, mime, body.roi)
     try:
-        reading = llm.read_dashboard_value(raw, mime, body.what)
+        reading = dash_reader.read(raw, mime, body.what, body.reader)
     except Exception as exc:
         return {"ok": False, "error": str(exc)}
     value = reading.get("value")
     marked = None
     if value is not None:
         marked = rec.mark(float(value), t=grabbed_at)
-    return {"ok": True, "value": value, "recording": bool(marked and marked.get("recording")),
-            "status": marked}
+    return {"ok": True, "value": value, "engine": reading.get("engine"),
+            "recording": bool(marked and marked.get("recording")), "status": marked}
 
 
 @router.post("/reference/event")

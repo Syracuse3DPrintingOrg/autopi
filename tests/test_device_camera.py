@@ -202,7 +202,7 @@ def test_vision_frame_fails_cleanly_when_capture_misses(monkeypatch):
 
 
 def test_vision_frame_reads_marks_and_reports(monkeypatch):
-    from app.routers import device_camera as router_mod
+    from app.services import dash_reader
 
     jpeg = b"\xff\xd8fakejpeg"
     monkeypatch.setattr(cam, "capture_jpeg", lambda device, timeout_s=5.0: jpeg)
@@ -211,7 +211,8 @@ def test_vision_frame_reads_marks_and_reports(monkeypatch):
     def fake_read(image_b64, mime, what):
         seen["image_b64"], seen["mime"], seen["what"] = image_b64, mime, what
         return {"value": 42.5}
-    monkeypatch.setattr(router_mod.llm, "read_dashboard_value", fake_read)
+    # With no local OCR on the test box, the "auto" reader falls back to the LLM.
+    monkeypatch.setattr(dash_reader.llm, "read_dashboard_value", fake_read)
 
     rec.start("sweep")
     body = TestClient(app).post("/camera/vision-frame",
@@ -230,10 +231,10 @@ def test_vision_frame_reads_marks_and_reports(monkeypatch):
 
 
 def test_vision_frame_value_not_visible_marks_nothing(monkeypatch):
-    from app.routers import device_camera as router_mod
+    from app.services import dash_reader
 
     monkeypatch.setattr(cam, "capture_jpeg", lambda device, timeout_s=5.0: b"\xff\xd8x")
-    monkeypatch.setattr(router_mod.llm, "read_dashboard_value",
+    monkeypatch.setattr(dash_reader.llm, "read_dashboard_value",
                         lambda *a, **k: {"value": None})
     rec.start("sweep")
     body = TestClient(app).post("/camera/vision-frame",
@@ -245,13 +246,13 @@ def test_vision_frame_value_not_visible_marks_nothing(monkeypatch):
 
 
 def test_vision_frame_surfaces_llm_errors(monkeypatch):
-    from app.routers import device_camera as router_mod
+    from app.services import dash_reader
 
     monkeypatch.setattr(cam, "capture_jpeg", lambda device, timeout_s=5.0: b"\xff\xd8x")
 
     def boom(*a, **k):
         raise RuntimeError("No API key set. Add one in Settings under AI assist.")
-    monkeypatch.setattr(router_mod.llm, "read_dashboard_value", boom)
+    monkeypatch.setattr(dash_reader.llm, "read_dashboard_value", boom)
     body = TestClient(app).post("/camera/vision-frame",
                                 json={"device": "/dev/video0"}).json()
     assert body["ok"] is False

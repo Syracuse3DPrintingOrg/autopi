@@ -3,16 +3,18 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # fswebcam grabs a single JPEG from a USB camera for the on-device vision
-# reference. Small and optional: the app degrades gracefully without it, but
-# shipping it means a camera plugged into the device works with no extra setup
+# reference; tesseract-ocr reads the dashboard number locally (fast, no LLM) for
+# the same reference. Both small and optional: the app degrades gracefully
+# without either (no capture, or the reader falls back to the vision AI), but
+# shipping them means a camera plugged into the device works with no extra setup
 # beyond granting the container access to it (see docker-compose.yml). Kept in
-# its own layer with recommends off so the image stays lean. Best-effort: a
+# their own layer with recommends off so the image stays lean. Best-effort: a
 # flaky apt mirror must never fail the whole image build (and so an on-device
 # update), exactly like the optional Python dependencies below.
 RUN (apt-get update \
-      && apt-get install -y --no-install-recommends fswebcam \
+      && apt-get install -y --no-install-recommends fswebcam tesseract-ocr \
       && rm -rf /var/lib/apt/lists/*) \
-    || echo "AutoPi: fswebcam not installed (apt unavailable on this build); on-device camera capture stays off until it is present"
+    || echo "AutoPi: fswebcam/tesseract not installed (apt unavailable on this build); on-device camera capture and local OCR stay off until they are present"
 
 COPY requirements.txt requirements-optional.txt ./
 

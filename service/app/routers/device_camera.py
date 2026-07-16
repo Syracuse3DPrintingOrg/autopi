@@ -15,7 +15,7 @@ import time
 from fastapi import APIRouter, Response
 from pydantic import BaseModel
 
-from .. import llm
+from ..services import dash_reader
 from ..services import device_camera as cam
 from ..services import ref_recorder as rec
 from ..services import vision_crop
@@ -51,6 +51,7 @@ class DeviceVisionFrameIn(BaseModel):
     device: str
     what: str = "speed"
     roi: dict | None = None   # {x, y, w, h} fractions to crop to before reading
+    reader: str = "auto"      # "auto" (OCR then AI), "local" (OCR only), or "ai"
 
 
 @router.post("/vision-frame")
@@ -73,13 +74,13 @@ def device_vision_frame(body: DeviceVisionFrameIn):
     image_b64 = base64.b64encode(jpeg).decode("ascii")
     image_b64, mime = vision_crop.crop_region(image_b64, "image/jpeg", body.roi)
     try:
-        reading = llm.read_dashboard_value(image_b64, mime, body.what)
+        reading = dash_reader.read(image_b64, mime, body.what, body.reader)
     except Exception as exc:
         return {"ok": False, "value": None, "recording": False, "error": str(exc)}
     value = reading.get("value")
     marked = None
     if value is not None:
         marked = rec.mark(float(value), t=grabbed_at)
-    return {"ok": True, "value": value,
+    return {"ok": True, "value": value, "engine": reading.get("engine"),
             "recording": bool(marked and marked.get("recording")),
             "status": marked}

@@ -94,11 +94,20 @@
         </div>
         <div id="ref-vision-panel" class="d-none">
           <div class="row g-2 mb-1 align-items-end">
-            <div class="col-8">
+            <div class="col-7">
               <label class="form-label small mb-0">Value to read from the dash</label>
               <input type="text" class="form-control form-control-sm" id="ref-vision-what" value="speed">
             </div>
+            <div class="col-5">
+              <label class="form-label small mb-0">Read with</label>
+              <select class="form-select form-select-sm" id="ref-vision-reader">
+                <option value="auto" selected>On-device, AI backup</option>
+                <option value="local">On-device only</option>
+                <option value="ai">AI only</option>
+              </select>
+            </div>
           </div>
+          <div class="small text-secondary mb-1" id="ref-vision-reader-note">On-device reading is fast and works offline, best on a clear digital readout; it falls back to the AI when unsure. Crop to the number for the best result.</div>
           <div class="btn-group btn-group-sm mb-2" role="group" aria-label="Camera source">
             <input type="radio" class="btn-check" name="ref-vision-source" id="ref-vision-src-browser" value="browser" checked>
             <label class="btn btn-outline-secondary" for="ref-vision-src-browser">This browser's camera</label>
@@ -511,6 +520,12 @@
     let visionTimer = null;
     let visionRoi = null;         // {x,y,w,h} fractions of the frame, or null for the whole frame
     let visionValues = [];        // every value read this recording, for a visible sanity check
+    const visionReaderSel = document.getElementById('ref-vision-reader');
+    function visionReader() { return (visionReaderSel && visionReaderSel.value) || 'auto'; }
+    // A local read is quick, so sample more often for far more points; the AI read
+    // is slow, so keep a longer gap when it is the only reader.
+    function visionInterval() { return visionReader() === 'ai' ? 2500 : 1000; }
+    function readEngineLabel(e) { return e === 'ocr' ? ' (on-device)' : e === 'ai' ? ' (AI)' : ''; }
 
     function mode() {
       return document.querySelector('input[name="ref-mode"]:checked').value;
@@ -690,17 +705,17 @@
         const grabDevice = () => {
           if (!recording) return;
           fetch('camera/vision-frame', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ device, what, roi: visionRoi }) })
+            body: JSON.stringify({ device, what, roi: visionRoi, reader: visionReader() }) })
             .then((r) => r.json()).then((d) => {
               if (!d.ok) { visionRead.textContent = 'Last read: ' + esc(d.error || 'failed'); return; }
               visionRead.textContent = 'Last read: ' + (d.value == null ? '(not visible)' : d.value)
-                + (d.status ? '  ' + (d.status.count || 0) + ' points' : '');
+                + readEngineLabel(d.engine) + (d.status ? '  ' + (d.status.count || 0) + ' points' : '');
               pushVisionValue(d.value);
               if (d.status) countEl.textContent = (d.status.count || 0) + ' points recorded.';
             }).catch(() => { visionRead.textContent = 'Last read: failed'; });
         };
         grabDevice();
-        visionTimer = setInterval(grabDevice, 2500);
+        visionTimer = setInterval(grabDevice, visionInterval());
         return;
       }
       // The secure-context check happens before the recording starts (in the
@@ -726,16 +741,16 @@
         canvas.getContext('2d').drawImage(visionVideo, 0, 0);
         const image = canvas.toDataURL('image/jpeg', 0.6);
         fetch('reverse/reference/vision-frame', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ image, what, roi: visionRoi }) })
+          body: JSON.stringify({ image, what, roi: visionRoi, reader: visionReader() }) })
           .then((r) => r.json()).then((d) => {
             if (!d.ok) { visionRead.textContent = 'Last read: ' + esc(d.error || 'failed'); return; }
             visionRead.textContent = 'Last read: ' + (d.value == null ? '(not visible)' : d.value)
-              + (d.status ? '  ' + (d.status.count || 0) + ' points' : '');
+              + readEngineLabel(d.engine) + (d.status ? '  ' + (d.status.count || 0) + ' points' : '');
             pushVisionValue(d.value);
             if (d.status) countEl.textContent = (d.status.count || 0) + ' points recorded.';
           }).catch(() => { visionRead.textContent = 'Last read: failed'; });
       };
-      visionTimer = setInterval(grab, 2500);
+      visionTimer = setInterval(grab, visionInterval());
     }
     function stopVision() {
       if (visionTimer) { clearInterval(visionTimer); visionTimer = null; }

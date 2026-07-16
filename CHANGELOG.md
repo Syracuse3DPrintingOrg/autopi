@@ -7,6 +7,7 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 ## [Unreleased]
 
 ### Added
+- **The dashboard camera can read the value on the device now, without the AI (and much faster).** Reading a number no longer has to go to the vision AI every couple of seconds. A local reader on the AutoPi box reads the cropped number in a fraction of the time, for free and offline, and because it is fast it takes many more readings so the search has more to work with. A Read with control lets you choose: on-device with the AI as backup (the default), on-device only, or AI only. On-device reading is best on a clear digital readout and falls back to the AI when it is unsure, so a fancy graphical cluster still works.
 
 - **Crop the dashboard camera to just the value you want read.** A cluster that shows speed, RPM, gear, and temperature at once could send the AI reading the wrong number. Drag a box on the camera preview around only the value to read, and every frame is cropped to that box before it is read, so the reference tracks the number you meant. A Clear crop button goes back to reading the whole frame.
 
