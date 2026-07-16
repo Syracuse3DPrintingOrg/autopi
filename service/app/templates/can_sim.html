@@ -147,14 +147,21 @@
     return 'Raw';
   }
 
+  let entryById = {};
   async function refreshEntries() {
     const res = await fetch('can/sim');
     const body = await res.json();
     const entries = body.entries || [];
+    entryById = {};
+    for (const e of entries) entryById[e.id] = e;
     schedBadge.classList.toggle('on', body.running);
     schedBadge.classList.toggle('off', !body.running);
     schedBadge.innerHTML = '<i class="bi bi-circle-fill me-1"></i>' +
       (body.running ? 'Scheduler running' : 'Scheduler stopped');
+
+    // Do not re-render the rows out from under an in-progress live edit; the
+    // 3s poll would otherwise wipe what the user is typing into a data field.
+    if (document.activeElement && document.activeElement.classList.contains('edit-data')) return;
 
     rowsEl.innerHTML = '';
     emptyEl.classList.toggle('d-none', entries.length > 0);
@@ -165,7 +172,9 @@
         <td>${e.name || '(unnamed)'}</td>
         <td>${e.channel}</td>
         <td>0x${Number(e.arbitration_id).toString(16).toUpperCase()}</td>
-        <td>${sourceLabel(e)}</td>
+        <td>${e.data !== undefined && e.data !== '' && !e.message
+              ? `<input class="form-control form-control-sm font-monospace edit-data" data-id="${e.id}" value="${e.data}" style="min-width:15rem">`
+              : sourceLabel(e)}</td>
         <td>${fmtInterval(e.period_ms)}</td>
         <td>
           <div class="form-check form-switch mb-0">
@@ -202,6 +211,27 @@
       document.getElementById('dbc-fields').classList.toggle('shown', dbc);
       document.getElementById('raw-fields').classList.toggle('d-none', dbc);
     });
+  });
+
+  // Live-edit an entry's data: applies on the next scheduler tick, so you can
+  // tweak the bytes while it transmits without stopping and re-adding.
+  rowsEl.addEventListener('change', async (ev) => {
+    const input = ev.target.closest('.edit-data');
+    if (!input) return;
+    const e = entryById[input.dataset.id];
+    if (!e) return;
+    const body = {
+      name: e.name || '', channel: e.channel || 'can0', backend: e.backend || 'socketcan',
+      arbitration_id: '0x' + Number(e.arbitration_id).toString(16),
+      data: input.value.trim(), database_id: e.database_id || null,
+      message: e.message || null, signals: e.signals || {},
+      period_ms: e.period_ms || 0, is_fd: !!e.is_fd, is_extended_id: !!e.is_extended_id,
+      enabled: !!e.enabled,
+    };
+    const res = await fetch(`can/sim/${e.id}`, { method: 'PUT',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    input.classList.toggle('is-invalid', !res.ok);
+    if (res.ok) { const updated = await res.json(); if (updated && updated.data !== undefined) e.data = updated.data; }
   });
 
   rowsEl.addEventListener('click', async (ev) => {

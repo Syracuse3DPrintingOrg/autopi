@@ -824,6 +824,7 @@
           + '<button class="btn btn-outline-warning btn-sm me-1" data-flood="' + i + '" title="Send it every 10ms for 1s to out-rate the real sender">Flood 1s</button>'
           + '<button class="btn btn-outline-info btn-sm me-1" data-verify="' + i + '">Verify effect</button>'
           + '<button class="btn btn-outline-success btn-sm me-1" data-savelib="' + i + '" title="Save to the command library so you can map it to a vehicle control">Save to library</button>'
+          + '<button class="btn btn-outline-secondary btn-sm me-1" data-workbench="' + i + '" title="Open in the transmit workbench to tweak the bytes and rate live">To workbench</button>'
           + '<button class="btn btn-outline-primary btn-sm" data-hunt="' + i + '">Bits</button></td></tr>').join('')
         + '</tbody></table>'
         + '<div class="small text-secondary mt-1">A "likely status" message is what a module reports, not the command that drives the actuator. Replaying it usually does nothing. Use "Verify effect" to inject it and see whether anything on any bus actually reacts.</div>';
@@ -853,6 +854,19 @@
       huntResults.querySelectorAll('[data-flood]').forEach((b) => b.addEventListener('click', () => {
         const c = cands[parseInt(b.getAttribute('data-flood'), 10)];
         fireFrame(huntCaptures[c.channel], c.arbitration_id, c.channel, c.byte, huntStatus, 1000);
+      }));
+      huntResults.querySelectorAll('[data-workbench]').forEach((b) => b.addEventListener('click', () => {
+        const c = cands[parseInt(b.getAttribute('data-workbench'), 10)];
+        b.disabled = true;
+        fetch('reverse/to-workbench', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ capture_id: huntCaptures[c.channel], arbitration_id: c.arbitration_id,
+            channel: c.channel, byte: (c.byte == null ? null : c.byte), name: hex(c.arbitration_id) + ' control' }) })
+          .then((r) => r.json()).then((d) => {
+            b.disabled = false;
+            huntStatus.innerHTML = d.ok
+              ? '<span class="text-success">Added to the transmit workbench. <a href="ui/can-sim">Open Simulate / send</a> to tweak and run it.</span>'
+              : '<span class="text-danger">' + esc(d.error || 'Could not add to workbench') + '</span>';
+          }).catch(() => { b.disabled = false; huntStatus.textContent = 'Could not add to workbench.'; });
       }));
       huntResults.querySelectorAll('[data-verify]').forEach((b) => b.addEventListener('click', () => {
         const c = cands[parseInt(b.getAttribute('data-verify'), 10)];

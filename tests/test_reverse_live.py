@@ -302,3 +302,21 @@ def test_fire_flood_uses_burst(monkeypatch):
     body = resp.json()
     assert body["ok"] is True and body["mode"] == "burst" and body["injected"] == 42
     assert calls["arb"] == 0x123 and calls["duration"] == 1000 and calls["period"] == 10
+
+
+def test_to_workbench_creates_sim_entry(monkeypatch):
+    from app.can import simulation as sim
+    monkeypatch.setattr("app.routers.reverse._capture_or_404",
+                        lambda cid: {"backend": "socketcan", "channel": "can1",
+                                     "frames": [{"arbitration_id": 0x5C6, "data": [1, 2, 3], "timestamp": 0.0}]})
+    client = TestClient(app)
+    before = len(sim.list_entries())
+    resp = client.post("/reverse/to-workbench", json={"capture_id": "x", "arbitration_id": 0x5C6,
+                                                      "channel": "can1", "byte": None, "name": "Mute"})
+    assert resp.status_code == 200 and resp.json()["ok"] is True
+    eid = resp.json()["entry_id"]
+    entry = sim.get_entry(eid)
+    assert entry is not None and entry["arbitration_id"] == 0x5C6 and entry["channel"] == "can1"
+    assert entry["enabled"] is False  # added paused, user runs it deliberately
+    sim.delete_entry(eid)
+    assert len(sim.list_entries()) == before

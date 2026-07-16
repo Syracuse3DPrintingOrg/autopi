@@ -6,6 +6,10 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ## [Unreleased]
 
+### Added
+
+- **Send a found control to the transmit workbench, and edit it live.** Every Signal Finder result now has a "To workbench" button that drops the command into the Simulate / send panel, ready to run. There you can edit an entry's data bytes while it is transmitting and the change takes effect on the next cycle, so you can nudge a value and watch the car respond without stopping and re-adding the frame.
+
 ### Fixed
 
 - **"Find a control" no longer bogs the device down on a busy bus.** Like Verify effect before it, the search was writing every frame it heard on every bus to the SD card, which on a busy CAN-FD bus is tens of thousands of frames and made the device sluggish after each run. It now keeps those frames in memory (the Bits view still opens them), so the search stays responsive.

@@ -648,6 +648,35 @@ def save_command_route(body: SaveCommandIn):
     return {"ok": True, "saved": saved, "name": name, "command": command}
 
 
+class ToWorkbenchIn(BaseModel):
+    capture_id: str
+    arbitration_id: int
+    channel: str = ""
+    byte: int | None = None
+    name: str = ""
+    period_ms: int = 0
+
+
+@router.post("/to-workbench")
+def to_workbench_route(body: ToWorkbenchIn):
+    """Push a found control into the transmit workbench (the Simulate/send panel)
+    as a ready-to-edit entry, so you can tweak the bytes live and adjust the rate
+    while it transmits."""
+    from ..can import simulation as sim
+    capture = _capture_or_404(body.capture_id)
+    if not _frames_for_id(capture, body.arbitration_id):
+        raise HTTPException(404, "No frames with that id in this capture")
+    name = (body.name or "").strip() or f"CAN {body.arbitration_id:X}"
+    command = _command_from_capture(capture, body.arbitration_id, body.byte, body.channel, body.period_ms)
+    entry = sim.create_entry({
+        "name": name, "channel": command["channel"],
+        "arbitration_id": int(body.arbitration_id), "data": command["data"],
+        "period_ms": int(body.period_ms or 0), "is_fd": command["is_fd"],
+        "is_extended_id": command["is_extended_id"], "enabled": False,
+    })
+    return {"ok": True, "entry_id": entry.get("id"), "name": name}
+
+
 # --------------------------------------------------------------------------
 # "Find a control": capture every active bus at once, have the user operate the
 # control and mark each press, and rank the message that reacts. No reference
