@@ -122,3 +122,24 @@ def capture_available() -> bool:
     """Whether this device can capture at all: at least one camera is
     plugged in and a capture tool is installed."""
     return capture_tool() != "none" and bool(list_devices())
+
+
+def diagnosis(devices: list[dict] | None = None, tool: str | None = None) -> str:
+    """A plain-language explanation of what is missing for on-device capture, or
+    "" when it is ready. Pure over its (optionally injected) inputs so it can be
+    tested without a camera. The two failure modes need different fixes, so the
+    message names the exact one: the container cannot see any camera (device
+    passthrough / the camera itself), or a camera is visible but no capture tool
+    is installed (rebuild the image)."""
+    devices = list_devices() if devices is None else devices
+    tool = capture_tool() if tool is None else tool
+    if not devices:
+        return ("No camera is visible to AutoPi. If a USB camera is plugged into the "
+                "device, the app runs in a container that needs access to it: uncomment "
+                "the camera block in docker-compose.yml and run 'docker compose up -d'. "
+                "The image also needs a capture tool (fswebcam or ffmpeg); rebuild it "
+                "with 'docker compose up -d --build' after updating.")
+    if tool == "none":
+        return ("A camera is connected but no capture tool is installed in the app image. "
+                "Rebuild it so it includes fswebcam: 'docker compose up -d --build'.")
+    return ""

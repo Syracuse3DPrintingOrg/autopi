@@ -31,12 +31,20 @@ devs=()
 for d in /dev/gpiomem /dev/gpiomem0 /dev/gpiochip0 /dev/gpiochip4; do
   [ -e "$d" ] && devs+=("$d")
 done
+# USB camera(s) for the vision reference: pass through any /dev/video* present at
+# generation time so a plugged-in camera works with no manual compose edit. Only
+# existing nodes are added, so a Pi with no camera is unaffected. Replug then
+# re-run this (or update) to pick up a camera added after first boot.
+for d in /dev/video*; do
+  [ -e "$d" ] && devs+=("$d")
+done
 
 compose_files="docker-compose.appliance.yml"
 override="$REPO_DIR/docker-compose.override.yml"
 if [ "${#devs[@]}" -gt 0 ]; then
   {
-    echo "# Generated: GPIO passthrough for this Pi (merged over the appliance file)."
+    echo "# Generated: device passthrough for this Pi (GPIO + any USB camera),"
+    echo "# merged over the appliance file."
     echo "services:"
     echo "  autopi:"
     echo "    devices:"

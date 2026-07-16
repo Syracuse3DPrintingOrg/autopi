@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import base64
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Response
 from pydantic import BaseModel
 
 from .. import llm
@@ -23,12 +23,26 @@ router = APIRouter(prefix="/camera", tags=["device-camera"])
 
 @router.get("/devices")
 def camera_devices():
-    """The cameras plugged into the AutoPi device, and whether capture can
-    work at all (a camera present and ffmpeg or fswebcam installed)."""
+    """The cameras plugged into the AutoPi device, whether capture can work at
+    all (a camera present and ffmpeg or fswebcam installed), and, when it cannot,
+    a plain-language hint about exactly what to fix."""
     devices = cam.list_devices()
     tool = cam.capture_tool()
-    return {"devices": devices, "tool": tool,
-            "available": bool(devices) and tool != "none"}
+    available = bool(devices) and tool != "none"
+    return {"devices": devices, "tool": tool, "available": available,
+            "hint": "" if available else cam.diagnosis(devices, tool)}
+
+
+@router.get("/snapshot")
+def camera_snapshot(device: str):
+    """One JPEG frame from a device camera, for a live preview so you can aim the
+    camera at the dashboard before capturing. Returns 503 with a short reason
+    when a frame cannot be grabbed."""
+    jpeg = cam.capture_jpeg(device)
+    if jpeg is None:
+        return Response(content=b"no frame", media_type="text/plain", status_code=503)
+    return Response(content=jpeg, media_type="image/jpeg",
+                    headers={"Cache-Control": "no-store"})
 
 
 class DeviceVisionFrameIn(BaseModel):

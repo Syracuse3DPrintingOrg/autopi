@@ -12,10 +12,16 @@ services:
       - ./service/data:/app/data
     ports:
       - "9284:8000"
-    # GPIO access on a Raspberry Pi host: uncomment the device mount below on a
-    # Pi. It is left off by default so `docker compose up` works on a server
-    # that has no /dev/gpiomem (the GPIO driver reports itself unavailable
-    # there and the app still runs).
+    # Hardware device access (optional). Left off by default so `docker compose
+    # up` works on a server that has no such devices (the app degrades
+    # gracefully). Uncomment the lines you need on a Pi, then `docker compose up -d`:
+    #   - GPIO: /dev/gpiomem
+    #   - USB camera for the vision reference: map the video node(s) your camera
+    #     creates. A Logitech C270 is usually /dev/video0 (plus /dev/video1 for
+    #     metadata). The camera must be plugged in when the container starts.
+    #     The image already ships fswebcam to grab frames.
     # devices:
     #   - "/dev/gpiomem:/dev/gpiomem"
+    #   - "/dev/video0:/dev/video0"
+    #   - "/dev/video1:/dev/video1"
     restart: unless-stopped

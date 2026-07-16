@@ -6,6 +6,10 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ## [Unreleased]
 
+### Fixed
+
+- **The on-device camera now actually finds your USB camera, with a live preview to aim it.** The app runs in a container that could not see a camera plugged into the device, and it had no tool to grab a frame, so the device-camera list came up empty. Now the app image ships fswebcam, a Pi appliance passes any plugged-in camera through automatically, and the plain server compose has a ready-to-uncomment camera block. The Dashboard camera's device option shows a live preview so you can aim it at the dashboard before you start, and when a camera still is not usable it tells you the exact fix (grant the container access, or rebuild the image for the capture tool) instead of a blank list.
+
 ### Added
 
 - **The Dashboard camera can now use a USB camera plugged into the AutoPi box.** The reference recorder's camera mode has a new source choice: your browser's camera (as before), or a camera on the AutoPi device itself. Pick the device option and AutoPi grabs the frames on the box (with ffmpeg or fswebcam, whichever is installed) and reads the dashboard value from there, so it works over a plain http address, with no camera permissions to grant, and the readings line up with the live capture on the device's own clock. If no camera or capture tool is found, the page says exactly what is missing.

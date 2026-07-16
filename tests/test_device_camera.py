@@ -172,7 +172,8 @@ def test_devices_endpoint_honest_when_nothing_can_capture(monkeypatch):
     monkeypatch.setattr(cam, "list_devices", lambda: [])
     monkeypatch.setattr(cam, "capture_tool", lambda: "none")
     body = TestClient(app).get("/camera/devices").json()
-    assert body == {"devices": [], "tool": "none", "available": False}
+    assert body["devices"] == [] and body["tool"] == "none" and body["available"] is False
+    assert body["hint"]  # explains what to fix
 
 
 def test_devices_endpoint_camera_present_but_no_tool(monkeypatch):
@@ -265,3 +266,37 @@ def test_vision_frame_with_a_hostile_device_path_never_captures(monkeypatch):
     body = TestClient(app).post("/camera/vision-frame",
                                 json={"device": "/dev/video0; reboot"}).json()
     assert body["ok"] is False
+
+
+def test_diagnosis_names_the_exact_fix():
+    from app.services import device_camera as cam
+    # No camera visible -> device passthrough guidance.
+    d = cam.diagnosis(devices=[], tool="none")
+    assert "docker-compose" in d and "camera" in d.lower()
+    # Camera visible but no tool -> rebuild guidance.
+    d2 = cam.diagnosis(devices=[{"device": "/dev/video0", "label": "x"}], tool="none")
+    assert "--build" in d2 and "tool" in d2.lower()
+    # Ready -> empty.
+    assert cam.diagnosis(devices=[{"device": "/dev/video0", "label": "x"}], tool="fswebcam") == ""
+
+
+def test_devices_endpoint_includes_hint_when_unavailable(monkeypatch):
+    from app.services import device_camera as cam
+    monkeypatch.setattr(cam, "list_devices", lambda: [])
+    monkeypatch.setattr(cam, "capture_tool", lambda: "none")
+    from starlette.testclient import TestClient
+    from app.main import app
+    body = TestClient(app).get("/camera/devices").json()
+    assert body["available"] is False and body["hint"]
+
+
+def test_snapshot_endpoint_returns_jpeg_or_503(monkeypatch):
+    from app.services import device_camera as cam
+    from starlette.testclient import TestClient
+    from app.main import app
+    c = TestClient(app)
+    monkeypatch.setattr(cam, "capture_jpeg", lambda dev, **k: b"\xff\xd8\xff\xd9")
+    r = c.get("/camera/snapshot", params={"device": "/dev/video0"})
+    assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg" and r.content == b"\xff\xd8\xff\xd9"
+    monkeypatch.setattr(cam, "capture_jpeg", lambda dev, **k: None)
+    assert c.get("/camera/snapshot", params={"device": "/dev/video0"}).status_code == 503

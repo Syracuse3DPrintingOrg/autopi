@@ -108,6 +108,8 @@
           <div id="ref-vision-device-row" class="d-none mb-1">
             <select class="form-select form-select-sm" id="ref-vision-device"></select>
             <div class="small text-secondary mt-1" id="ref-vision-device-note"></div>
+            <img id="ref-vision-device-preview" alt="Camera preview" class="w-100 rounded border d-none mt-1"
+                 style="max-height:220px;background:#000;object-fit:contain">
           </div>
           <video id="ref-vision-video" class="w-100 rounded border" style="max-height:220px;background:#000" playsinline muted></video>
           <div class="small text-secondary mt-1">Point a camera at the dashboard and change the value.
@@ -499,6 +501,33 @@
     function visionSource() {
       return (visionSrcDevice && visionSrcDevice.checked) ? 'device' : 'browser';
     }
+    const visionPreview = document.getElementById('ref-vision-device-preview');
+    let previewActive = false;
+    // Live preview: pull a fresh snapshot from the device and chain the next
+    // request on load/error so slow grabs never pile up. Runs while the device
+    // source is selected, so you can aim the camera before (and during) capture.
+    function refreshPreview() {
+      const device = visionDeviceSel.value;
+      if (!previewActive || !device) return;
+      visionPreview.src = 'camera/snapshot?device=' + encodeURIComponent(device) + '&t=' + Date.now();
+    }
+    function startDevicePreview() {
+      const device = visionDeviceSel.value;
+      if (!device) { stopDevicePreview(); return; }
+      previewActive = true;
+      visionPreview.classList.remove('d-none');
+      refreshPreview();
+    }
+    function stopDevicePreview() {
+      previewActive = false;
+      if (visionPreview) { visionPreview.classList.add('d-none'); visionPreview.removeAttribute('src'); }
+    }
+    if (visionPreview) {
+      const next = () => { if (previewActive) setTimeout(refreshPreview, 1200); };
+      visionPreview.addEventListener('load', next);
+      visionPreview.addEventListener('error', next);
+    }
+
     function loadDeviceCameras() {
       fetch('camera/devices').then((r) => r.json()).then((d) => {
         const devices = d.devices || [];
@@ -510,21 +539,26 @@
           visionDeviceSel.appendChild(opt);
         });
         visionDeviceSel.classList.toggle('d-none', !devices.length);
-        if (!devices.length) {
-          visionDeviceNote.textContent = 'No camera was found on the AutoPi device. Plug a USB camera into it, then pick this option again.';
-        } else if (d.tool === 'none') {
-          visionDeviceNote.textContent = 'A camera is plugged in, but no capture tool is installed on the device. Install ffmpeg (or fswebcam) on it: sudo apt install ffmpeg';
+        if (!d.available) {
+          stopDevicePreview();
+          // The endpoint's hint names the exact fix (device passthrough vs a
+          // missing capture tool); fall back to a generic line if absent.
+          visionDeviceNote.textContent = d.hint
+            || 'No usable camera on the AutoPi device yet.';
         } else {
-          visionDeviceNote.textContent = 'The AutoPi device grabs a frame (with ' + esc(d.tool) + ') and reads it every couple of seconds. No preview here; watch the readings below.';
+          visionDeviceNote.textContent = 'Live preview below (grabbed with ' + esc(d.tool)
+            + '). Aim it at the dashboard, then Start; AutoPi reads a value every couple of seconds.';
+          startDevicePreview();
         }
-      }).catch(() => { visionDeviceNote.textContent = 'Could not check the device for cameras.'; });
+      }).catch(() => { stopDevicePreview(); visionDeviceNote.textContent = 'Could not check the device for cameras.'; });
     }
     function syncVisionSource() {
       const dev = visionSource() === 'device';
       if (visionDeviceRow) visionDeviceRow.classList.toggle('d-none', !dev);
       if (visionVideo) visionVideo.classList.toggle('d-none', dev);
-      if (dev) loadDeviceCameras();
+      if (dev) { loadDeviceCameras(); } else { stopDevicePreview(); }
     }
+    if (visionDeviceSel) visionDeviceSel.addEventListener('change', () => { if (visionSource() === 'device') startDevicePreview(); });
     document.querySelectorAll('input[name="ref-vision-source"]').forEach((r) => r.addEventListener('change', syncVisionSource));
     syncVisionSource();
 
@@ -535,6 +569,7 @@
         // the AutoPi box, reads it, and records the mark. Nothing to open in
         // the browser, so no secure-context requirement.
         const device = visionDeviceSel.value;
+        stopDevicePreview();  // the capture owns the camera while recording; no contention
         const grabDevice = () => {
           if (!recording) return;
           fetch('camera/vision-frame', { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -587,6 +622,11 @@
       if (visionTimer) { clearInterval(visionTimer); visionTimer = null; }
       if (visionStream) { visionStream.getTracks().forEach((t) => t.stop()); visionStream = null; }
       if (visionVideo) visionVideo.srcObject = null;
+      // Recording stopped: resume the aiming preview if the device source is still
+      // chosen and the vision panel is showing.
+      if (visionSource() === 'device' && visionPanel && !visionPanel.classList.contains('d-none')) {
+        startDevicePreview();
+      }
     }
     document.querySelectorAll('input[name="ref-mode"]').forEach((r) => r.addEventListener('change', syncPanels));
     syncPanels();

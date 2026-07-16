@@ -2,6 +2,15 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+# fswebcam grabs a single JPEG from a USB camera for the on-device vision
+# reference. Small and optional: the app degrades gracefully without it, but
+# shipping it means a camera plugged into the device works with no extra setup
+# beyond granting the container access to it (see docker-compose.yml). Kept in
+# its own layer with recommends off so the image stays lean.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends fswebcam \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt requirements-optional.txt ./
 
 # Core dependencies must install (pure-Python, wheels everywhere).
