@@ -99,9 +99,21 @@
               <input type="text" class="form-control form-control-sm" id="ref-vision-what" value="speed">
             </div>
           </div>
+          <div class="btn-group btn-group-sm mb-2" role="group" aria-label="Camera source">
+            <input type="radio" class="btn-check" name="ref-vision-source" id="ref-vision-src-browser" value="browser" checked>
+            <label class="btn btn-outline-secondary" for="ref-vision-src-browser">This browser's camera</label>
+            <input type="radio" class="btn-check" name="ref-vision-source" id="ref-vision-src-device" value="device">
+            <label class="btn btn-outline-secondary" for="ref-vision-src-device">A camera on the AutoPi device</label>
+          </div>
+          <div id="ref-vision-device-row" class="d-none mb-1">
+            <select class="form-select form-select-sm" id="ref-vision-device"></select>
+            <div class="small text-secondary mt-1" id="ref-vision-device-note"></div>
+          </div>
           <video id="ref-vision-video" class="w-100 rounded border" style="max-height:220px;background:#000" playsinline muted></video>
-          <div class="small text-secondary mt-1">Point a camera (or your webcam) at the dashboard and change the value.
-            AutoPi reads it every couple of seconds and records it as the reference, timed against the capture.</div>
+          <div class="small text-secondary mt-1">Point a camera at the dashboard and change the value.
+            AutoPi reads it every couple of seconds and records it as the reference, timed against the capture.
+            The browser camera needs a secure page (https or the device's own screen); a USB camera plugged into
+            the AutoPi box works from anywhere.</div>
           <div class="small mono mt-1" id="ref-vision-read">Last read: -</div>
         </div>
         <div class="small text-secondary mb-2" id="ref-count">Not recording.</div>
@@ -465,6 +477,10 @@
     const visionPanel = document.getElementById('ref-vision-panel');
     const visionVideo = document.getElementById('ref-vision-video');
     const visionRead = document.getElementById('ref-vision-read');
+    const visionSrcDevice = document.getElementById('ref-vision-src-device');
+    const visionDeviceRow = document.getElementById('ref-vision-device-row');
+    const visionDeviceSel = document.getElementById('ref-vision-device');
+    const visionDeviceNote = document.getElementById('ref-vision-device-note');
     let recording = false;
     let markPending = false;
     let markTimer = null;
@@ -480,8 +496,60 @@
       if (visionPanel) visionPanel.classList.toggle('d-none', mode() !== 'vision');
     }
 
+    function visionSource() {
+      return (visionSrcDevice && visionSrcDevice.checked) ? 'device' : 'browser';
+    }
+    function loadDeviceCameras() {
+      fetch('camera/devices').then((r) => r.json()).then((d) => {
+        const devices = d.devices || [];
+        visionDeviceSel.innerHTML = '';
+        devices.forEach((c) => {
+          const opt = document.createElement('option');
+          opt.value = c.device;
+          opt.textContent = c.label || c.device;
+          visionDeviceSel.appendChild(opt);
+        });
+        visionDeviceSel.classList.toggle('d-none', !devices.length);
+        if (!devices.length) {
+          visionDeviceNote.textContent = 'No camera was found on the AutoPi device. Plug a USB camera into it, then pick this option again.';
+        } else if (d.tool === 'none') {
+          visionDeviceNote.textContent = 'A camera is plugged in, but no capture tool is installed on the device. Install ffmpeg (or fswebcam) on it: sudo apt install ffmpeg';
+        } else {
+          visionDeviceNote.textContent = 'The AutoPi device grabs a frame (with ' + esc(d.tool) + ') and reads it every couple of seconds. No preview here; watch the readings below.';
+        }
+      }).catch(() => { visionDeviceNote.textContent = 'Could not check the device for cameras.'; });
+    }
+    function syncVisionSource() {
+      const dev = visionSource() === 'device';
+      if (visionDeviceRow) visionDeviceRow.classList.toggle('d-none', !dev);
+      if (visionVideo) visionVideo.classList.toggle('d-none', dev);
+      if (dev) loadDeviceCameras();
+    }
+    document.querySelectorAll('input[name="ref-vision-source"]').forEach((r) => r.addEventListener('change', syncVisionSource));
+    syncVisionSource();
+
     async function startVision() {
       const what = (document.getElementById('ref-vision-what').value || 'speed').trim();
+      if (visionSource() === 'device') {
+        // On-device capture: the server grabs a frame from the USB camera on
+        // the AutoPi box, reads it, and records the mark. Nothing to open in
+        // the browser, so no secure-context requirement.
+        const device = visionDeviceSel.value;
+        const grabDevice = () => {
+          if (!recording) return;
+          fetch('camera/vision-frame', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ device, what }) })
+            .then((r) => r.json()).then((d) => {
+              if (!d.ok) { visionRead.textContent = 'Last read: ' + esc(d.error || 'failed'); return; }
+              visionRead.textContent = 'Last read: ' + (d.value == null ? '(not visible)' : d.value)
+                + (d.status ? '  ' + (d.status.count || 0) + ' points' : '');
+              if (d.status) countEl.textContent = (d.status.count || 0) + ' points recorded.';
+            }).catch(() => { visionRead.textContent = 'Last read: failed'; });
+        };
+        grabDevice();
+        visionTimer = setInterval(grabDevice, 2500);
+        return;
+      }
       // The secure-context check happens before the recording starts (in the
       // Start handler); here we only handle the camera being blocked/denied at
       // the OS/permission level, which happens after the recording has begun.
@@ -534,6 +602,8 @@
       document.getElementById('ref-mode-button').disabled = on;
       const visionRadio = document.getElementById('ref-mode-vision');
       if (visionRadio) visionRadio.disabled = on;
+      document.querySelectorAll('input[name="ref-vision-source"]').forEach((r) => { r.disabled = on; });
+      if (visionDeviceSel) visionDeviceSel.disabled = on;
       if (!on) countEl.textContent = 'Not recording.';
     }
     setRecordingUi(false);
@@ -577,15 +647,22 @@
 
     startBtn.addEventListener('click', () => {
       const m = mode();
-      // Vision needs a camera, which the browser only exposes over a secure page
-      // (https or the device's own localhost). Check before we start a recording
-      // so we do not leave one running with no camera feeding it.
-      if (m === 'vision' && (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia)) {
+      // The browser camera only opens on a secure page (https or the device's
+      // own localhost). Check before we start a recording so we do not leave
+      // one running with no camera feeding it. The device camera has no such
+      // requirement: the AutoPi box captures on its own.
+      if (m === 'vision' && visionSource() === 'browser'
+          && (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia)) {
         statusEl.innerHTML = '<span class="text-warning">Your browser will not open a camera on this connection. '
           + 'Camera access needs a secure page: open AutoPi over <strong>https</strong>, or on the device\'s own '
-          + 'screen at <strong>http://localhost:' + (location.port || '80') + '</strong>. A USB camera plugged into '
-          + 'the AutoPi device itself is not reachable from a browser this way (that needs on-device capture, which '
-          + 'is planned). For now use a sweep or a known signal as the reference instead.</span>';
+          + 'screen at <strong>http://localhost:' + (location.port || '80') + '</strong>. Or plug a USB camera '
+          + 'into the AutoPi device and pick <strong>A camera on the AutoPi device</strong> above, which works '
+          + 'over plain http.</span>';
+        return;
+      }
+      if (m === 'vision' && visionSource() === 'device' && !visionDeviceSel.value) {
+        statusEl.innerHTML = '<span class="text-warning">No device camera to record with. '
+          + esc(visionDeviceNote.textContent || 'Plug a USB camera into the AutoPi device.') + '</span>';
         return;
       }
       // Vision records sweep-style points (a value per camera read), so it starts

@@ -6,9 +6,13 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ## [Unreleased]
 
+### Added
+
+- **The Dashboard camera can now use a USB camera plugged into the AutoPi box.** The reference recorder's camera mode has a new source choice: your browser's camera (as before), or a camera on the AutoPi device itself. Pick the device option and AutoPi grabs the frames on the box (with ffmpeg or fswebcam, whichever is installed) and reads the dashboard value from there, so it works over a plain http address, with no camera permissions to grant, and the readings line up with the live capture on the device's own clock. If no camera or capture tool is found, the page says exactly what is missing.
+
 ### Fixed
 
-- **The Dashboard camera explains itself instead of failing cryptically.** Browsers only allow camera access on a secure page (https, or the device's own screen at localhost), so over a plain LAN address the camera could not open and showed a confusing error. It now tells you plainly what is needed, and it no longer leaves a reference recording running with no camera. On-device capture for a USB camera plugged into the AutoPi box is coming separately.
+- **The Dashboard camera explains itself instead of failing cryptically.** Browsers only allow camera access on a secure page (https, or the device's own screen at localhost), so over a plain LAN address the camera could not open and showed a confusing error. It now tells you plainly what is needed, and it no longer leaves a reference recording running with no camera. And when the browser cannot open a camera at all, the new on-device option is offered right in the message.
 - **Settings search now finds settings, not just section names.** Typing in the settings search box now matches the actual settings inside each section (so searching "theme", "bitrate", or "brightness" finds the right section), and it opens the section when only one matches.
 
 ### Fixed

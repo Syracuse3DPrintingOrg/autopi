@@ -14,6 +14,7 @@ from .routers import can_monitor as can_monitor_router
 from .routers import can_sim as can_sim_router
 from .routers import cockpit as cockpit_router
 from .routers import db as db_router
+from .routers import device_camera as device_camera_router
 from .routers import diagnostics as diagnostics_router
 from .routers import examples as examples_router
 from .routers import layout as layout_router
@@ -85,6 +86,7 @@ app.include_router(setup_router.router)
 app.include_router(streamdeck_router.router)
 app.include_router(system_router.router)
 app.include_router(db_router.router)
+app.include_router(device_camera_router.router)
 app.include_router(logic_router.router)
 app.include_router(can_dbc_router.router)
 app.include_router(can_sim_router.router)
