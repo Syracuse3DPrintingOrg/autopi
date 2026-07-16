@@ -124,6 +124,32 @@
     </form>
   </div>
 </div>
+
+<div class="card mt-3"><div class="card-body">
+  <h6 class="mb-2"><i class="bi bi-shuffle me-1"></i>Fuzz an id</h6>
+  <p class="small text-secondary mb-2">Send a bounded run of frames on one id with chosen bytes randomized each time, to see what reacts. Every frame sent is listed so you can trace a reaction back to the exact bytes. Only do this on a bench or a bus you control.</p>
+  <div class="row g-2">
+    <div class="col-6 col-md-2"><label class="form-label small mb-0">Interface</label>
+      <input class="form-control form-control-sm" id="fz-channel" value="can0" list="can-channel-list"></div>
+    <div class="col-6 col-md-2"><label class="form-label small mb-0">Arbitration ID</label>
+      <input class="form-control form-control-sm" id="fz-arb" placeholder="0x100"></div>
+    <div class="col-12 col-md-4"><label class="form-label small mb-0">Template bytes (hex)</label>
+      <input class="form-control form-control-sm font-monospace" id="fz-data" placeholder="00 00 00 00 00 00 00 00"></div>
+    <div class="col-6 col-md-2"><label class="form-label small mb-0">Randomize bytes (indexes)</label>
+      <input class="form-control form-control-sm" id="fz-bytes" placeholder="0,1 (blank = all)"></div>
+    <div class="col-3 col-md-1"><label class="form-label small mb-0">Count</label>
+      <input type="number" min="1" max="512" class="form-control form-control-sm" id="fz-count" value="100"></div>
+    <div class="col-3 col-md-1"><label class="form-label small mb-0">Every (ms)</label>
+      <input type="number" min="2" class="form-control form-control-sm" id="fz-period" value="50"></div>
+  </div>
+  <div class="mt-2 d-flex align-items-center gap-2">
+    <div class="form-check"><input class="form-check-input" type="checkbox" id="fz-fd"><label class="form-check-label small" for="fz-fd">CAN-FD</label></div>
+    <div class="form-check"><input class="form-check-input" type="checkbox" id="fz-ext"><label class="form-check-label small" for="fz-ext">Extended ID</label></div>
+    <button class="btn btn-sm btn-warning ms-auto" id="fz-run"><i class="bi bi-play-fill me-1"></i>Run fuzz</button>
+  </div>
+  <div class="small mt-2" id="fz-status"></div>
+  <div class="mt-1" id="fz-sent" style="max-height:180px;overflow:auto"></div>
+</div></div>
 {% endblock %}
 {% block scripts %}
 <script src="static/js/can-channel-labels.js"></script>
@@ -305,6 +331,32 @@
   });
 
   loadDatabases();
+  const fzRun = document.getElementById('fz-run');
+  if (fzRun) fzRun.addEventListener('click', async () => {
+    const status = document.getElementById('fz-status');
+    const sentEl = document.getElementById('fz-sent');
+    const arb = document.getElementById('fz-arb').value.trim();
+    if (!arb) { status.textContent = 'Enter an arbitration ID.'; return; }
+    const bytesRaw = document.getElementById('fz-bytes').value.trim();
+    const fuzzBytes = bytesRaw ? bytesRaw.split(/[ ,]+/).map((x) => parseInt(x, 10)).filter((n) => !isNaN(n)) : [];
+    fzRun.disabled = true; sentEl.innerHTML = '';
+    status.textContent = 'Fuzzing…';
+    try {
+      const res = await fetch('can/sim/fuzz', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channel: document.getElementById('fz-channel').value.trim() || 'can0',
+          arbitration_id: arb, data: document.getElementById('fz-data').value.trim(),
+          fuzz_bytes: fuzzBytes, count: parseInt(document.getElementById('fz-count').value || '100', 10),
+          period_ms: parseInt(document.getElementById('fz-period').value || '50', 10),
+          is_fd: document.getElementById('fz-fd').checked, is_extended_id: document.getElementById('fz-ext').checked }) });
+      const d = await res.json();
+      if (!d.ok) { status.innerHTML = '<span class="text-danger">' + (d.error || 'Fuzz failed') + '</span>'; return; }
+      status.innerHTML = '<span class="text-success">Sent ' + d.count + ' frames. Watch for an effect; the exact frames are below.</span>';
+      sentEl.innerHTML = '<div class="font-monospace small">' + d.sent.map((s, i) => (i + 1) + ': ' + s).join('<br>') + '</div>';
+    } catch (e) {
+      status.innerHTML = '<span class="text-danger">Fuzz failed.</span>';
+    } finally { fzRun.disabled = false; }
+  });
+
   refreshEntries();
   setInterval(refreshEntries, 3000);
 })();

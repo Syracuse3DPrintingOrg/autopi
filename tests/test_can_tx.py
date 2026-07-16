@@ -66,3 +66,35 @@ def test_burst_unavailable_channel_sends_nothing(monkeypatch):
 
     monkeypatch.setattr(can_pkg, "get_channel", lambda ch, **kw: _Down())
     assert can_tx.burst("can0", 0x100, [1], period_ms=10, duration_ms=50) == 0
+
+
+def test_fuzz_randomizes_selected_bytes_and_holds_others(monkeypatch):
+    import random as _random
+    from app import can as can_pkg
+    sent = []
+
+    class _Fake:
+        available = True
+        def send(self, frame):
+            sent.append(list(frame.data))
+            return True
+
+    monkeypatch.setattr(can_pkg, "get_channel", lambda ch, **kw: _Fake())
+    frames = can_tx.fuzz("can0", 0x100, [0xAA, 0xBB, 0xCC], [0, 2],
+                         count=20, period_ms=2, rng=_random.Random(42))
+    assert len(frames) == 20 and len(sent) == 20
+    # Byte 1 was NOT in the fuzz set, so it is held at the template value.
+    assert all(row[1] == 0xBB for row in sent)
+    # Bytes 0 and 2 were fuzzed, so they take more than one value across frames.
+    assert len({row[0] for row in sent}) > 1
+    assert len({row[2] for row in sent}) > 1
+
+
+def test_fuzz_unavailable_channel_sends_nothing(monkeypatch):
+    from app import can as can_pkg
+    class _Down:
+        available = False
+        def send(self, frame):
+            raise AssertionError("must not send")
+    monkeypatch.setattr(can_pkg, "get_channel", lambda ch, **kw: _Down())
+    assert can_tx.fuzz("can0", 0x100, [0], [0], count=10) == []

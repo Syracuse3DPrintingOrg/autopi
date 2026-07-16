@@ -340,3 +340,16 @@ def test_ui_page_renders(client):
     resp = client.get("/ui/can-sim")
     assert resp.status_code == 200
     assert "CAN Signal Simulation" in resp.text
+
+
+def test_fuzz_endpoint_returns_sent_frames(monkeypatch):
+    from app.services import can_tx
+    monkeypatch.setattr(can_tx, "fuzz", lambda *a, **k: [{"data": [1, 2]}, {"data": [3, 4]}])
+    from starlette.testclient import TestClient
+    from app.main import app
+    c = TestClient(app)
+    r = c.post("/can/sim/fuzz", json={"channel": "can0", "arbitration_id": "0x100",
+                                      "data": "00 00", "fuzz_bytes": [0], "count": 2})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] is True and body["count"] == 2 and body["sent"] == ["01 02", "03 04"]

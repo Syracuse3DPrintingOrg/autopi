@@ -10,6 +10,7 @@ silent no-op, so toggling one on a laptop with no bus never errors.
 from __future__ import annotations
 
 import logging
+import random
 import threading
 import time
 from typing import Any
@@ -116,6 +117,40 @@ def burst(channel: str, arbitration_id: int, data, *, period_ms: int = 10,
             log.info("burst CAN tx failed on %s: %s", channel, exc)
             break
         tick += 1
+        time.sleep(period)
+    return sent
+
+
+def fuzz(channel: str, arbitration_id: int, template, fuzz_bytes, *, count: int = 100,
+         period_ms: int = 50, is_fd: bool = False, is_extended_id: bool = False,
+         rng: "random.Random | None" = None) -> list[dict]:
+    """Send ``count`` frames on ``arbitration_id``, randomizing the byte positions
+    in ``fuzz_bytes`` on each frame while holding the rest at ``template``, paced
+    by ``period_ms``. Returns the exact payloads sent (capped list), so a reaction
+    on the bus can be traced to the frame that caused it. Bounded and blocking; a
+    deliberate action. ``rng`` is injectable for deterministic tests."""
+    from ..can import Frame, get_channel
+    rng = rng or random.Random()
+    provider = get_channel(channel, fd=True if is_fd else None)
+    if not getattr(provider, "available", False):
+        return []
+    base = [int(b) & 0xFF for b in (template or [])] or [0] * 8
+    idx = [i for i in (fuzz_bytes or []) if 0 <= i < len(base)] or list(range(len(base)))
+    count = max(1, min(int(count), 512))
+    period = max(0.002, int(period_ms) / 1000.0)
+    sent: list[dict] = []
+    for _ in range(count):
+        data = list(base)
+        for i in idx:
+            data[i] = rng.randrange(256)
+        frame = Frame(arbitration_id=arbitration_id, data=data, is_fd=bool(is_fd),
+                      is_extended_id=bool(is_extended_id))
+        try:
+            if provider.send(frame):
+                sent.append({"data": data})
+        except Exception as exc:
+            log.info("fuzz CAN tx failed on %s: %s", channel, exc)
+            break
         time.sleep(period)
     return sent
 

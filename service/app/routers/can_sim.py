@@ -136,3 +136,39 @@ def stop_scheduler():
 @router.get("/scheduler/status")
 def scheduler_status():
     return {"running": sim.engine.is_running()}
+
+
+class FuzzIn(BaseModel):
+    channel: str = "can0"
+    arbitration_id: str
+    data: str = ""
+    fuzz_bytes: list[int] = Field(default_factory=list)
+    count: int = 100
+    period_ms: int = 50
+    is_fd: bool = False
+    is_extended_id: bool = False
+
+
+@router.post("/fuzz")
+def fuzz_route(body: FuzzIn):
+    """Send a bounded run of frames on one id with chosen bytes randomized each
+    frame, and return exactly what was sent so a reaction can be traced back to
+    the frame that caused it. Transmits on a live bus, so it is deliberate."""
+    from ..can.base import parse_data_bytes
+    from ..services import can_tx
+    try:
+        arbitration_id = parse_arbitration_id(body.arbitration_id)
+    except ValueError as exc:
+        raise HTTPException(400, f"Bad arbitration id: {exc}")
+    try:
+        template = parse_data_bytes(body.data) if body.data.strip() else [0] * 8
+    except ValueError as exc:
+        raise HTTPException(400, f"Bad data bytes: {exc}")
+    sent = can_tx.fuzz(body.channel, arbitration_id, template, body.fuzz_bytes,
+                       count=body.count, period_ms=body.period_ms,
+                       is_fd=body.is_fd, is_extended_id=body.is_extended_id)
+    if not sent:
+        return {"ok": False, "error": f"Could not send on {body.channel} "
+                "(interface not available or not accepting frames)."}
+    return {"ok": True, "count": len(sent),
+            "sent": [" ".join(f"{b:02X}" for b in s["data"]) for s in sent]}

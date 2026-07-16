@@ -8,6 +8,10 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **Fuzz an id to see what reacts.** The Simulate / send page has a new fuzzer: pick an id and a template, choose which bytes to randomize, and send a bounded run of frames. Every frame it sends is listed, so when something on the car reacts you can trace it straight back to the exact bytes that caused it. Meant for a bench or a bus you control.
+
+### Added
+
 - **Auto-find a signal in one click.** Once you have a reference (a sweep, a dashboard camera read, or a known signal), the new "Auto-find signal" button does the whole search for you: it ranks the ids, searches their bits (including each multiplexer value), picks the best fit, and, when AI is configured, names it. It is the find-and-refine work you would otherwise do by hand, in a single pass.
 
 ### Added
