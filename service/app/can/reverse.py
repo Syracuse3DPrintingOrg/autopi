@@ -617,39 +617,49 @@ def event_responders(records: list[dict], event_times: Sequence[float], *,
         n_bytes = max(len(d) for d in datas)
         payloads_by_key[(channel, arb)] = datas
 
-        # Background change rate per byte: how often it differs frame-to-frame.
-        flips = [0] * n_bytes
-        for i in range(1, len(datas)):
-            prev, cur = datas[i - 1], datas[i]
-            for b in range(n_bytes):
-                if (prev[b] if b < len(prev) else 0) != (cur[b] if b < len(cur) else 0):
-                    flips[b] += 1
-        flip_rate = [f / (len(datas) - 1) for f in flips]
+        # Each byte's resting value (its most common value), so a reaction can be
+        # measured as a deviation from rest rather than a raw frame-to-frame change.
+        resting = [Counter((d[b] if b < len(d) else 0) for d in datas).most_common(1)[0][0]
+                   for b in range(n_bytes)]
 
-        # For each event, which bytes changed within `window` of the mark. Only
-        # count a change when the message actually existed just before the mark:
-        # a message that is absent and then appears is not a byte "change" (that
-        # is the appearance case below), and comparing it against a zero default
-        # would otherwise fake a change on its first frame.
+        def _deviates(b: int, lo: float, hi: float) -> bool:
+            """True if byte b is away from its resting value in any frame in [lo, hi]."""
+            i = bisect.bisect_left(times, lo)
+            while i < len(times) and times[i] <= hi:
+                if (datas[i][b] if b < len(datas[i]) else 0) != resting[b]:
+                    return True
+                i += 1
+            return False
+
+        # For each mark, which bytes deviate from rest within a window CENTERED on
+        # the mark. Centered (not forward-only) because a person taps Mark a beat
+        # AFTER acting, so the control's byte has usually already changed by the
+        # time of the mark; looking only forward would miss the press entirely.
         responded = [0] * n_bytes
         for te in events:
-            pre_idx = _last_index_before(times, te)
-            if pre_idx is None:
-                continue
-            pre = datas[pre_idx]
-            changed = [False] * n_bytes
-            i = pre_idx + 1
-            while i < len(frames) and times[i] <= te + window:
-                cur = datas[i]
-                for b in range(n_bytes):
-                    if (pre[b] if b < len(pre) else 0) != (cur[b] if b < len(cur) else 0):
-                        changed[b] = True
-                i += 1
             for b in range(n_bytes):
-                if changed[b]:
+                if _deviates(b, te - window, te + window):
                     responded[b] += 1
 
-        # Best byte: most event-responsive, discounted by its background noise.
+        # Background: how often each byte deviates from rest in same-size windows
+        # away from any mark, so a byte that is restless regardless of what you do
+        # (a counter, a stream) is discounted and does not masquerade as reactive.
+        bg_hits = [0] * n_bytes
+        bg_total = 0
+        if len(times) > 1 and times[-1] > times[0]:
+            step = 2 * window
+            x = times[0]
+            while x <= times[-1]:
+                center = x + window
+                if all(abs(center - e) > window for e in events):
+                    bg_total += 1
+                    for b in range(n_bytes):
+                        if _deviates(b, x, x + step):
+                            bg_hits[b] += 1
+                x += step
+        flip_rate = [(bg_hits[b] / bg_total) if bg_total else 0.0 for b in range(n_bytes)]
+
+        # Best byte: most event-responsive, discounted by its background deviation.
         scored = [(responded[b] / total - flip_rate[b], b) for b in range(n_bytes)]
         best_score, best_byte = max(scored)
         if responded[best_byte] == 0:
@@ -673,28 +683,29 @@ def event_responders(records: list[dict], event_times: Sequence[float], *,
                              "command. Replay it or use Verify effect."),
                 })
             continue
-        # Status vs command: is this id broadcast steadily the whole time, or
-        # does it appear only around your presses? A byte on a steady broadcast
-        # that just tracks your press is usually the module reporting a STATUS,
-        # not the command that drives the actuator, so replaying it does nothing.
-        # A message that shows up only when you act is far more likely to be the
-        # command (or a request) itself.
-        away = sum(1 for t in times if all(abs(t - e) > window for e in events))
-        steady = away / len(times) if times else 0.0
-        kind = "status" if steady > 0.5 else "event"
-        hint = ("Looks like a status the module broadcasts, not the command. "
-                "Replaying it rarely does anything. Often the function is driven "
-                "by the module itself and CAN only carries the status, so there "
-                "may be no command frame to replay at all."
-                if kind == "status" else
-                "Appears mainly when you act, so this is more likely the command "
-                "itself. Test it, and if nothing happens see the contention and "
-                "checksum notes.")
+        # Command vs status, judged by how the byte behaves, not by whether the
+        # message is broadcast continuously (many real commands ride a message the
+        # ECU sends every cycle). A byte that sits at its resting value except
+        # right when you act (low background deviation) is a clean reacting field,
+        # a likely command bit worth testing. A byte that is also restless between
+        # your marks is more likely a status/sensor value that moved near a mark
+        # by coincidence. Whether replaying actually actuates is what Verify
+        # effect answers; this is only which candidate to try first.
+        clean = flip_rate[best_byte] <= 0.35 and best_score >= 0.3
+        kind = "event" if clean else "status"
+        steady = round(flip_rate[best_byte], 3)
+        hint = ("Reacts cleanly when you act and is otherwise at rest, so this is a "
+                "strong candidate for the control. Test it or Verify effect; if it "
+                "does not actuate, see the contention and checksum notes."
+                if kind == "event" else
+                "Reacts near your marks but also moves on its own between them, so it "
+                "may be a status value rather than the command. Verify effect to see "
+                "if replaying it does anything.")
         results.append({
             "channel": channel, "arbitration_id": arb, "byte": best_byte,
             "responded": responded[best_byte], "events": total,
             "baseline": round(flip_rate[best_byte], 3), "score": round(best_score, 3),
-            "kind": kind, "steady": round(steady, 3), "hint": hint, "match": "byte",
+            "kind": kind, "steady": steady, "hint": hint, "match": "byte",
         })
 
     # A byte that changes on almost every frame on its own is a data stream or a

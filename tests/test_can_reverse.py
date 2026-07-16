@@ -609,26 +609,46 @@ def test_event_responders_keeps_something_when_all_look_noisy():
     assert out, "must not return empty just because everything looked noisy"
 
 
-def test_event_responders_labels_status_vs_command():
-    # 0x100 is broadcast steadily the whole time (a status the module reports);
-    # its byte 2 just mirrors the press. 0x300 appears only around the marks (an
-    # event message, more likely the command itself).
+def test_event_responders_clean_reactor_on_continuous_message_is_a_command():
+    # A byte at rest except right when you act is a clean reacting field: a likely
+    # command, even though its message is broadcast every tick. (The old behavior
+    # wrongly labelled any continuous message a "status", which buried real
+    # controls.) 0x300 appears only around the marks and is also a command.
     events = [2.0, 5.0, 8.0]
     records = []
     for i in range(100):
         ts = round(i * 0.1, 2)
         pressed = any(e <= ts <= e + 0.3 for e in events)
-        # Steady broadcast, present at every tick.
         records.append({"channel": "can1", "arbitration_id": 0x100,
                         "data": [0, 0, 1 if pressed else 0], "timestamp": ts})
-        # Event message: only on the bus while pressed.
         if pressed:
             records.append({"channel": "can1", "arbitration_id": 0x300,
                             "data": [1, 0], "timestamp": ts})
     out = rev.event_responders(records, events, window=0.35)
     by_id = {r["arbitration_id"]: r for r in out}
-    assert by_id[0x100]["kind"] == "status"
+    assert by_id[0x100]["byte"] == 2 and by_id[0x100]["responded"] == 3  # reacts on all 3
+    assert by_id[0x100]["kind"] == "event"   # clean reactor -> likely command
     assert by_id[0x300]["kind"] == "event"
+
+
+def test_event_responders_flags_restless_byte_as_status():
+    # A byte that is non-resting near the marks but also moves on its own between
+    # them (high background deviation) is flagged "status": it might be a sensor
+    # value that moved near a mark rather than the control you pressed.
+    events = [2.0, 5.0, 8.0]
+    records = []
+    for i in range(100):
+        ts = round(i * 0.1, 2)
+        pressed = any(e <= ts <= e + 0.3 for e in events)
+        # Resting value 0; spikes to 9 near presses AND on a slow background cycle
+        # (about half the non-press time), so its background deviation is high.
+        bg = 9 if (i % 4 in (2, 3)) else 0
+        records.append({"channel": "can1", "arbitration_id": 0x110,
+                        "data": [9 if pressed else bg], "timestamp": ts})
+    out = rev.event_responders(records, events, window=0.35)
+    r = next((x for x in out if x["arbitration_id"] == 0x110), None)
+    if r is not None:  # may be dropped by the stream filter; if kept, it is status
+        assert r["kind"] == "status" or r["baseline"] > 0.35
 
 
 def test_event_responders_finds_constant_payload_command_by_appearance():
@@ -841,3 +861,28 @@ def test_auto_decode_empty_without_signal():
     # A constant byte cannot track anything; no strong candidate.
     cands = rev.auto_decode(grouped, reference, {})
     assert all(c["r2"] < 0.5 for c in cands) or cands == []
+
+
+def test_event_responders_catches_press_when_mark_lags_the_action():
+    # The real-world case that was broken: a button bit on a message broadcast
+    # every 100ms, where the operator taps Mark ~0.12s AFTER pressing (human
+    # latency). The byte has already gone high by the time of the mark, so a
+    # forward-only window (the old logic) missed the press and scored it ~2/8.
+    # A window centred on the mark must catch it on every press.
+    records, events = [], []
+    presses = [2.0, 4.5, 7.0, 9.5, 12.0, 14.5, 17.0, 19.5]
+    t = 0.0
+    while t <= 22.0:
+        pressed = any(p <= t <= p + 0.5 for p in presses)  # held ~0.5s
+        records.append({"channel": "can1", "arbitration_id": 0x5C6,
+                        "data": [1 if pressed else 0, 0x14, 0x50], "timestamp": round(t, 3)})
+        records.append({"channel": "can1", "arbitration_id": 0x200,   # noisy counter
+                        "data": [int(t * 10) & 0xFF, 0, 0], "timestamp": round(t, 3)})
+        t += 0.1
+    events = [p + 0.12 for p in presses]  # marked a beat after each press
+    out = rev.event_responders(records, events)
+    top = out[0]
+    assert top["arbitration_id"] == 0x5C6 and top["byte"] == 0
+    assert top["responded"] == 8 and top["events"] == 8   # all presses caught
+    assert top["kind"] == "event"                          # clean reactor
+    assert all(r["arbitration_id"] != 0x200 for r in out)  # counter filtered

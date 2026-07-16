@@ -13,6 +13,7 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 ### Fixed
 
 - **The Dashboard camera explains itself instead of failing cryptically.** Browsers only allow camera access on a secure page (https, or the device's own screen at localhost), so over a plain LAN address the camera could not open and showed a confusing error. It now tells you plainly what is needed, and it no longer leaves a reference recording running with no camera. And when the browser cannot open a camera at all, the new on-device option is offered right in the message.
+- **Find a control now reliably catches the button you press.** The detection assumed the CAN change happened after you tap Mark, but people tap a beat after acting, so the control's byte had usually already changed and the search missed most presses (a real button often scored something like 2 out of 8 and got buried, or was mislabelled a "status"). It now looks at a window centred on each mark and measures how far a byte moves from its resting value, so a control you operated on every press reads that way. It also labels a byte that is quiet except when you act as a likely command even when its message is broadcast every cycle, instead of calling it a status.
 - **Settings search now finds settings, not just section names.** Typing in the settings search box now matches the actual settings inside each section (so searching "theme", "bitrate", or "brightness" finds the right section), and it opens the section when only one matches.
 
 ### Fixed
