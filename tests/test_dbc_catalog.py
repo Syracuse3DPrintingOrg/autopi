@@ -39,3 +39,32 @@ def test_only_permissive_catalog_entries_are_importable():
             lic = (entry.get("license") or "").lower()
             assert any(t in lic for t in ("mit", "cc0", "bsd", "apache", "public")), entry["name"]
             assert entry.get("import_url"), entry["name"]
+
+
+def test_every_catalog_entry_keeps_the_shape():
+    required = {"name", "make", "models", "years", "author", "license", "homepage",
+                "import_url", "importable"}
+    for entry in dbc_catalog.catalog():
+        missing = required - set(entry)
+        assert not missing, f"{entry.get('name')} missing {missing}"
+        assert isinstance(entry["models"], list), entry["name"]
+        assert entry["homepage"].startswith("http"), entry["name"]
+
+
+def test_catalog_carries_the_awesome_can_id_community_entries():
+    names = [e["name"] for e in dbc_catalog.catalog()]
+    assert any("awesome-automotive-can-id" in n for n in names)
+    makes = {e["make"] for e in dbc_catalog.catalog()}
+    # Coverage grew beyond the original opendbc trio.
+    for make in ("Tesla", "Nissan", "Ford", "BMW"):
+        assert make in makes, make
+
+
+def test_community_reference_entries_are_link_only():
+    # Anything without a clearly permissive license must not be importable.
+    for entry in dbc_catalog.catalog():
+        lic = (entry.get("license") or "").lower()
+        permissive = any(t in lic for t in ("mit", "cc0", "bsd", "apache", "public"))
+        if not permissive:
+            assert not entry.get("importable"), entry["name"]
+            assert entry.get("import_url") is None, entry["name"]

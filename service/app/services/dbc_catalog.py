@@ -63,6 +63,76 @@ CATALOG: list[dict[str, Any]] = [
         "import_url": None, "importable": False,
         "notes": "Generic OBD2 diagnostics, handy as a reference signal. Get it from the source.",
     },
+    # --- Community CAN-ID references (awesome-automotive-can-id) --------------
+    # Curated from https://github.com/iDoka/awesome-automotive-can-id, a
+    # community index of automotive CAN databases. These are reference links,
+    # not shipped content: most are reverse-engineering write-ups without a
+    # clear redistributable license, so the user follows the source and imports
+    # what they find. License is left as stated by the source (often unstated).
+    {
+        "name": "awesome-automotive-can-id (the full community index)",
+        "make": "", "models": [], "years": "", "author": "iDoka and contributors",
+        "license": "CC0-1.0",
+        "homepage": "https://github.com/iDoka/awesome-automotive-can-id",
+        "import_url": None, "importable": False,
+        "notes": "A curated index of automotive CAN ID and DBC sources across many makes. Browse it to find a database for a vehicle not listed here.",
+    },
+    {
+        "name": "Tesla Model 3 — community DBC",
+        "make": "Tesla", "models": ["Model 3"], "years": "2017+",
+        "author": "joshwardell", "license": "See source",
+        "homepage": "https://github.com/joshwardell/model3dbc",
+        "import_url": None, "importable": False,
+        "notes": "Community-maintained DBC for the Model 3. Check the repo's license before relying on it, then import the .dbc by its raw URL.",
+    },
+    {
+        "name": "Nissan Leaf (Gen 1) — CAN message list",
+        "make": "Nissan", "models": ["Leaf"], "years": "2011-2017",
+        "author": "dalathegreat and contributors", "license": "See source",
+        "homepage": "https://github.com/dalathegreat/leaf_can_bus_messages",
+        "import_url": None, "importable": False,
+        "notes": "Reverse-engineered CAN messages for the first-generation Leaf, widely used in EV battery projects.",
+    },
+    {
+        "name": "Ford Mustang S550 — CAN bus reference",
+        "make": "Ford", "models": ["Mustang"], "years": "2015-2017",
+        "author": "EricTurner3", "license": "See source",
+        "homepage": "https://github.com/EricTurner3/s550-canbus",
+        "import_url": None, "importable": False,
+        "notes": "Scripts and a wiki mapping S550 Mustang CAN IDs.",
+    },
+    {
+        "name": "Kia Soul — Open Source Car Control (OSCC)",
+        "make": "Kia", "models": ["Soul"], "years": "2014-2018",
+        "author": "PolySync", "license": "MIT",
+        "homepage": "https://github.com/PolySync/OSCC",
+        "import_url": None, "importable": False,
+        "notes": "MIT-licensed steering, throttle, and brake CAN references for the Kia Soul. A reference project, not a single DBC, so follow the source.",
+    },
+    {
+        "name": "Volkswagen MEB EV (ID.3 / ID.4 / Enyaq) — UDS PIDs",
+        "make": "Volkswagen", "models": ["ID.3", "ID.4"], "years": "2020+",
+        "author": "spot2000", "license": "See source",
+        "homepage": "https://github.com/spot2000/Volkswagen-MEB-CAN-Bus-and-UDS-info",
+        "import_url": None, "importable": False,
+        "notes": "UDS PID and CAN references for the VW Group MEB electric platform.",
+    },
+    {
+        "name": "BMW E65 (7 Series) — CAN bus",
+        "make": "BMW", "models": ["7 Series", "E65"], "years": "2001-2008",
+        "author": "damienmaguire", "license": "See source",
+        "homepage": "https://github.com/damienmaguire/BMW-E65-CANBUS",
+        "import_url": None, "importable": False,
+        "notes": "CAN mapping for the E65 7 Series, popular in EV-swap and retrofit projects.",
+    },
+    {
+        "name": "Vehicle Reverse Engineering Wiki (community CAN IDs)",
+        "make": "", "models": [], "years": "", "author": "community",
+        "license": "See source",
+        "homepage": "https://vehicle-reverse-engineering.fandom.com/wiki/",
+        "import_url": None, "importable": False,
+        "notes": "A community wiki of CAN IDs across many makes and models. Good starting point when a vehicle is not in the catalog.",
+    },
 ]
 
 
