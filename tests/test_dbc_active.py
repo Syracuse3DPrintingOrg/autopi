@@ -140,3 +140,17 @@ def test_monitor_frames_decode_falls_back_to_active_database(monkeypatch):
         assert body["frames"][0]["decoded"] == {"stub": True}
 
     mon.reset_monitors()
+
+
+def test_available_ids_returns_only_ids(temp_data_dir):
+    # Guard the /frames hot-path optimization: _available_ids must return plain
+    # ids (loading only the id column), not whole CanDatabase rows.
+    from app.db import init_db, session_scope
+    from app.db.models import CanDatabase
+    from app.services import can_databases as svc
+    init_db()
+    with session_scope() as s:
+        s.add(CanDatabase(name="One", dbc_text="BO_ 1 M: 8 X\n"))
+        s.add(CanDatabase(name="Two", dbc_text="BO_ 2 N: 8 X\n"))
+    ids = svc._available_ids()
+    assert ids and all(isinstance(i, int) for i in ids)

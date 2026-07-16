@@ -8,6 +8,11 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Fixed
 
+- **The CAN Monitor no longer reloads every database on each refresh.** When a vehicle with a linked database was selected, the monitor was pulling every installed database's full contents into memory a few times a second just to decode. It now looks up only what it needs, so monitoring stays light on the device.
+- **A way out of the CAN Lab's embedded tools.** Each tool in the CAN Lab runs in its own panel, which meant dialogs like "Save signal" or "Add to cockpit" opened cramped inside that panel. A new open-in-new-tab button in the tab bar opens the current tool full-page where those dialogs have room.
+
+### Fixed
+
 - **The top-menu dropdowns are clickable again.** On the new dark theme the frosted top bar was trapping its own menus behind the page, so the CAN Lab, Builder, Settings, and vehicle menus could not be reached. They now open above the page as they should.
 
 ### Changed

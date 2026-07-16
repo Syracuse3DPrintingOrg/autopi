@@ -47,9 +47,13 @@ def active_linked_database_ids() -> list[int]:
 
 
 def _available_ids() -> list[int]:
+    # Load only the id column: the CAN Monitor calls this on every /frames poll
+    # (a few times a second) when a vehicle with a linked database is active, and
+    # selecting whole rows would pull every database's full DBC text into memory
+    # each time.
     from ..db import CanDatabase, session_scope
     with session_scope() as s:
-        return [d.id for d in s.query(CanDatabase).all()]
+        return [row[0] for row in s.query(CanDatabase.id).all()]
 
 
 def active_database_id() -> int | None:

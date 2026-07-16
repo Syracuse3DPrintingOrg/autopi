@@ -44,6 +44,12 @@
         <i class="bi bi-clipboard2-pulse me-1"></i>Diagnostics
       </button>
     </li>
+    <li class="nav-item ms-auto d-flex align-items-center">
+      <a class="nav-link py-1" id="can-lab-popout" href="ui/reverse" target="_blank" rel="noopener"
+         title="Open this tool full-page in a new tab (dialogs like Save or Add to cockpit are easier there)">
+        <i class="bi bi-box-arrow-up-right"></i>
+      </a>
+    </li>
   </ul>
   <div class="tab-content can-lab-panes">
     <div class="tab-pane fade show active" id="pane-reverse" role="tabpanel">
@@ -68,6 +74,16 @@
 <script>
   // Lazy-load each tool the first time its tab is shown, so all five CAN
   // surfaces do not begin capturing at once. The first tab loads eagerly.
+  // Point the "open full-page" link at whichever tool is showing, so its
+  // dialogs (which a tool inside an iframe can only open confined to the panel)
+  // can be used on the standalone page instead.
+  var popout = document.getElementById('can-lab-popout');
+  function syncPopout(pane) {
+    if (!popout || !pane) { return; }
+    var frame = pane.querySelector('iframe');
+    var url = frame && (frame.getAttribute('src') || frame.dataset.src);
+    if (url) { popout.setAttribute('href', url); }
+  }
   document.querySelectorAll('#can-lab-tabs [data-bs-toggle="tab"]').forEach(function (tab) {
     tab.addEventListener('shown.bs.tab', function (event) {
       var pane = document.querySelector(event.target.dataset.bsTarget);
@@ -76,6 +92,7 @@
       if (frame && !frame.getAttribute('src')) {
         frame.setAttribute('src', frame.dataset.src);
       }
+      syncPopout(pane);
     });
   });
 </script>
