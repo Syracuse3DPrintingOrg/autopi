@@ -552,12 +552,25 @@
       .then((r) => r.json()).then((d) => {
         const cands = d.candidates || [];
         if (!cands.length) { el.textContent = 'No good fit found on ' + hex(arbId) + '.'; return; }
-        el.innerHTML = '<table class="table table-sm table-dark align-middle mb-0"><thead><tr>'
+        // Sanity flag: a low r2 means the field does not actually track your
+        // reference, so the decode is probably not the real signal. Colour it and
+        // warn, no AI needed.
+        const r2Cell = (r2) => {
+          const v = +r2;
+          const cls = v >= 0.8 ? 'text-success' : (v >= 0.5 ? 'text-warning' : 'text-danger');
+          const note = v >= 0.8 ? '' : (v >= 0.5 ? ' weak' : ' poor');
+          return '<td class="' + cls + '">' + v.toFixed(3) + note + '</td>';
+        };
+        const best = Math.max.apply(null, cands.map((c) => +c.r2));
+        el.innerHTML = (best < 0.5
+            ? '<div class="alert alert-warning py-1 px-2 small mb-2">No candidate tracks your reference well (best fit r² ' + best.toFixed(2) + '). This field is probably not the signal, or the reference was noisy. Try a cleaner sweep or a different message.</div>'
+            : '')
+          + '<table class="table table-sm table-dark align-middle mb-0"><thead><tr>'
           + '<th>bits</th><th>order</th><th>scale</th><th>offset</th><th>fit r²</th><th></th></tr></thead><tbody>'
           + cands.map((c, i) => '<tr><td class="mono">@' + c.start_bit + ' len ' + c.length + (c.signed ? ' signed' : '') + '</td>'
             + '<td>' + (c.byte_order === 'little_endian' ? 'Intel' : 'Motorola') + '</td>'
             + '<td>' + (+c.scale).toPrecision(4) + '</td><td>' + (+c.offset).toPrecision(4) + '</td>'
-            + '<td>' + (+c.r2).toFixed(3) + '</td>'
+            + r2Cell(c.r2)
             + '<td><button class="btn btn-outline-info btn-sm me-1" data-plot="' + i + '">Plot</button>'
             + '<button class="btn btn-outline-success btn-sm" data-c="' + i + '">Save</button></td></tr>').join('')
           + '</tbody></table><div id="verify-plot" class="mt-2"></div>';

@@ -8,6 +8,10 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **The bit search now warns you when a decode is weak.** Each candidate's fit quality is colour-coded, and if nothing tracks your reference well the results lead with a plain warning that the field is probably not the signal (or the reference was noisy). This works with no AI key; when AI is configured, the name suggestion still adds its own plausibility check.
+
+### Added
+
 - **Send a found control to the transmit workbench, and edit it live.** Every Signal Finder result now has a "To workbench" button that drops the command into the Simulate / send panel, ready to run. There you can edit an entry's data bytes while it is transmitting and the change takes effect on the next cycle, so you can nudge a value and watch the car respond without stopping and re-adding the frame.
 
 ### Fixed
