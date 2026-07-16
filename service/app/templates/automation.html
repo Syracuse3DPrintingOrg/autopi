@@ -74,7 +74,7 @@
 </div>
 {% endblock %}
 {% block scripts %}
-<script src="static/js/logic-builder.js"></script>
+<script src="static/js/logic-builder.js?v={{ app_version }}"></script>
 <script>
   // Logic runtime controls (start/stop/scan-once + live result).
   const rtStatus = document.getElementById('rt-status');

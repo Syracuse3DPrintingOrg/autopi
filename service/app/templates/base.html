@@ -7,7 +7,7 @@
   <title>{% block title %}{{ app_name }}{% endblock %}</title>
   <link href="static/vendor/bootstrap.min.css" rel="stylesheet">
   <link href="static/vendor/bootstrap-icons.min.css" rel="stylesheet">
-  <link href="static/css/app.css" rel="stylesheet">
+  <link href="static/css/app.css?v={{ app_version }}" rel="stylesheet">
   <link rel="icon" type="image/svg+xml" href="static/icons/favicon.svg">
   {% block head %}{% endblock %}
 </head>

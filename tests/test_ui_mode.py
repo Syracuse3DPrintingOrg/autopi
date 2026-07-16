@@ -217,3 +217,13 @@ def test_start_page_has_no_desktop_navbar_but_operator_link_reachable(client):
     # top navbar with the full link set should be present.
     resp = client.get("/operator")
     assert 'id="topnav"' not in resp.text
+
+
+def test_static_css_is_cache_busted_by_version(client):
+    # The stylesheet link must carry ?v=<version> so a browser fetches fresh CSS
+    # after an update instead of serving a stale cached file (which hid the nav
+    # dropdown z-index fix).
+    from app.config import APP_VERSION
+    html = client.get("/overview").text
+    assert f"static/css/app.css?v={APP_VERSION}" in html
+    assert "static/vendor/bootstrap.min.css\"" in html  # vendor stays unversioned

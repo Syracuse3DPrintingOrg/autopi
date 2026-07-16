@@ -7,7 +7,7 @@
   <title>Start: {{ app_name }}</title>
   <link href="static/vendor/bootstrap.min.css" rel="stylesheet">
   <link href="static/vendor/bootstrap-icons.min.css" rel="stylesheet">
-  <link href="static/css/app.css" rel="stylesheet">
+  <link href="static/css/app.css?v={{ app_version }}" rel="stylesheet">
   <link rel="icon" type="image/svg+xml" href="static/icons/favicon.svg">
   <style>
     html, body { height: 100%; margin: 0; overflow: hidden; }
@@ -74,7 +74,7 @@
     </div>
   </div>
   <div class="start-toast" id="toast"></div>
-  <script src="static/js/start.js"></script>
+  <script src="static/js/start.js?v={{ app_version }}"></script>
 {% endif %}
 </body>
 </html>

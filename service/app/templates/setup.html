@@ -7,7 +7,7 @@
   <title>Settings: {{ app_name }}</title>
   <link href="static/vendor/bootstrap.min.css" rel="stylesheet">
   <link href="static/vendor/bootstrap-icons.min.css" rel="stylesheet">
-  <link href="static/css/app.css" rel="stylesheet">
+  <link href="static/css/app.css?v={{ app_version }}" rel="stylesheet">
   <link rel="icon" type="image/svg+xml" href="static/icons/favicon.svg">
   <style>
     .setup-wrap { max-width: 1240px; margin: 1.5rem auto; padding: 0 1rem 4rem; }
@@ -533,9 +533,9 @@
   </div>
 </div>
 <script src="static/vendor/bootstrap.bundle.min.js"></script>
-<script src="static/js/settings.js"></script>
-<script src="static/js/network.js"></script>
-<script src="static/js/profile-sync.js"></script>
-<script src="static/js/can-interfaces.js"></script>
+<script src="static/js/settings.js?v={{ app_version }}"></script>
+<script src="static/js/network.js?v={{ app_version }}"></script>
+<script src="static/js/profile-sync.js?v={{ app_version }}"></script>
+<script src="static/js/can-interfaces.js?v={{ app_version }}"></script>
 </body>
 </html>

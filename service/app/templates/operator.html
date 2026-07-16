@@ -7,7 +7,7 @@
   <title>Operator: {{ app_name }}</title>
   <link href="static/vendor/bootstrap.min.css" rel="stylesheet">
   <link href="static/vendor/bootstrap-icons.min.css" rel="stylesheet">
-  <link href="static/css/app.css" rel="stylesheet">
+  <link href="static/css/app.css?v={{ app_version }}" rel="stylesheet">
   <link rel="icon" type="image/svg+xml" href="static/icons/favicon.svg">
   <style>
     html, body { height: 100%; margin: 0; overflow: hidden; }
@@ -232,6 +232,6 @@
   <script>
     window.OPERATOR_SEQUENCES = {{ sequences | tojson }};
   </script>
-  <script src="static/js/operator.js"></script>
+  <script src="static/js/operator.js?v={{ app_version }}"></script>
 </body>
 </html>

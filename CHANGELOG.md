@@ -8,6 +8,10 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Fixed
 
+- **Style and script updates now take effect without a hard refresh.** The app's stylesheet and scripts are versioned per release, so after an update your browser fetches the new files instead of a stale cached copy. This is what was hiding the top-menu dropdown fix: the browser kept using the old cached stylesheet, so the menus still opened behind the page until now.
+
+### Fixed
+
 - **The CAN Monitor no longer reloads every database on each refresh.** When a vehicle with a linked database was selected, the monitor was pulling every installed database's full contents into memory a few times a second just to decode. It now looks up only what it needs, so monitoring stays light on the device.
 - **A way out of the CAN Lab's embedded tools.** Each tool in the CAN Lab runs in its own panel, which meant dialogs like "Save signal" or "Add to cockpit" opened cramped inside that panel. A new open-in-new-tab button in the tab bar opens the current tool full-page where those dialogs have room.
 
