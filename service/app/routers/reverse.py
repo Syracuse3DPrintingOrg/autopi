@@ -773,6 +773,9 @@ def hunt_start():
     channels = [i["name"] for i in detect.list_can_interfaces() if i.get("up")]
     if not channels:
         return {"ok": False, "error": "No CAN interfaces are up. Bring at least one up on the CAN settings page first."}
+    # A fresh hunt: drop any captures pinned by a previous hunt so they cannot
+    # leak into this one's candidates or hold memory.
+    cap.clear_pinned()
     started = []
     for ch in channels:
         session = cap.get_inhale_session(ch, backend="socketcan",
@@ -810,6 +813,10 @@ def hunt_stop():
         if saved:
             if saved.get("id"):
                 capture_ids[ch] = saved["id"]
+                # Pin it so acting on a found candidate (Bits, Test, Verify) still
+                # resolves the capture after later persist=False captures churn the
+                # bounded _recent cache.
+                cap.pin_capture(saved)
             for frame in saved.get("frames") or []:
                 record = dict(frame)
                 record["channel"] = ch

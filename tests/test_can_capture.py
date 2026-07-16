@@ -452,3 +452,22 @@ def test_persist_false_capture_still_retrievable_from_memory(monkeypatch):
     assert saved is not None
     got = cap.get_capture(saved["id"])
     assert got is not None and got["id"] == saved["id"]  # retrievable without disk
+
+
+def test_pinned_capture_survives_recent_eviction():
+    # A hunt capture must stay retrievable after later persist=False captures flood
+    # the bounded _recent cache (verify-effect, snapshot). Pinning it moves it to a
+    # store nothing else evicts, so acting on a found candidate does not 404.
+    cap.clear_pinned()
+    hunt = cap.build_capture("hunt can0", "can0", "socketcan",
+                             [{"arbitration_id": 0x2A0, "data": [1], "timestamp": 0.0}])
+    cap.pin_capture(hunt)
+    # Flood _recent past its cap with unrelated in-memory captures.
+    for i in range(cap._RECENT_MAX + 5):
+        cap.build_capture(f"churn{i}", "can0", "socketcan",
+                          [{"arbitration_id": 0x100 + i, "data": [0], "timestamp": 0.0}])
+    assert hunt["id"] not in cap._recent  # evicted from the bounded cache
+    got = cap.get_capture(hunt["id"])
+    assert got is not None and got["id"] == hunt["id"]  # still found via the pin
+    cap.clear_pinned()
+    assert cap.get_capture(hunt["id"]) is None  # a new hunt drops the old pin

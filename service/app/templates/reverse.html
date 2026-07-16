@@ -360,12 +360,20 @@
     }).catch(() => { liveChannelEl.innerHTML = '<option value="can0">can0</option>'; });
   }
 
-  function reloadCapturesAndSelect(captureId) {
+  function reloadCapturesAndSelect(captureId, label) {
     return fetch('reverse/captures').then((r) => r.json()).then((d) => {
       const caps = d.captures || [];
-      captureEl.innerHTML = caps.length
+      let html = caps.length
         ? caps.map((c) => '<option value="' + esc(c.id) + '">' + esc(c.name || c.id) + ' (' + (c.frame_count || 0) + ' frames)</option>').join('')
-        : '<option value="">No captures yet.</option>';
+        : '';
+      // Hunt captures live in memory only, so they are not in the disk-backed
+      // list. Without a matching option, setting captureEl.value silently blanks
+      // and every follow-up (Bits, Interpret, Save) posts an empty capture_id.
+      // Add a selected option for it; the id still resolves server-side.
+      if (captureId && caps.every((c) => c.id !== captureId)) {
+        html = '<option value="' + esc(captureId) + '" selected>' + esc(label || 'In-memory capture') + '</option>' + html;
+      }
+      captureEl.innerHTML = html || '<option value="">No captures yet.</option>';
       if (captureId) captureEl.value = captureId;
       captureInfo();
     });
@@ -714,7 +722,10 @@
       fetch('reverse/reference/start', { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode: backendMode, channel: channel || null, capture_name: captureName }) })
         .then((r) => r.json()).then((d) => {
-          if (d.ok === false) { statusEl.textContent = d.detail || 'Could not start.'; return; }
+          // A failed start returns HTTP 400 {detail:...} with no ok field, so
+          // treat anything but an explicit success as failure (otherwise a bad
+          // mode or a busy channel shows the recording UI as if it worked).
+          if (d.ok !== true) { statusEl.textContent = d.detail || d.error || 'Could not start.'; return; }
           statusEl.textContent = d.capturing ? 'Recording and capturing on ' + esc(channel) + '…' : 'Recording (no capture channel set)…';
           setRecordingUi(true);
           if (m === 'vision') startVision();
@@ -1182,7 +1193,7 @@
         const capId = huntCaptures[c.channel];
         if (!capId) { huntStatus.textContent = 'No capture kept for ' + esc(c.channel) + '.'; return; }
         recordedReference = huntReference; refEl.value = '';
-        reloadCapturesAndSelect(capId);
+        reloadCapturesAndSelect(capId, 'Hunt capture on ' + c.channel);
         setTimeout(() => bitsearch(c.arbitration_id), 200);
         document.getElementById('search-card').scrollIntoView({ behavior: 'smooth', block: 'center' });
       }));

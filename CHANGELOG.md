@@ -7,6 +7,8 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 ## [Unreleased]
 
 ### Fixed
+- **Acting on a found control now works reliably.** After the Signal Finder turns up a candidate, using Bits, Test, or Verify on it could quietly do nothing or fail: the hunt's recording is kept in memory (so a busy bus does not thrash the device storage) and later steps could drop it or clear the capture selection. The recording is now held for the whole hunt and stays selected, so every follow-up action finds it.
+- **A recording that fails to start now says so.** If a reference recording could not begin (an unknown mode, or a bus already being recorded), the page showed "Recording and capturing..." as though it had worked. It now reports why it could not start instead.
 - **Find a control now catches commands that only appear when you act, even when you tap Mark a beat late.** The press-and-mark hunt already handles a control's byte changing before your tap; this extends the same latency allowance to messages that show up only while you operate the control (a command another module emits on trigger), so a mark landing a fraction of a second after the press no longer makes the message look like it was already there and drops it.
 
 - **The on-device camera preview is no longer black, and phantom camera entries are gone.** A webcam hands back a dark first frame before it auto-exposes, so the preview showed black; AutoPi now skips the first frames so you get a real picture. It also lists only cameras that can actually capture, so the extra metadata node a webcam exposes (which showed as a broken image) no longer appears. And a flaky package mirror during a device update can no longer stop the whole update just because the camera tool would not install.

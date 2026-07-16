@@ -117,7 +117,32 @@ def _remember(capture: dict[str, Any]) -> None:
         del _recent[next(iter(_recent))]
 
 
+# Captures the current Signal-Finder hunt depends on. Hunt captures are held in
+# memory only (persist=False) so a busy CAN-FD bus does not thrash the SD card,
+# but the operator then acts on a found candidate (Bits, Test, Verify, Save).
+# Those actions start their own persist=False captures, which would evict the
+# hunt capture from the bounded _recent cache and 404 every follow-up. Pinning
+# them in a store nothing else evicts keeps a found candidate usable for the life
+# of the hunt. Cleared and refilled per hunt (bounded by the number of buses).
+_pinned: "dict[str, dict[str, Any]]" = {}
+
+
+def pin_capture(capture: dict[str, Any]) -> None:
+    """Keep this capture retrievable regardless of _recent eviction, for the life
+    of the current hunt."""
+    if capture and capture.get("id"):
+        _pinned[capture["id"]] = capture
+
+
+def clear_pinned() -> None:
+    """Drop all pinned captures (called when a new hunt starts)."""
+    _pinned.clear()
+
+
 def get_capture(capture_id: str) -> dict[str, Any] | None:
+    pinned = _pinned.get(capture_id)
+    if pinned is not None:
+        return pinned
     remembered = _recent.get(capture_id)
     if remembered is not None:
         return remembered
