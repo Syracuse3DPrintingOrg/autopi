@@ -102,6 +102,17 @@ def test_kiosk_query_param_latches_operator_for_remote_client(client):
     assert resp2.headers["location"] == "/operator"
 
 
+def test_builder_link_from_operator_clears_the_kiosk_latch(client):
+    # A remote browser latched into operator mode must be able to escape via the
+    # operator screen's Builder link, which lands on /overview?kiosk=0.
+    client.get("/?kiosk=1", follow_redirects=False)
+    assert client.get("/", follow_redirects=False).headers["location"] == "/operator"  # latched
+    # Visiting the Builder link clears the latch...
+    assert client.get("/overview?kiosk=0", follow_redirects=False).status_code == 200
+    # ...so the root now resolves back to the builder home, not operator.
+    assert client.get("/", follow_redirects=False).headers["location"] == "/overview"
+
+
 # --- /overview ---------------------------------------------------------------
 
 
@@ -167,7 +178,38 @@ def test_operator_page_shows_active_profile(client):
 def test_operator_page_has_gear_and_builder_links(client):
     resp = client.get("/operator")
     assert 'href="setup"' in resp.text
-    assert 'href="start' in resp.text
+    # The builder escape hatch lands on the builder home, clearing the latch.
+    assert 'href="overview?kiosk=0"' in resp.text
+
+
+def test_operator_page_shows_active_vehicle_controls(client):
+    """With a control mapped on the active vehicle, the operator screen leads
+    with a big button that fires that control through the shared actions run
+    path (POST /actions/{id}/run)."""
+    from app.db import init_db
+    from app.services import profiles as profiles_svc
+    init_db()
+    profile = profiles_svc.create_profile(name="Bench car", make="Ford", model="F-150")
+    profiles_svc.set_active_profile(profile["id"])
+    # Map a real CAN command onto the horn control slot.
+    profiles_svc.set_control(
+        profile["id"], "horn",
+        {"channel": "can0", "arbitration_id": "0x3D1", "data": "01"},
+        label="Horn")
+
+    resp = client.get("/operator")
+    assert resp.status_code == 200
+    action_id = f"ctl_{profile['id']}_horn"
+    # The control renders as a button wired to the shared run endpoint.
+    assert f'data-action="{action_id}"' in resp.text
+    assert "Horn" in resp.text
+    # And that action actually resolves and runs (simulated with no bus in CI).
+    run = client.post(f"/actions/{action_id}/run")
+    body = run.json()
+    assert body["ok"] is True
+
+    # An unmapped slot is left off the operator screen (it is the "use" view).
+    assert f'data-action="ctl_{profile["id"]}_unlock"' not in resp.text
 
 
 def test_start_page_has_no_desktop_navbar_but_operator_link_reachable(client):

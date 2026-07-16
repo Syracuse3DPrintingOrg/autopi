@@ -77,6 +77,81 @@ def home(request: Request):
     return RedirectResponse("/overview")
 
 
+# Bootstrap Icons for each control group, so the operator buttons read at a
+# glance on a small panel. Unlisted groups (custom slots) fall back to a bolt.
+_CONTROL_GROUP_ICONS = {
+    "Doors": "bi-door-open-fill",
+    "Windows": "bi-square-half",
+    "Lights": "bi-lightbulb-fill",
+    "Body": "bi-car-front-fill",
+    "Climate": "bi-thermometer-half",
+    "Media": "bi-music-note-beamed",
+}
+# A per-slot icon wins over the group icon where a clearer one exists.
+_CONTROL_SLOT_ICONS = {
+    "lock": "bi-lock-fill", "unlock": "bi-unlock-fill", "trunk": "bi-suit-diamond",
+    "window_up": "bi-chevron-up", "window_down": "bi-chevron-down",
+    "headlights": "bi-lightbulb-fill", "high_beams": "bi-brightness-high-fill",
+    "fog_lights": "bi-cloud-fog2-fill", "hazards": "bi-exclamation-triangle-fill",
+    "interior_light": "bi-lightbulb", "horn": "bi-megaphone-fill",
+    "mirror_fold": "bi-arrows-collapse", "remote_start": "bi-power",
+    "climate_toggle": "bi-thermometer-half", "fan_up": "bi-wind", "fan_down": "bi-wind",
+    "defrost": "bi-snow", "mute": "bi-volume-mute-fill",
+    "volume_up": "bi-volume-up-fill", "volume_down": "bi-volume-down-fill",
+}
+
+
+def _control_action_id(profile_id: int, slot: str) -> str:
+    """Stable action id for one vehicle control, so re-rendering the operator
+    page reuses the same action instead of piling up new ones."""
+    return f"ctl_{profile_id}_{slot}"
+
+
+def _operator_controls(profile_id: int | None) -> list[dict]:
+    """The active vehicle's mapped controls, grouped for the operator screen.
+
+    Each mapped control is backed by a stable ``can`` action (the command dict
+    already mirrors the CAN driver's params), so the big buttons fire through
+    the same ``POST /actions/{id}/run`` path as every other surface. Empty
+    (unmapped) slots are left off the operator screen: it is the "use what you
+    built" view, not the place to build. Returns a list of
+    ``{group, controls: [{action_id, label, icon}]}`` in template order.
+    """
+    if profile_id is None:
+        return []
+    controls = profiles_svc.get_controls(profile_id) or []
+    groups: list[dict] = []
+    index: dict[str, dict] = {}
+    for control in controls:
+        command = control.get("command")
+        if not command:
+            continue
+        slot = control["slot"]
+        action_id = _control_action_id(profile_id, slot)
+        label = control.get("label") or slot
+        desired = registry.ActionSpec(
+            id=action_id, label=label, driver="can", params=dict(command),
+            icon=_CONTROL_SLOT_ICONS.get(slot, "bi-lightning-charge-fill"),
+            color="#F2006E", category="Vehicle")
+        # Idempotent: only write when the mapping actually changed, so a page
+        # load is not a disk write every time.
+        existing = registry.get_action(action_id)
+        if existing is None or existing.to_dict() != desired.to_dict():
+            registry.upsert_action(desired)
+        group_name = control.get("group") or "Controls"
+        bucket = index.get(group_name)
+        if bucket is None:
+            bucket = {"group": group_name,
+                      "icon": _CONTROL_GROUP_ICONS.get(group_name, "bi-lightning-charge-fill"),
+                      "controls": []}
+            index[group_name] = bucket
+            groups.append(bucket)
+        bucket["controls"].append(
+            {"action_id": action_id, "label": label,
+             "icon": _CONTROL_SLOT_ICONS.get(slot, bucket["icon"])})
+    return groups
+
+
 @router.get("/operator", response_class=HTMLResponse)
 def operator_page(request: Request):
     # Latch kiosk mode (if requested) before rendering, so the page's own
@@ -86,10 +161,12 @@ def operator_page(request: Request):
     cols, rows = _grid_dims(len(keys))
     active_id = profiles_svc.get_active_profile_id()
     profile = profiles_svc.get_profile(active_id) if active_id is not None else None
+    control_groups = _operator_controls(active_id)
     sequences = testseq.list_sequences(active_id) if active_id is not None else testseq.list_sequences()
     return templates.TemplateResponse(request, "operator.html", theme_context(
         request, keys=keys, cols=cols, rows=rows,
         enabled=settings.start_page_enabled, profile=profile, sequences=sequences,
+        control_groups=control_groups, has_controls=bool(control_groups),
         vehicle_label=_vehicle_label(profile)))
 
 
@@ -116,6 +193,10 @@ def _last_test_result() -> dict | None:
 def overview(request: Request):
     """The builder's home base: orients a new user to what's set up and what
     to do next, instead of dropping them straight on the key grid."""
+    # The operator screen's Builder link lands here with ?kiosk=0, so resolve the
+    # UI mode here too: without this the kiosk latch is never cleared and a LAN
+    # browser that latched into operator mode could not escape back to the builder.
+    resolve_ui_mode(request)
     active_id = profiles_svc.get_active_profile_id()
     profile = profiles_svc.get_profile(active_id) if active_id is not None else None
     interfaces = can_interfaces.list_interfaces()
@@ -129,8 +210,8 @@ def overview(request: Request):
 
 @router.get("/start", response_class=HTMLResponse)
 def start_page(request: Request):
-    # A "Builder" link from the operator page can carry ?kiosk=0 to clear the
-    # latch (see resolve_ui_mode); harmless when the param is absent.
+    # /start also clears the kiosk latch when hit with ?kiosk=0 (see
+    # resolve_ui_mode); harmless when the param is absent.
     resolve_ui_mode(request)
     keys = _render_slots("start")
     cols, rows = _grid_dims(len(keys))

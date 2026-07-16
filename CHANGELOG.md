@@ -10,6 +10,10 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 - **The top-menu dropdowns are clickable again.** On the new dark theme the frosted top bar was trapping its own menus behind the page, so the CAN Lab, Builder, Settings, and vehicle menus could not be reached. They now open above the page as they should.
 
+### Changed
+
+- **The operator screen now leads with your vehicle's buttons.** On a touchscreen or Stream Deck, the operator view opens straight onto the controls you mapped for the active vehicle (lock, windows, lights, horn, and the rest), as big buttons grouped by area and sized for a tap. Press one and it fires the saved CAN command, no menus to dig through. Slots you have not mapped yet stay off this screen so it stays clean and glanceable, and the "Builder" button in the corner takes you to the full builder when you are at a desktop.
+
 ### Added
 
 - **Graph a signal over time.** Each bit-search candidate now has a "Graph" button that plots that field's decoded value across the capture on its own timeline, so you can see the trend and spot glitches, without needing a reference to compare against.
