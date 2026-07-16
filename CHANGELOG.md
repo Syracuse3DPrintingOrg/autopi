@@ -8,6 +8,10 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **The bit search understands multiplexed messages.** Some messages reuse the same bytes for different signals depending on a selector byte, so a signal that only exists for one selector value used to get averaged away and missed. AutoPi now spots the selector and lets you search within a single value, so those signals can be found. When a search comes up empty on a multiplexed message, it tells you and offers the selector values to try.
+
+### Added
+
 - **The bit search now warns you when a decode is weak.** Each candidate's fit quality is colour-coded, and if nothing tracks your reference well the results lead with a plain warning that the field is probably not the signal (or the reference was noisy). This works with no AI key; when AI is configured, the name suggestion still adds its own plausibility check.
 
 ### Added

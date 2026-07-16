@@ -267,7 +267,8 @@ def bitsearch_route(body: BitsearchIn):
         raise HTTPException(404, "No frames with that arbitration id in this capture")
     reference = [p.model_dump() for p in body.reference]
     candidates = rev.bitsearch(frames, reference, body.opts or {})
-    return {"candidates": candidates}
+    mux = rev.detect_multiplexer([list(f.get("data") or []) for f in frames[:400]])
+    return {"candidates": candidates, "multiplexer": mux}
 
 
 class SaveIn(BaseModel):

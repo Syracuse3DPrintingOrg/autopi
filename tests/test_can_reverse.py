@@ -785,3 +785,37 @@ def test_apply_protection_advances_counter_each_tick():
 
 def test_apply_protection_noop_without_protection():
     assert rev.apply_protection([1, 2, 3], 0x1, None, tick=5) == [1, 2, 3]
+
+
+def test_detect_multiplexer_finds_selector():
+    # Byte 0 is a selector: when it is 0, byte 1 carries a varying signal and byte
+    # 2 is static; when it is 1, byte 2 varies and byte 1 is static. Byte 3 is a
+    # plain always-changing field (not conditional).
+    payloads = []
+    for i in range(20):
+        payloads.append([0, i & 0xFF, 0x00, (i * 3) & 0xFF])   # mux=0: byte1 active
+        payloads.append([1, 0x00, i & 0xFF, (i * 5) & 0xFF])   # mux=1: byte2 active
+    m = rev.detect_multiplexer(payloads)
+    assert m is not None and m["byte"] == 0 and m["values"] == [0, 1]
+    assert 1 in m["muxed_bytes"] and 2 in m["muxed_bytes"]
+
+
+def test_detect_multiplexer_none_for_plain_message():
+    payloads = [[i & 0xFF, (i * 2) & 0xFF, 0x10] for i in range(20)]  # no selector structure
+    assert rev.detect_multiplexer(payloads) is None
+
+
+def test_bitsearch_mux_filter_restricts_frames():
+    # 0x200: when byte 0 == 5, byte 1 ramps with the reference; when byte 0 == 9,
+    # byte 1 is a constant. Searching the right mux value recovers the ramp;
+    # searching the wrong one finds nothing that tracks the reference.
+    records, reference = [], []
+    for i in range(30):
+        t = float(i)
+        records.append({"arbitration_id": 0x200, "data": [5, i & 0xFF, 0], "timestamp": t})
+        records.append({"arbitration_id": 0x200, "data": [9, 0xAA, 0], "timestamp": t + 0.01})
+        reference.append({"t": t, "value": float(i), "available": True})
+    good = rev.bitsearch(records, reference, {"mux": {"byte": 0, "value": 5}})
+    bad = rev.bitsearch(records, reference, {"mux": {"byte": 0, "value": 9}})
+    assert max((c["r2"] for c in good), default=0) > 0.9   # the ramp is recovered
+    assert max((c["r2"] for c in bad), default=0) < 0.5    # constant garbage does not track

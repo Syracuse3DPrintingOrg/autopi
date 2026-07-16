@@ -482,6 +482,40 @@ def identify_checksum(payloads: list[list[int]], arbitration_id: int,
     return None
 
 
+def detect_multiplexer(payloads: list[list[int]]) -> dict | None:
+    """Detect a multiplexer byte: a low-cardinality selector whose value decides
+    what the rest of the payload means.
+
+    A multiplexed message reuses the same bytes for different signals depending on
+    a selector byte, so a signal that only exists for one selector value gets
+    averaged away by a naive search. The tell: a byte with a few recurring values
+    where at least one OTHER byte changes only within some of those values and is
+    constant in the others. Returns ``{"byte": i, "values": [...], "muxed_bytes":
+    [...]}`` or None. Pure."""
+    if len(payloads) < 8:
+        return None
+    width = min((len(p) for p in payloads), default=0)
+    best = None
+    for b in range(width):
+        groups: dict[int, list[list[int]]] = {}
+        for p in payloads:
+            groups.setdefault(int(p[b]), []).append(p)
+        if not (2 <= len(groups) <= 16):
+            continue
+        if min(len(g) for g in groups.values()) < 2:  # each selector value must recur
+            continue
+        muxed = []
+        for j in range(width):
+            if j == b:
+                continue
+            changes = [len({int(q[j]) for q in g if j < len(q)}) > 1 for g in groups.values()]
+            if any(changes) and not all(changes):  # active in some groups, static in others
+                muxed.append(j)
+        if muxed and (best is None or len(muxed) > len(best["muxed_bytes"])):
+            best = {"byte": b, "values": sorted(groups.keys()), "muxed_bytes": muxed}
+    return best
+
+
 def message_protection(payloads: list[list[int]], arbitration_id: int) -> dict:
     """Detect the rolling counter and checksum of a message, if any.
 
@@ -875,6 +909,15 @@ def bitsearch(records_for_id: list[dict], reference: list[dict], opts: dict | No
     opts = opts or {}
     if not records_for_id:
         return []
+    # Multiplexed message: search only the frames for one selector value, so a
+    # signal that exists only in that mux case is not averaged away by the rest.
+    mux = opts.get("mux")
+    if isinstance(mux, dict) and mux.get("byte") is not None and mux.get("value") is not None:
+        mb, mv = int(mux["byte"]), int(mux["value"])
+        records_for_id = [r for r in records_for_id
+                          if mb < len(r.get("data") or []) and int(r["data"][mb]) == mv]
+        if not records_for_id:
+            return []
     arbitration_id = records_for_id[0].get("arbitration_id")
     n_bits = _n_bits_for(records_for_id)
     if n_bits == 0:

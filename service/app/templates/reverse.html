@@ -541,17 +541,20 @@
       }).catch(() => { st.textContent = 'Survey failed.'; });
   });
 
-  function bitsearch(arbId) {
+  function bitsearch(arbId, mux) {
     const el = document.getElementById('bitsearch-results');
     currentArbId = arbId;
     const iBtn = document.getElementById('interpret-ai');
     if (iBtn) iBtn.disabled = false;
     el.textContent = 'Searching the bits of ' + hex(arbId) + '…';
     fetch('reverse/bitsearch', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ capture_id: captureEl.value, arbitration_id: arbId, reference: reference() }) })
+      body: JSON.stringify({ capture_id: captureEl.value, arbitration_id: arbId, reference: reference(),
+        opts: (mux ? { mux: mux } : {}) }) })
       .then((r) => r.json()).then((d) => {
         const cands = d.candidates || [];
-        if (!cands.length) { el.textContent = 'No good fit found on ' + hex(arbId) + '.'; return; }
+        if (!cands.length) { el.textContent = 'No good fit found on ' + hex(arbId) + '.'
+          + (d.multiplexer ? ' This message looks multiplexed (selector at byte ' + d.multiplexer.byte + '); pick a value below.' : ''); }
+        else {
         // Sanity flag: a low r2 means the field does not actually track your
         // reference, so the decode is probably not the real signal. Colour it and
         // warn, no AI needed.
@@ -578,6 +581,24 @@
           b.addEventListener('click', () => openSave(cands[parseInt(b.getAttribute('data-c'), 10)])));
         el.querySelectorAll('button[data-plot]').forEach((b) =>
           b.addEventListener('click', () => verifyPlot(cands[parseInt(b.getAttribute('data-plot'), 10)])));
+        }
+        // Multiplexed message: offer to search within one selector value, so a
+        // signal that only exists for that value is not averaged away.
+        if (d.multiplexer) {
+          const m = d.multiplexer;
+          const wrap = document.createElement('div');
+          wrap.className = 'mt-2 small';
+          wrap.innerHTML = 'Multiplexed message: selector at byte ' + m.byte
+            + '. Search a single value: <select class="form-select form-select-sm d-inline-block w-auto" id="mux-pick">'
+            + '<option value="">all frames</option>'
+            + m.values.map((v) => '<option value="' + v + '"' + (mux && mux.value === v ? ' selected' : '') + '>0x'
+                + v.toString(16).toUpperCase() + '</option>').join('') + '</select>';
+          el.appendChild(wrap);
+          wrap.querySelector('#mux-pick').addEventListener('change', (ev) => {
+            const v = ev.target.value;
+            bitsearch(arbId, v === '' ? null : { byte: m.byte, value: parseInt(v, 10) });
+          });
+        }
       }).catch(() => { el.textContent = 'Bitsearch failed.'; });
   }
 
