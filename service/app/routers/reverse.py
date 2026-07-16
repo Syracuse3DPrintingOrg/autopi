@@ -271,6 +271,35 @@ def bitsearch_route(body: BitsearchIn):
     return {"candidates": candidates, "multiplexer": mux}
 
 
+class AutoDecodeIn(BaseModel):
+    capture_id: str
+    reference: list[ReferencePoint] = []
+    context_hint: str = ""
+    top_ids: int = 3
+
+
+@router.post("/auto-decode")
+def auto_decode_route(body: AutoDecodeIn):
+    """One-pass automatic decode: survey the whole capture against the reference,
+    bit-search the most promising ids (and each multiplexer value), rank every
+    candidate by fit, and name the best one with the LLM when it is configured.
+    The iterate-and-refine loop a technician would run by hand."""
+    capture = _capture_or_404(body.capture_id)
+    reference = [p.model_dump() for p in body.reference]
+    if len(reference) < 3:
+        return {"ok": False, "error": "Record at least a few reference points first."}
+    grouped = _frames_by_id(capture)
+    candidates = rev.auto_decode(grouped, reference, {"top_ids": body.top_ids})
+    best = candidates[0] if candidates else None
+    named = None
+    if best is not None and llm.status().get("available"):
+        try:
+            named = llm.suggest_name(best, reference_hint=body.context_hint, context_hint=body.context_hint)
+        except Exception:
+            named = None
+    return {"ok": True, "candidates": candidates, "best": best, "named": named}
+
+
 class SaveIn(BaseModel):
     database_id: int
     name: str

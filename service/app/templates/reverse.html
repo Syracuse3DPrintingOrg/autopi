@@ -139,8 +139,10 @@
         <h6 class="mb-2">3. Search</h6>
         <div id="ref-ready" class="alert alert-success py-1 px-2 small mb-2 d-none"></div>
         <button class="btn btn-primary btn-sm" id="survey-btn"><i class="bi bi-bar-chart me-1"></i>Survey the bus</button>
-        <div class="form-text">Ranks which CAN ids track your reference. Then search one id's bits below.</div>
+        <button class="btn btn-success btn-sm" id="auto-btn"><i class="bi bi-magic me-1"></i>Auto-find signal</button>
+        <div class="form-text">Survey ranks which ids track your reference. Auto-find does the whole search for you: it ranks the ids, searches the bits (and any multiplexer values), and names the best match.</div>
         <div id="survey-status" class="small mt-2"></div>
+        <div id="auto-result" class="small mt-2"></div>
       </div></div>
     </div>
 
@@ -578,6 +580,33 @@
         }).catch(() => { statusEl.textContent = 'Could not stop.'; });
     });
   })();
+
+  document.getElementById('auto-btn').addEventListener('click', () => {
+    const ref = reference();
+    const out = document.getElementById('auto-result');
+    if (!captureEl.value) { out.textContent = 'Pick a capture first.'; return; }
+    if (ref.length < 3) { out.textContent = 'Record or enter at least a few reference points first.'; return; }
+    out.textContent = 'Searching the whole capture…';
+    fetch('reverse/auto-decode', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ capture_id: captureEl.value, reference: ref }) })
+      .then((r) => r.json()).then((d) => {
+        if (d.ok === false) { out.textContent = d.error || 'Auto-find failed.'; return; }
+        const b = d.best;
+        if (!b) { out.innerHTML = '<span class="text-warning">Nothing tracked your reference. Try a cleaner reference or more data.</span>'; return; }
+        const name = d.named && d.named.name ? d.named.name : null;
+        const r2cls = b.r2 >= 0.8 ? 'text-success' : (b.r2 >= 0.5 ? 'text-warning' : 'text-danger');
+        out.innerHTML = '<div class="border rounded p-2">'
+          + '<div class="fw-semibold">' + (name ? esc(name) : 'Best match') + '</div>'
+          + '<div class="mono">' + hex(b.arbitration_id) + ' @' + b.start_bit + ' len ' + b.length
+          + (b.mux ? ' (mux byte ' + b.mux.byte + '=0x' + b.mux.value.toString(16).toUpperCase() + ')' : '')
+          + ' scale ' + (+b.scale).toPrecision(4) + ' offset ' + (+b.offset).toPrecision(4)
+          + ' <span class="' + r2cls + '">r² ' + (+b.r2).toFixed(3) + '</span></div>'
+          + (d.named && d.named.reason ? '<div class="text-secondary">' + esc(d.named.reason) + '</div>' : '')
+          + (d.named && d.named.plausible === false ? '<div class="text-warning">The model thinks this fit is questionable.</div>' : '')
+          + '<button class="btn btn-outline-success btn-sm mt-1" id="auto-save">Save this signal</button></div>';
+        document.getElementById('auto-save').addEventListener('click', () => openSave(Object.assign({}, b, name ? { suggested_name: name } : {})));
+      }).catch(() => { out.textContent = 'Auto-find failed.'; });
+  });
 
   document.getElementById('survey-btn').addEventListener('click', () => {
     const ref = reference();

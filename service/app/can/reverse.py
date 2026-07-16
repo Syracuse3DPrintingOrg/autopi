@@ -1016,6 +1016,47 @@ def survey(records_by_id: dict[int, list[dict]], reference: list[dict], opts: di
     return results
 
 
+def auto_decode(records_by_id: dict[int, list[dict]], reference: list[dict],
+                opts: dict | None = None) -> list[dict]:
+    """Find the best decode for a reference across a whole capture, in one pass.
+
+    The iteration a technician does by hand: survey to rank ids, bit-search the
+    most promising ones (the search already tries both byte orders and signs),
+    and for a multiplexed message search each selector value too, then rank every
+    candidate by fit. Returns the ranked, de-duplicated candidate list (each is a
+    normal bitsearch candidate, plus a ``mux`` key when it came from one selector
+    value). Pure; the LLM naming is layered on at the router."""
+    opts = opts or {}
+    top_ids = max(1, int(opts.get("top_ids", 3)))
+    per_id = max(1, int(opts.get("per_id", 3)))
+    ranked = [r for r in survey(records_by_id, reference, opts) if r.get("score", 0) > 0][:top_ids]
+    out: list[dict] = []
+    for row in ranked:
+        arb = row["arbitration_id"]
+        recs = records_by_id.get(arb) or []
+        out.extend(bitsearch(recs, reference, opts)[:per_id])
+        mux = detect_multiplexer([list(r.get("data") or []) for r in recs[:400]])
+        if mux:
+            for v in mux["values"][:8]:
+                mopts = dict(opts)
+                mopts["mux"] = {"byte": mux["byte"], "value": v}
+                for c in bitsearch(recs, reference, mopts)[:2]:
+                    c = dict(c)
+                    c["mux"] = {"byte": mux["byte"], "value": v}
+                    out.append(c)
+    out.sort(key=lambda c: -(c.get("r2") or 0))
+    seen: set = set()
+    deduped: list[dict] = []
+    for c in out:
+        key = (c.get("arbitration_id"), c.get("start_bit"), c.get("length"),
+               c.get("byte_order"), c.get("signed"), str(c.get("mux")))
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(c)
+    return deduped[:int(opts.get("max_candidates", 10))]
+
+
 def cross_correlate(records_by_id: dict[int, list[dict]], dbc_text: str,
                     known_signals: Sequence[dict], *, min_score: float = 0.9,
                     max_signals: int = 40, max_matches: int = 25, decode_fn=None) -> list[dict]:

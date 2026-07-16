@@ -819,3 +819,25 @@ def test_bitsearch_mux_filter_restricts_frames():
     bad = rev.bitsearch(records, reference, {"mux": {"byte": 0, "value": 9}})
     assert max((c["r2"] for c in good), default=0) > 0.9   # the ramp is recovered
     assert max((c["r2"] for c in bad), default=0) < 0.5    # constant garbage does not track
+
+
+def test_auto_decode_finds_the_signal_across_ids():
+    # 0x100 byte 0 ramps with the reference; 0x200 is unrelated noise. Auto-decode
+    # should survey, bit-search, and surface 0x100 as the best candidate.
+    grouped, reference = {0x100: [], 0x200: []}, []
+    for i in range(40):
+        t = float(i)
+        grouped[0x100].append({"arbitration_id": 0x100, "data": [i & 0xFF, 0], "timestamp": t})
+        grouped[0x200].append({"arbitration_id": 0x200, "data": [(i * 91) & 0xFF, 7], "timestamp": t})
+        reference.append({"t": t, "value": float(i), "available": True})
+    cands = rev.auto_decode(grouped, reference, {"top_ids": 3})
+    assert cands, "auto-decode should return candidates"
+    assert cands[0]["arbitration_id"] == 0x100 and cands[0]["r2"] > 0.9
+
+
+def test_auto_decode_empty_without_signal():
+    grouped = {0x300: [{"arbitration_id": 0x300, "data": [5], "timestamp": float(i)} for i in range(10)]}
+    reference = [{"t": float(i), "value": float(i), "available": True} for i in range(10)]
+    # A constant byte cannot track anything; no strong candidate.
+    cands = rev.auto_decode(grouped, reference, {})
+    assert all(c["r2"] < 0.5 for c in cands) or cands == []
