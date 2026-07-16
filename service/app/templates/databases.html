@@ -84,14 +84,28 @@
       + 'title="Decode ' + esc(ACTIVE_LABEL) + '’s traffic with this database">Use with ' + esc(ACTIVE_LABEL) + '</button></td>';
   }
 
-  function renderDbs(dbs) {
+  function isLinked(db) { return linkedIds.indexOf(db.id) !== -1; }
+  function matchBadge(db) {
+    if (ACTIVE_ID == null || isLinked(db) || !db.matches) return '';
+    return ' <span class="badge text-bg-info" title="Fits ' + esc(ACTIVE_LABEL) + '">Matches your vehicle</span>';
+  }
+  function sortForVehicle(dbs) {
+    if (ACTIVE_ID == null) return dbs;
+    // Linked ("In use") first, then ones that fit the active vehicle, then the
+    // rest, so the databases that matter for this vehicle rise to the top.
+    const rank = (db) => (isLinked(db) ? 2 : (db.matches ? 1 : 0));
+    return dbs.slice().sort((a, b) => rank(b) - rank(a));
+  }
+
+  function renderDbs(dbsIn) {
+    const dbs = sortForVehicle(dbsIn);
     if (!dbs.length) { listEl.textContent = 'No databases yet. Import one below.'; return; }
     const cols = ACTIVE_ID == null ? 7 : 8;
     listEl.innerHTML = '<table class="table table-sm table-dark align-middle mb-0"><thead><tr>'
       + '<th>Name</th><th>Vehicle</th><th>Years</th><th>Signals</th><th>License</th><th>Author</th>'
       + (ACTIVE_ID == null ? '' : '<th>' + esc(ACTIVE_LABEL) + '</th>') + '<th></th></tr></thead><tbody>'
       + dbs.map((db) => '<tr>'
-        + '<td>' + esc(db.name) + '</td>'
+        + '<td>' + esc(db.name) + matchBadge(db) + '</td>'
         + '<td class="small">' + esc([db.make, dbModels(db)].filter(Boolean).join(' ')) + '</td>'
         + '<td class="small">' + esc(db.years || (db.year || '')) + '</td>'
         + '<td>' + (db.message_count || 0) + '</td>'
@@ -147,10 +161,13 @@
       .then((r) => r.json()).then(load);
   }
 
-  function renderCatalog(items) {
+  function renderCatalog(itemsIn) {
+    const items = ACTIVE_ID == null ? itemsIn
+      : itemsIn.slice().sort((a, b) => (b.matches ? 1 : 0) - (a.matches ? 1 : 0));
     if (!items.length) { catEl.textContent = 'No catalog entries.'; return; }
     catEl.innerHTML = items.map((e) => '<div class="d-flex justify-content-between align-items-start border-bottom py-2">'
-      + '<div><div class="fw-semibold">' + esc(e.name) + ' ' + licenseBadge(e.license) + '</div>'
+      + '<div><div class="fw-semibold">' + esc(e.name) + ' ' + licenseBadge(e.license)
+      + (e.matches ? ' <span class="badge text-bg-info" title="Fits ' + esc(ACTIVE_LABEL) + '">Matches your vehicle</span>' : '') + '</div>'
       + '<div class="small text-secondary">' + esc([e.make, (e.models || []).join('/'), e.years].filter(Boolean).join(' · '))
       + (e.author ? ' — ' + esc(e.author) : '') + (e.notes ? '<br>' + esc(e.notes) : '') + '</div></div>'
       + '<div class="text-nowrap ms-2">'

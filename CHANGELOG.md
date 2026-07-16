@@ -21,9 +21,8 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 ### Added
 
 - **Auto-find a signal in one click.** Once you have a reference (a sweep, a dashboard camera read, or a known signal), the new "Auto-find signal" button does the whole search for you: it ranks the ids, searches their bits (including each multiplexer value), picks the best fit, and, when AI is configured, names it. It is the find-and-refine work you would otherwise do by hand, in a single pass.
-
-### Added
-
+- **Your vehicle's database is used to decode automatically.** Once you link a database to a vehicle and pick that vehicle in the top bar, the CAN Monitor decodes its traffic with that database on its own, so you no longer have to reselect it every time. Choosing a database by hand on the Monitor still wins when you want a different one.
+- **The Databases page floats the ones that fit your vehicle to the top.** With a vehicle selected, installed databases and open-source catalog entries that match its make, model, and year rise to the top with a "Matches your vehicle" badge, so the right database is the first thing you see.
 - **Read the dashboard with a camera to find a signal.** The reference recorder has a new "Dashboard camera" mode: point a camera (or your webcam) at the dash, change the value, and AutoPi reads the number off each frame with the vision AI and records it as the reference, timed against the live capture. Then the bit search matches an unknown CAN field to what the dash actually showed, so you can find things like speed or RPM without a known signal to compare against. Needs an AI provider configured.
 
 ### Added

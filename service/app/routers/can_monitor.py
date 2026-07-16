@@ -52,9 +52,15 @@ def status():
 def frames(channel: str = "can0", backend: str = "socketcan", database_id: int | None = None,
            obd2: bool | None = None):
     from ..config import settings
+    from ..services import can_databases as can_db_svc
     obd2_overlay = settings.obd2_overlay if obd2 is None else bool(obd2)
     monitor = mon.get_monitor(channel, backend=backend)
-    dbc_text = _resolve_dbc_text(database_id) if database_id else None
+    # An explicit selection wins; otherwise fall back to the active vehicle's
+    # linked database so decoding "just works" once a vehicle is picked.
+    if database_id:
+        dbc_text = _resolve_dbc_text(database_id)
+    else:
+        dbc_text = can_db_svc.active_dbc_text()
     records = []
     for record in monitor.frames():
         entry = dict(record)

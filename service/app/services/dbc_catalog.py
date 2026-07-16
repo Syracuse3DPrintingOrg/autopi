@@ -77,7 +77,13 @@ def _norm(value: Any) -> str:
 
 def _db_models(db: dict) -> list[str]:
     out = [_norm(db.get("model"))]
-    out += [_norm(m) for m in str(db.get("models") or "").split(",")]
+    raw = db.get("models")
+    if isinstance(raw, (list, tuple)):
+        # Catalog entries carry ``models`` as a list; installed databases carry
+        # a comma-separated string. Handle both so matching works on either.
+        out += [_norm(m) for m in raw]
+    else:
+        out += [_norm(m) for m in str(raw or "").split(",")]
     return [m for m in out if m]
 
 
@@ -91,6 +97,11 @@ def _year_ok(year: int, db: dict) -> bool:
     if single and int(single) == int(year):
         return True
     if years:
+        # "YYYY+" means that year onward (an open upper bound), the shape the
+        # catalog uses ("2015+"); anything at or after the year matches.
+        stripped = years.rstrip("+")
+        if years.endswith("+") and stripped.isdigit():
+            return int(year) >= int(stripped)
         parts = [p.strip() for p in years.replace("–", "-").split("-") if p.strip().isdigit()]
         nums = [int(p) for p in parts]
         if len(nums) == 1 and nums[0] == int(year):
@@ -127,3 +138,33 @@ def compatible_databases(dbs: list[dict], make: str = "", model: str = "",
 
     matched.sort(key=specificity, reverse=True)
     return matched
+
+
+def pick_active_database_id(linked_ids: list[int], available_ids: list[int]) -> int | None:
+    """The database a vehicle should decode with, given its linked ids and the
+    ids that actually exist. The first linked database still present wins, so a
+    deleted link is skipped without ever falling back to an unrelated database.
+    Pure: no DB access."""
+    have = {int(i) for i in available_ids}
+    for i in linked_ids:
+        try:
+            i = int(i)
+        except (TypeError, ValueError):
+            continue
+        if i in have:
+            return i
+    return None
+
+
+def annotate_matches(entries: list[dict], make: str = "", model: str = "",
+                     year: int | None = None) -> list[dict]:
+    """Copy each entry and add a ``matches`` flag saying whether it fits the given
+    vehicle. With no vehicle (all fields blank) nothing is flagged, so the caller
+    can pass an inactive selection through unchanged. Pure: no DB access."""
+    has_vehicle = bool(make or model or year)
+    out: list[dict] = []
+    for e in entries:
+        item = dict(e)
+        item["matches"] = bool(has_vehicle and database_matches(e, make, model, year))
+        out.append(item)
+    return out

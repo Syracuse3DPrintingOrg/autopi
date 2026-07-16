@@ -13,10 +13,25 @@ from pydantic import BaseModel
 from ..can import dbc as dbc_mod
 from ..can import opendbc_import
 from ..db import CanDatabase, session_scope
+from ..services import can_databases as can_db_svc
 from ..services import dbc_catalog
 from ..services import profiles as profiles_svc
 
 router = APIRouter(prefix="/can", tags=["can-dbc"])
+
+
+def _active_vehicle() -> dict:
+    """The active vehicle's make/model/year, so lists and the catalog can flag
+    the databases that fit it. Empty dict when no vehicle is active."""
+    try:
+        active_id = profiles_svc.get_active_profile_id()
+        if active_id is None:
+            return {}
+        profile = profiles_svc.get_profile(active_id) or {}
+        return {"make": profile.get("make") or "", "model": profile.get("model") or "",
+                "year": profile.get("year")}
+    except Exception:
+        return {}
 
 
 @router.get("/dbc/available")
@@ -27,14 +42,33 @@ def dbc_available():
 @router.get("/dbc/catalog")
 def dbc_catalog_route():
     """A directory of open-source DBC sources: the permissive ones can be
-    imported directly, the rest are links. Nothing here ships with the app."""
-    return {"catalog": dbc_catalog.catalog()}
+    imported directly, the rest are links. Nothing here ships with the app.
+    Entries that fit the active vehicle are flagged ``matches``."""
+    v = _active_vehicle()
+    entries = dbc_catalog.annotate_matches(
+        dbc_catalog.catalog(), v.get("make", ""), v.get("model", ""), v.get("year"))
+    return {"catalog": entries}
 
 
 @router.get("/databases")
 def list_databases():
+    v = _active_vehicle()
+    linked = set(can_db_svc.active_linked_database_ids())
     with session_scope() as s:
-        return {"databases": [d.to_dict() for d in s.query(CanDatabase).all()]}
+        dbs = [d.to_dict() for d in s.query(CanDatabase).all()]
+    dbs = dbc_catalog.annotate_matches(dbs, v.get("make", ""), v.get("model", ""), v.get("year"))
+    for d in dbs:
+        d["linked"] = d.get("id") in linked
+    return {"databases": dbs}
+
+
+@router.get("/databases/active")
+def active_database():
+    """The database the active vehicle decodes with (its first linked one still
+    installed), or ``null``. Surfaces use this to default their DBC selection to
+    the active vehicle without the user picking it again."""
+    return {"database": can_db_svc.active_database(),
+            "database_id": can_db_svc.active_database_id()}
 
 
 class NewDatabaseIn(BaseModel):
