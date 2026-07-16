@@ -6,6 +6,10 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ## [Unreleased]
 
+### Fixed
+
+- **"Find a control" no longer bogs the device down on a busy bus.** Like Verify effect before it, the search was writing every frame it heard on every bus to the SD card, which on a busy CAN-FD bus is tens of thousands of frames and made the device sluggish after each run. It now keeps those frames in memory (the Bits view still opens them), so the search stays responsive.
+
 ### Added
 
 - **The Signal Finder now spots protected messages and rebuilds valid frames.** Many command messages carry a rolling counter and a checksum, and the vehicle rejects any frame whose counter does not advance or whose checksum is wrong, which is why a plain replay (even flooded) does nothing. A found control that is protected now shows a "protected" badge, and Test and Flood regenerate each frame with a fresh, advancing counter and a recomputed checksum so it can be accepted. If the checksum uses a scheme AutoPi does not recognize yet, the badge warns you that the vehicle may still drop it, so you are not left guessing.

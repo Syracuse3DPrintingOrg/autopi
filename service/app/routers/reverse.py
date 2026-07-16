@@ -667,7 +667,11 @@ def hunt_start():
     for ch in channels:
         session = cap.get_inhale_session(ch, backend="socketcan",
                                          channel_factory=_capture_factory(ch, "socketcan"))
-        if session.start(f"hunt {ch}"):
+        # Keep hunt captures in memory only (they stay in the recent-captures
+        # cache the Bits view reads from) instead of writing tens of thousands of
+        # frames to the SD card on a busy CAN-FD bus, which stalls the device. Cap
+        # the frame count so a firehose bus cannot exhaust memory.
+        if session.start(f"hunt {ch}", persist=False, max_frames=200000):
             started.append(ch)
     if not started:
         return {"ok": False, "error": "Could not start a capture on any bus (one may already be running)."}

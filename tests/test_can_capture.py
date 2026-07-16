@@ -435,3 +435,20 @@ def test_get_capture_finds_it_before_persist():
                           [{"arbitration_id": 0x3E0, "data": [0] * 8, "timestamp": 0.0}])
     got = cap.get_capture(c["id"])   # not persisted yet
     assert got is not None and got["id"] == c["id"]
+
+
+def test_persist_false_capture_still_retrievable_from_memory(monkeypatch):
+    # Hunt captures use persist=False to avoid SD thrash; the Bits view must still
+    # find them, because build_capture keeps them in the in-memory recent cache.
+    monkeypatch.setattr(cap, "persist_capture", lambda capture: (_ for _ in ()).throw(AssertionError("must not persist")))
+    fake = _FakeProvider()
+    session = InhaleSession("can0", channel_factory=lambda *a, **k: fake)
+    session.start("hunt can0", persist=False)
+    fake.push(Frame(arbitration_id=0x321, data=[9]))
+    deadline = time.time() + 2.0
+    while time.time() < deadline and session.status()["frame_count"] < 1:
+        time.sleep(0.02)
+    saved = session.stop()
+    assert saved is not None
+    got = cap.get_capture(saved["id"])
+    assert got is not None and got["id"] == saved["id"]  # retrievable without disk
