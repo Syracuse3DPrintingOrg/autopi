@@ -24,6 +24,7 @@ from ..can import reverse as rev
 from ..db import CanDatabase, session_scope
 from ..services import cockpit as cockpit_svc
 from ..services import ref_recorder as rec
+from ..services import vision_crop
 
 router = APIRouter(prefix="/reverse", tags=["can-reverse"])
 
@@ -249,7 +250,9 @@ def survey_route(body: SurveyIn):
     grouped = _frames_by_id(capture)
     reference = [p.model_dump() for p in body.reference]
     ranked = rev.survey(grouped, reference, body.opts or {})
-    return {"ranked": ranked}
+    correlated = any((r.get("score") or 0) > 0 for r in ranked)
+    diag = rev.diagnose_reference_match(reference, grouped, correlated=correlated)
+    return {"ranked": ranked, "diagnostic": diag or None}
 
 
 class BitsearchIn(BaseModel):
@@ -287,8 +290,6 @@ def auto_decode_route(body: AutoDecodeIn):
     The iterate-and-refine loop a technician would run by hand."""
     capture = _capture_or_404(body.capture_id)
     reference = [p.model_dump() for p in body.reference]
-    if len(reference) < 3:
-        return {"ok": False, "error": "Record at least a few reference points first."}
     grouped = _frames_by_id(capture)
     # This one-pass flow takes a hand-typed reference, which a person often logs a
     # beat after the value was true. Sweep a few candidate lags by default so that
@@ -298,13 +299,20 @@ def auto_decode_route(body: AutoDecodeIn):
     opts = {"lags": [0.0, 0.25, 0.5, 0.75, 1.0], **(body.opts or {}), "top_ids": body.top_ids}
     candidates = rev.auto_decode(grouped, reference, opts)
     best = candidates[0] if candidates else None
+    # Consult the diagnostic before trusting `best`: a structural problem (no
+    # frames, too few readings, a flat reference, no time overlap) makes a match
+    # meaningless, and a flat reference in particular yields a confident bogus
+    # candidate. When one fires, name it for the user and show no match.
+    diag = rev.diagnose_reference_match(reference, grouped, correlated=best is not None)
+    if diag:
+        return {"ok": True, "candidates": [], "best": None, "named": None, "diagnostic": diag}
     named = None
     if best is not None and llm.status().get("available"):
         try:
             named = llm.suggest_name(best, reference_hint=body.context_hint, context_hint=body.context_hint)
         except Exception:
             named = None
-    return {"ok": True, "candidates": candidates, "best": best, "named": named}
+    return {"ok": True, "candidates": candidates, "best": best, "named": named, "diagnostic": None}
 
 
 class SaveIn(BaseModel):
@@ -1072,16 +1080,21 @@ def reference_mark(body: ReferenceMarkIn):
 class VisionFrameIn(BaseModel):
     image: str            # data URL ("data:image/jpeg;base64,...") or raw base64
     what: str = "speed"
+    roi: dict | None = None   # {x, y, w, h} fractions to crop to before reading
 
 
 @router.post("/reference/vision-frame")
 def reference_vision_frame(body: VisionFrameIn):
     """Read the dashboard value off one camera frame and record it as a reference
-    sample at the current time (a sweep-mode reference, which lines up with a live
-    capture on the server clock). The browser sends a frame every couple of
-    seconds while the value changes; each becomes a reference point, so an unknown
-    CAN field can be matched to what the dash actually showed. Needs the vision
-    LLM configured."""
+    sample timed to when the frame was grabbed (a sweep-mode reference, which lines
+    up with a live capture on the server clock). The browser sends a frame every
+    couple of seconds while the value changes; each becomes a reference point, so
+    an unknown CAN field can be matched to what the dash actually showed. When a
+    crop region is given, the frame is cropped to it first so the AI reads only the
+    value the user boxed. Needs the vision LLM configured."""
+    # Stamp the reading against the moment the frame arrived, before the (slow,
+    # variable) AI read, so the point lines up with the captured frames.
+    grabbed_at = time.time()
     raw = body.image or ""
     mime = "image/jpeg"
     if raw.startswith("data:"):
@@ -1090,6 +1103,7 @@ def reference_vision_frame(body: VisionFrameIn):
             mime = header.split(":", 1)[1].split(";", 1)[0] or mime
     if not raw:
         return {"ok": False, "error": "No image data."}
+    raw, mime = vision_crop.crop_region(raw, mime, body.roi)
     try:
         reading = llm.read_dashboard_value(raw, mime, body.what)
     except Exception as exc:
@@ -1097,7 +1111,7 @@ def reference_vision_frame(body: VisionFrameIn):
     value = reading.get("value")
     marked = None
     if value is not None:
-        marked = rec.mark(float(value))
+        marked = rec.mark(float(value), t=grabbed_at)
     return {"ok": True, "value": value, "recording": bool(marked and marked.get("recording")),
             "status": marked}
 

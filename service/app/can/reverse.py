@@ -1075,6 +1075,92 @@ def bitsearch(records_for_id: list[dict], reference: list[dict], opts: dict | No
     return [c[3] for c in candidates[:max_candidates]]
 
 
+# A camera reference needs enough readings to tell the real signal apart from
+# ordinary bus chatter: with only a handful, a random field on a busy bus
+# correlates by chance and the finder locks onto noise (or onto a flat-fit
+# artifact) instead of the true signal. Empirically a dozen is comfortable and
+# six is not, so refuse a confident answer below this and ask for more.
+MIN_REFERENCE_POINTS = 8
+
+_REF_NO_FRAMES = (
+    "The capture recorded no CAN frames, so there was nothing to match your "
+    "reference against. The channel you recorded on was probably not the one "
+    "carrying traffic, or it was not up. Run a Snapshot on each channel to see "
+    "which one is live, then record the reference again on that channel."
+)
+_REF_OUTSIDE_CAPTURE = (
+    "Your reference points and the captured frames do not line up in time, so "
+    "none of them could be matched. This usually happens when the capture and "
+    "the reference were recorded in separate runs. Use Start capture + reference "
+    "so the bus recording and the reference share one clock, then try again."
+)
+_REF_NO_CORRELATION = (
+    "Frames were captured and your reference changed, but no CAN field tracked it "
+    "closely. The signal may be on a bus this capture did not include, or the "
+    "reference was too noisy to line up. Record a longer, cleaner reference with "
+    "clear changes, make sure every active bus is being captured, and run "
+    "Auto-find again."
+)
+
+
+def _ref_too_few(n: int) -> str:
+    if n <= 0:
+        return ("No readings came through, so there is nothing to match. If you used "
+                "the dashboard camera it never read a value: box the number with the "
+                "crop tool, aim so it is sharp and well lit, and let the recording run "
+                "longer.")
+    return (f"Only {n} reading{'' if n == 1 else 's'} landed, which is too few to tell "
+            "the real signal apart from ordinary bus chatter. Record longer so the "
+            "value sweeps across a range and a dozen or more readings come through, "
+            "then search again.")
+
+
+def _ref_constant(held) -> str:
+    shown = ("%g" % held) if isinstance(held, (int, float)) else str(held)
+    return (f"Your reference stayed at {shown} the whole time, so there is nothing for "
+            "the search to track. A signal can only be found when the value changes "
+            "while you record. Record again while the reading moves across a range: for "
+            "speed, coast or accelerate through several values.")
+
+
+def diagnose_reference_match(reference, records_by_id, *, correlated=None) -> dict | str:
+    """Name WHY a reference search found nothing usable, from the shape of the
+    reference and the capture alone (no search, no I/O). Returns
+    ``{"reason_code", "message"}`` for a named failure, or ``""`` when the
+    reference and capture are healthy enough to trust a match.
+
+    The structural checks (no frames, too few points, a flat reference, no time
+    overlap) run before any match is trusted, because each makes a match
+    meaningless: a flat reference in particular is 'perfectly fit' by a flat line
+    (r2 1.0, correlation 0), so it yields a confident but bogus top candidate that
+    must be suppressed. ``correlated`` (did the search find any field that tracked
+    the reference) only decides the final no_correlation message. Pure."""
+    points = [p for p in (reference or []) if isinstance(p, dict)]
+    usable = [p for p in points if p.get("available", True)]
+    total_frames = sum(len(recs or []) for recs in (records_by_id or {}).values())
+    if total_frames == 0:
+        return {"reason_code": "no_frames", "message": _REF_NO_FRAMES}
+    values = []
+    for p in usable:
+        try:
+            values.append(round(float(p["value"]), 9))
+        except (KeyError, TypeError, ValueError):
+            pass
+    if len(values) < MIN_REFERENCE_POINTS:
+        return {"reason_code": "too_few_points", "message": _ref_too_few(len(values))}
+    if len(set(values)) < 2:
+        return {"reason_code": "constant_reference",
+                "message": _ref_constant(values[0] if values else None)}
+    ref_ts = [float(p["t"]) for p in usable if "t" in p]
+    cap_ts = [float(r.get("timestamp", 0.0)) for recs in records_by_id.values()
+              for r in (recs or [])]
+    if ref_ts and cap_ts and (max(ref_ts) < min(cap_ts) or min(ref_ts) > max(cap_ts)):
+        return {"reason_code": "outside_capture", "message": _REF_OUTSIDE_CAPTURE}
+    if correlated is False:
+        return {"reason_code": "no_correlation", "message": _REF_NO_CORRELATION}
+    return ""
+
+
 def survey(records_by_id: dict[int, list[dict]], reference: list[dict], opts: dict | None = None) -> list[dict]:
     """Coarse per-byte scan across every arbitration id, ranked by how well
     any one byte correlates with the reference, so a bitsearch only needs to

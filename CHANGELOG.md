@@ -6,6 +6,15 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ## [Unreleased]
 
+### Added
+
+- **Crop the dashboard camera to just the value you want read.** A cluster that shows speed, RPM, gear, and temperature at once could send the AI reading the wrong number. Drag a box on the camera preview around only the value to read, and every frame is cropped to that box before it is read, so the reference tracks the number you meant. A Clear crop button goes back to reading the whole frame.
+
+### Fixed
+
+- **The dashboard camera reference lines up with the capture now, and low-quality references are caught instead of guessed.** Each reading is timed to the moment its frame was grabbed, not the couple of seconds later when the AI answered (that delay varied per reading and smeared everything out of alignment). The readings are shown live as they come in, so you can see the value tracking your sweep. And when a search finds nothing, it now says why (too few readings, the value never changed, no CAN frames on the channel, or nothing tracked) instead of a generic message, and a flat reference no longer produces a confident but bogus match.
+
+
 ### Fixed
 - **The signal finder now reports the real field's position and scale, not a look-alike.** When you match an unknown CAN field to a reference, several bit windows can fit almost identically (a real field always has near-identical shifted or truncated twins). The finder was picking whichever fit by a hair, so it often showed a field shifted a few bits over with an odd scale like 0.16 instead of the true 0.01. It now breaks those near-ties toward the field a real device would use (a sensible scale, a byte or nibble aligned start, the higher-resolution read), so the start bit and scale it shows are the ones worth saving. One-pass auto-decode also sweeps a small reaction-delay range by default, so a reference you logged a beat late still lines up.
 - **Acting on a found control now works reliably.** After the Signal Finder turns up a candidate, using Bits, Test, or Verify on it could quietly do nothing or fail: the hunt's recording is kept in memory (so a busy bus does not thrash the device storage) and later steps could drop it or clear the capture selection. The recording is now held for the whole hunt and stays selected, so every follow-up action finds it.

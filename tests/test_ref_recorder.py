@@ -138,6 +138,16 @@ def test_mark_is_a_noop_in_button_mode(monkeypatch):
     assert rec.get()["points"] == []
 
 
+def test_mark_uses_explicit_grab_time_not_now(monkeypatch):
+    # A vision read stamps the frame's grab time, not the (later, variable) moment
+    # the AI answered, so the point lines up with the captured frames.
+    _fake_clock(monkeypatch, [500.0, 999.0])   # start clock, then "now" at mark
+    rec.start("sweep")
+    rec.mark(42.0, t=512.5)                     # grabbed at 512.5, AI answered at 999.0
+    points = rec.get()["points"]
+    assert points == [{"t": 512.5, "value": 42.0}]  # stamped at grab time, not 999.0
+
+
 def test_event_is_a_noop_in_sweep_mode(monkeypatch):
     _fake_clock(monkeypatch, [1.0])
     rec.start("sweep")

@@ -108,15 +108,26 @@
           <div id="ref-vision-device-row" class="d-none mb-1">
             <select class="form-select form-select-sm" id="ref-vision-device"></select>
             <div class="small text-secondary mt-1" id="ref-vision-device-note"></div>
-            <img id="ref-vision-device-preview" alt="Camera preview" class="w-100 rounded border d-none mt-1"
-                 style="max-height:220px;background:#000;object-fit:contain">
+            <div id="ref-vision-device-wrap" class="vision-crop-wrap position-relative d-none mt-1" style="line-height:0">
+              <img id="ref-vision-device-preview" alt="Camera preview" class="w-100 rounded border"
+                   style="max-height:220px;background:#000;object-fit:contain;display:block">
+              <div class="vision-crop-box" style="position:absolute;display:none;border:2px solid #F2006E;background:rgba(242,0,110,0.18);pointer-events:none;box-sizing:border-box"></div>
+            </div>
           </div>
-          <video id="ref-vision-video" class="w-100 rounded border" style="max-height:220px;background:#000" playsinline muted></video>
+          <div id="ref-vision-video-wrap" class="vision-crop-wrap position-relative" style="line-height:0">
+            <video id="ref-vision-video" class="w-100 rounded border" style="max-height:220px;background:#000;display:block" playsinline muted></video>
+            <div class="vision-crop-box" style="position:absolute;display:none;border:2px solid #F2006E;background:rgba(242,0,110,0.18);pointer-events:none;box-sizing:border-box"></div>
+          </div>
+          <div class="d-flex align-items-center gap-2 mt-1">
+            <span class="small text-secondary flex-grow-1" id="ref-vision-crop-hint">Drag a box on the preview around just the value to read (helps when the dash shows several numbers).</span>
+            <button type="button" class="btn btn-outline-secondary btn-sm d-none" id="ref-vision-crop-clear">Clear crop</button>
+          </div>
           <div class="small text-secondary mt-1">Point a camera at the dashboard and change the value.
             AutoPi reads it every couple of seconds and records it as the reference, timed against the capture.
             The browser camera needs a secure page (https or the device's own screen); a USB camera plugged into
             the AutoPi box works from anywhere.</div>
           <div class="small mono mt-1" id="ref-vision-read">Last read: -</div>
+          <div class="small mono text-secondary mt-1 d-none" id="ref-vision-values"></div>
         </div>
         <div class="small text-secondary mb-2" id="ref-count">Not recording.</div>
 
@@ -153,7 +164,8 @@
         <h6 class="mb-1">Or type a reference by hand</h6>
         <p class="small text-secondary mb-2">One point per line as <code>time, value</code> (time in the same
           seconds as the capture). Mark a value <code>na</code> to skip a moment the signal was unavailable.
-          A rough sweep across the capture's time range is enough.</p>
+          Sweep the value across a range and give at least a dozen points spread over the capture's time range,
+          so the search can tell the real signal apart from ordinary bus noise.</p>
         <textarea class="form-control form-control-sm mono" id="reference" rows="6"
           placeholder="0.0, 0&#10;2.5, 15&#10;5.0, 40&#10;7.5, 70"></textarea>
       </div></div>
@@ -491,11 +503,14 @@
     const visionDeviceRow = document.getElementById('ref-vision-device-row');
     const visionDeviceSel = document.getElementById('ref-vision-device');
     const visionDeviceNote = document.getElementById('ref-vision-device-note');
+    const visionValuesEl = document.getElementById('ref-vision-values');
     let recording = false;
     let markPending = false;
     let markTimer = null;
     let visionStream = null;
     let visionTimer = null;
+    let visionRoi = null;         // {x,y,w,h} fractions of the frame, or null for the whole frame
+    let visionValues = [];        // every value read this recording, for a visible sanity check
 
     function mode() {
       return document.querySelector('input[name="ref-mode"]:checked').value;
@@ -510,6 +525,7 @@
       return (visionSrcDevice && visionSrcDevice.checked) ? 'device' : 'browser';
     }
     const visionPreview = document.getElementById('ref-vision-device-preview');
+    const visionPreviewWrap = document.getElementById('ref-vision-device-wrap');
     let previewActive = false;
     // Live preview: pull a fresh snapshot from the device and chain the next
     // request on load/error so slow grabs never pile up. Runs while the device
@@ -523,16 +539,108 @@
       const device = visionDeviceSel.value;
       if (!device) { stopDevicePreview(); return; }
       previewActive = true;
-      visionPreview.classList.remove('d-none');
+      if (visionPreviewWrap) visionPreviewWrap.classList.remove('d-none');
       refreshPreview();
     }
     function stopDevicePreview() {
       previewActive = false;
-      if (visionPreview) { visionPreview.classList.add('d-none'); visionPreview.removeAttribute('src'); }
+      if (visionPreviewWrap) visionPreviewWrap.classList.add('d-none');
+      if (visionPreview) visionPreview.removeAttribute('src');
+    }
+
+    // Crop-to-value: let the user drag a box on a preview around just the number
+    // to read. The box is stored as fractions of the shown image (accounting for
+    // the letterboxing object-fit:contain adds), so it maps onto whatever pixels
+    // the frame has and is sent with each vision read.
+    const cropClearBtn = document.getElementById('ref-vision-crop-clear');
+    function imageContentRect(el) {
+      // The rect of the actual image inside el, given object-fit:contain.
+      const r = el.getBoundingClientRect();
+      const natW = el.tagName === 'VIDEO' ? el.videoWidth : el.naturalWidth;
+      const natH = el.tagName === 'VIDEO' ? el.videoHeight : el.naturalHeight;
+      if (!natW || !natH) return { left: r.left, top: r.top, width: r.width, height: r.height };
+      const scale = Math.min(r.width / natW, r.height / natH);
+      const w = natW * scale, h = natH * scale;
+      return { left: r.left + (r.width - w) / 2, top: r.top + (r.height - h) / 2, width: w, height: h };
+    }
+    function showCropBox(wrap) {
+      const box = wrap.querySelector('.vision-crop-box');
+      if (!box) return;
+      if (!visionRoi) { box.style.display = 'none'; return; }
+      const el = wrap.querySelector('img, video');
+      const c = imageContentRect(el);
+      const wrapR = wrap.getBoundingClientRect();
+      box.style.left = (c.left - wrapR.left + visionRoi.x * c.width) + 'px';
+      box.style.top = (c.top - wrapR.top + visionRoi.y * c.height) + 'px';
+      box.style.width = (visionRoi.w * c.width) + 'px';
+      box.style.height = (visionRoi.h * c.height) + 'px';
+      box.style.display = 'block';
+    }
+    function setCropCleared() {
+      visionRoi = null;
+      if (cropClearBtn) cropClearBtn.classList.add('d-none');
+      document.querySelectorAll('.vision-crop-box').forEach((b) => { b.style.display = 'none'; });
+    }
+    function attachCropSelector(wrap) {
+      if (!wrap || wrap._cropAttached) return;
+      wrap._cropAttached = true;
+      let dragging = false, sx = 0, sy = 0;
+      const el = () => wrap.querySelector('img, video');
+      const onDown = (e) => {
+        const c = imageContentRect(el());
+        const p = e.touches ? e.touches[0] : e;
+        if (p.clientX < c.left || p.clientX > c.left + c.width || p.clientY < c.top || p.clientY > c.top + c.height) return;
+        dragging = true; sx = p.clientX; sy = p.clientY;
+        e.preventDefault();
+      };
+      const onMove = (e) => {
+        if (!dragging) return;
+        const c = imageContentRect(el());
+        const p = e.touches ? e.touches[0] : e;
+        const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+        const x0 = clamp(Math.min(sx, p.clientX), c.left, c.left + c.width);
+        const x1 = clamp(Math.max(sx, p.clientX), c.left, c.left + c.width);
+        const y0 = clamp(Math.min(sy, p.clientY), c.top, c.top + c.height);
+        const y1 = clamp(Math.max(sy, p.clientY), c.top, c.top + c.height);
+        visionRoi = { x: (x0 - c.left) / c.width, y: (y0 - c.top) / c.height,
+                      w: (x1 - x0) / c.width, h: (y1 - y0) / c.height };
+        showCropBox(wrap);
+      };
+      const onUp = () => {
+        if (!dragging) return;
+        dragging = false;
+        if (!visionRoi || visionRoi.w < 0.03 || visionRoi.h < 0.03) { setCropCleared(); return; }
+        if (cropClearBtn) cropClearBtn.classList.remove('d-none');
+      };
+      wrap.addEventListener('mousedown', onDown); wrap.addEventListener('touchstart', onDown, { passive: false });
+      window.addEventListener('mousemove', onMove); wrap.addEventListener('touchmove', onMove, { passive: false });
+      window.addEventListener('mouseup', onUp); wrap.addEventListener('touchend', onUp);
+    }
+    attachCropSelector(visionPreviewWrap);
+    attachCropSelector(document.getElementById('ref-vision-video-wrap'));
+    if (cropClearBtn) cropClearBtn.addEventListener('click', setCropCleared);
+    window.addEventListener('resize', () => {
+      document.querySelectorAll('.vision-crop-wrap').forEach((w) => { if (visionRoi) showCropBox(w); });
+    });
+
+    function resetVisionValues() {
+      visionValues = [];
+      if (visionValuesEl) { visionValuesEl.classList.add('d-none'); visionValuesEl.textContent = ''; }
+    }
+    function pushVisionValue(v) {
+      if (v == null || !visionValuesEl) return;
+      visionValues.push(v);
+      const shown = visionValues.slice(-16).join(', ');
+      const lo = Math.min.apply(null, visionValues), hi = Math.max.apply(null, visionValues);
+      const range = visionValues.length > 1 ? '  (range ' + lo + ' to ' + hi + ')' : '';
+      visionValuesEl.textContent = 'Readings: ' + shown + range;
+      visionValuesEl.classList.remove('d-none');
     }
     if (visionPreview) {
       const next = () => { if (previewActive) setTimeout(refreshPreview, 1200); };
-      visionPreview.addEventListener('load', next);
+      // Keep the crop box aligned as each fresh snapshot loads (the image's
+      // natural size is only known once it has loaded).
+      visionPreview.addEventListener('load', () => { if (visionRoi && visionPreviewWrap) showCropBox(visionPreviewWrap); next(); });
       visionPreview.addEventListener('error', next);
     }
 
@@ -572,6 +680,7 @@
 
     async function startVision() {
       const what = (document.getElementById('ref-vision-what').value || 'speed').trim();
+      resetVisionValues();
       if (visionSource() === 'device') {
         // On-device capture: the server grabs a frame from the USB camera on
         // the AutoPi box, reads it, and records the mark. Nothing to open in
@@ -581,11 +690,12 @@
         const grabDevice = () => {
           if (!recording) return;
           fetch('camera/vision-frame', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ device, what }) })
+            body: JSON.stringify({ device, what, roi: visionRoi }) })
             .then((r) => r.json()).then((d) => {
               if (!d.ok) { visionRead.textContent = 'Last read: ' + esc(d.error || 'failed'); return; }
               visionRead.textContent = 'Last read: ' + (d.value == null ? '(not visible)' : d.value)
                 + (d.status ? '  ' + (d.status.count || 0) + ' points' : '');
+              pushVisionValue(d.value);
               if (d.status) countEl.textContent = (d.status.count || 0) + ' points recorded.';
             }).catch(() => { visionRead.textContent = 'Last read: failed'; });
         };
@@ -616,11 +726,12 @@
         canvas.getContext('2d').drawImage(visionVideo, 0, 0);
         const image = canvas.toDataURL('image/jpeg', 0.6);
         fetch('reverse/reference/vision-frame', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ image, what }) })
+          body: JSON.stringify({ image, what, roi: visionRoi }) })
           .then((r) => r.json()).then((d) => {
             if (!d.ok) { visionRead.textContent = 'Last read: ' + esc(d.error || 'failed'); return; }
             visionRead.textContent = 'Last read: ' + (d.value == null ? '(not visible)' : d.value)
               + (d.status ? '  ' + (d.status.count || 0) + ' points' : '');
+            pushVisionValue(d.value);
             if (d.status) countEl.textContent = (d.status.count || 0) + ' points recorded.';
           }).catch(() => { visionRead.textContent = 'Last read: failed'; });
       };
@@ -763,7 +874,13 @@
       .then((r) => r.json()).then((d) => {
         if (d.ok === false) { out.textContent = d.error || 'Auto-find failed.'; return; }
         const b = d.best;
-        if (!b) { out.innerHTML = '<span class="text-warning">Nothing tracked your reference. Try a cleaner reference or more data.</span>'; return; }
+        if (!b) {
+          const msg = (d.diagnostic && d.diagnostic.message)
+            ? d.diagnostic.message
+            : 'Nothing tracked your reference. Try a cleaner reference or more data.';
+          out.innerHTML = '<span class="text-warning">' + esc(msg) + '</span>';
+          return;
+        }
         const name = d.named && d.named.name ? d.named.name : null;
         const r2cls = b.r2 >= 0.8 ? 'text-success' : (b.r2 >= 0.5 ? 'text-warning' : 'text-danger');
         out.innerHTML = '<div class="border rounded p-2">'
@@ -791,6 +908,10 @@
         st.textContent = '';
         const ranked = d.ranked || [];
         const el = document.getElementById('survey-results');
+        if (d.diagnostic && d.diagnostic.message) {
+          el.innerHTML = '<span class="text-warning">' + esc(d.diagnostic.message) + '</span>';
+          return;
+        }
         if (!ranked.length) { el.textContent = 'No ids correlated with the reference.'; return; }
         el.innerHTML = '<table class="table table-sm table-dark align-middle mb-0"><thead><tr>'
           + '<th>CAN id</th><th>score</th><th>frames</th><th></th></tr></thead><tbody>'

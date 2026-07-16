@@ -45,14 +45,23 @@ def start(mode: str) -> dict:
     return status()
 
 
-def mark(value: float) -> dict:
-    """Record a sweep sample at the current time. No-op (returns current
-    status) if not recording in sweep mode."""
+def mark(value: float, t: float | None = None) -> dict:
+    """Record a sweep sample. No-op (returns current status) if not recording in
+    sweep mode.
+
+    ``t`` is the moment the sample is true, on the server clock. A vision read
+    passes the time the frame was GRABBED, not now: the AI read takes a couple of
+    seconds and that latency varies per frame, so stamping at read-return time
+    smears the reference against the capture and no single lag can realign it.
+    Stamping at grab time keeps every point lined up with the frames the capture
+    recorded. Defaults to now for a live sweep where the value is true as it is
+    marked."""
     store = _store()
     doc = store.read()
     if not doc.get("recording") or doc.get("mode") != "sweep":
         return status()
-    doc.setdefault("points", []).append({"t": time.time(), "value": float(value)})
+    doc.setdefault("points", []).append({"t": float(t) if t is not None else time.time(),
+                                          "value": float(value)})
     store.write(doc)
     return status()
 

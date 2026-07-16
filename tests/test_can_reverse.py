@@ -435,6 +435,57 @@ def test_bitsearch_reports_true_scale_not_a_power_of_two_alias():
     assert derive_scale_offset(best)["scale"] == 0.01, "must report the OEM scale, not a power-of-two alias"
 
 
+def _ref(n, value_fn, t0=0.0, dt=1.0):
+    return [{"t": t0 + i * dt, "value": value_fn(i), "available": True} for i in range(n)]
+
+
+def test_diagnose_reference_no_frames():
+    ref = _ref(12, lambda i: float(i))
+    d = rev.diagnose_reference_match(ref, {}, correlated=True)
+    assert d and d["reason_code"] == "no_frames"
+
+
+def test_diagnose_reference_too_few_points_catches_a_marginal_count():
+    # Six good readings is below the bar: a match off so few points is unreliable.
+    ref = _ref(6, lambda i: float(i * 10))
+    frames = {0x244: [{"timestamp": t, "data": [0]} for t in range(50)]}
+    d = rev.diagnose_reference_match(ref, frames, correlated=True)
+    assert d and d["reason_code"] == "too_few_points"
+    assert "6" in d["message"]
+
+
+def test_diagnose_reference_constant_is_flagged_not_trusted():
+    # A flat reference is 'perfectly fit' by a flat line, so it must be caught
+    # before a bogus match is shown, even though correlated=True.
+    ref = _ref(12, lambda i: 7.0)
+    frames = {0x244: [{"timestamp": t, "data": [t & 0xFF]} for t in range(50)]}
+    d = rev.diagnose_reference_match(ref, frames, correlated=True)
+    assert d and d["reason_code"] == "constant_reference"
+    assert "7" in d["message"]
+
+
+def test_diagnose_reference_outside_capture_span():
+    ref = _ref(12, lambda i: float(i), t0=1000.0)   # far after the frames
+    frames = {0x244: [{"timestamp": t, "data": [t & 0xFF]} for t in range(50)]}
+    d = rev.diagnose_reference_match(ref, frames, correlated=True)
+    assert d and d["reason_code"] == "outside_capture"
+
+
+def test_diagnose_reference_no_correlation_when_search_found_nothing():
+    ref = _ref(12, lambda i: float(i))
+    frames = {0x244: [{"timestamp": float(i), "data": [i & 0xFF]} for i in range(50)]}
+    d = rev.diagnose_reference_match(ref, frames, correlated=False)
+    assert d and d["reason_code"] == "no_correlation"
+
+
+def test_diagnose_reference_healthy_returns_empty():
+    # Enough varying points, overlapping the capture, and a match was found: no
+    # diagnostic, so the real result is shown.
+    ref = _ref(12, lambda i: float(i))
+    frames = {0x244: [{"timestamp": float(i), "data": [i & 0xFF]} for i in range(50)]}
+    assert rev.diagnose_reference_match(ref, frames, correlated=True) == ""
+
+
 def test_survey_ranks_the_correlated_id_first():
     n = 60
     values = [i % 100 for i in range(n)]
