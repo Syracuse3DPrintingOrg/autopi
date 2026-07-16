@@ -676,6 +676,54 @@ def test_event_responders_finds_constant_payload_command_by_appearance():
     assert cmd["byte"] is None or cmd["match"] == "byte"
 
 
+def test_appearance_counts_late_marked_command():
+    # A person taps Mark ~0.2s AFTER the press, so a constant-payload command that
+    # only shows up when you act lands just BEFORE the mark. The appearance split
+    # is shifted back to absorb that latency, so it still counts as "newly appeared"
+    # instead of reading as already-present.
+    window = 0.4
+    presses = [2.0, 6.0, 10.0, 14.0]
+    times = []
+    for p in presses:
+        t = p
+        while t <= p + 0.15:
+            times.append(round(t, 3))
+            t += 0.03
+    times.sort()
+    late = [p + 0.2 for p in presses]
+    assert rev._appearance(times, late, window) == 4  # was 0 before the back-shift
+
+
+def test_appearance_still_cancels_periodic_broadcast_after_shift():
+    # The back-shift must not turn an always-on broadcast into a false "appears":
+    # it is present in both shifted windows, so it never newly appears.
+    window = 0.4
+    times = [round(i * 0.05, 3) for i in range(400)]  # 20 Hz, on the bus the whole time
+    marks = [3.0, 7.0, 11.0, 15.0]
+    assert rev._appearance(times, marks, window) == 0
+
+
+def test_event_responders_finds_late_marked_constant_payload_command():
+    # End to end: the constant-payload appearance case, but with every mark 0.2s
+    # late. The command must still surface as an "appears" candidate.
+    events = [2.0, 6.0, 10.0, 14.0]
+    marks = [e + 0.2 for e in events]
+    records = []
+    ts = 0.0
+    while ts <= 16.0:
+        pressed = any(e <= ts <= e + 0.15 for e in events)
+        records.append({"channel": "can0", "arbitration_id": 0x111,
+                        "data": [int(ts * 10) & 0xFF, 0], "timestamp": round(ts, 2)})
+        if pressed:
+            records.append({"channel": "can0", "arbitration_id": 0x400,
+                            "data": [0xA5, 0x01], "timestamp": round(ts, 2)})
+        ts += 0.05
+    out = rev.event_responders(records, marks, window=0.4)
+    cmd = next((r for r in out if r["arbitration_id"] == 0x400), None)
+    assert cmd is not None, "late-marked constant-payload command must still be found"
+    assert cmd["kind"] == "event"
+
+
 def test_event_responders_rejects_constant_periodic_broadcast():
     # A message on the bus the whole time with a fixed payload (many frames, far
     # more than presses) must NOT be flagged as an "appears" command just because

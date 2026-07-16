@@ -7,6 +7,7 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 ## [Unreleased]
 
 ### Fixed
+- **Find a control now catches commands that only appear when you act, even when you tap Mark a beat late.** The press-and-mark hunt already handles a control's byte changing before your tap; this extends the same latency allowance to messages that show up only while you operate the control (a command another module emits on trigger), so a mark landing a fraction of a second after the press no longer makes the message look like it was already there and drops it.
 
 - **The on-device camera preview is no longer black, and phantom camera entries are gone.** A webcam hands back a dark first frame before it auto-exposes, so the preview showed black; AutoPi now skips the first frames so you get a real picture. It also lists only cameras that can actually capture, so the extra metadata node a webcam exposes (which showed as a broken image) no longer appears. And a flaky package mirror during a device update can no longer stop the whole update just because the camera tool would not install.
 

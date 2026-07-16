@@ -554,7 +554,8 @@ def apply_protection(data: list[int], arbitration_id: int, protection: dict | No
             out[c] = fn(other, arbitration_id) & 0xFF
     return out
 
-def _appearance(times: list[float], events: Sequence[float], window: float) -> int:
+def _appearance(times: list[float], events: Sequence[float], window: float,
+                *, back: float = 0.3) -> int:
     """How many marks the message NEWLY appeared at: absent in ``window`` before
     the mark, present in ``window`` after it.
 
@@ -563,9 +564,18 @@ def _appearance(times: list[float], events: Sequence[float], window: float) -> i
     is present just before every mark too, so it never "newly appears" and scores
     zero; a command triggered by the press is absent before and shows up after, so
     it scores once per real press (and not at all at marks where you did nothing).
-    Pure. ``times`` must be sorted."""
+
+    Both windows are shifted back by ``back`` seconds to absorb reaction latency:
+    a person taps Mark a beat AFTER acting, so the command's burst lands just
+    before the mark. Without the shift that burst falls in the "before" window and
+    the message reads as already-present, so a real command is never counted. The
+    shift moves the split back to roughly when the press happened; a periodic
+    broadcast is present in both shifted windows too, so it still cancels. ``back``
+    is clamped below ``window`` so the two windows stay distinct. Pure. ``times``
+    must be sorted."""
     if not times or not events:
         return 0
+    back = min(back, window)
 
     def present(lo: float, hi: float) -> bool:
         i = bisect.bisect_left(times, lo)
@@ -573,8 +583,8 @@ def _appearance(times: list[float], events: Sequence[float], window: float) -> i
 
     appear = 0
     for e in events:
-        before = present(e - window, e - 1e-6)
-        after = present(e, e + window)
+        before = present(e - window - back, e - back - 1e-6)
+        after = present(e - back, e + window - back)
         if after and not before:
             appear += 1
     return appear
