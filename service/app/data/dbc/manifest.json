@@ -1,0 +1,27 @@
+{
+  "license_note": "Only truly-open (MIT / CC0 / public-domain) DBC files are bundled here so they can be installed offline on a shipped device with one click. The files below are authored for AutoPi and released under CC0-1.0. To add more, drop an openly-licensed .dbc in this folder and add an entry with its real license; anything not clearly permissive stays a link in the catalog instead.",
+  "databases": [
+    {
+      "file": "autopi_generic_powertrain.dbc",
+      "name": "Generic powertrain (RPM, speed, coolant, throttle)",
+      "make": "",
+      "models": [],
+      "years": "",
+      "author": "AutoPi",
+      "license": "CC0-1.0",
+      "source": "AutoPi bundled",
+      "notes": "A neutral powertrain database to practice decoding with, and a starting point you can retag for a specific vehicle."
+    },
+    {
+      "file": "autopi_generic_body.dbc",
+      "name": "Generic body / comfort (doors, lights, locks)",
+      "make": "",
+      "models": [],
+      "years": "",
+      "author": "AutoPi",
+      "license": "CC0-1.0",
+      "source": "AutoPi bundled",
+      "notes": "A neutral body-status database covering common comfort signals, ready to install without a network."
+    }
+  ]
+}

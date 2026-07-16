@@ -16,7 +16,13 @@ Two jobs:
 """
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any
+
+# Bundled, truly-open (MIT/CC0) DBC files that install offline, no network. Kept
+# in the package (not the writable data dir) so a shipped image carries them.
+_BUNDLED_DIR = Path(__file__).resolve().parent.parent / "data" / "dbc"
 
 # Each entry always has a working ``homepage`` link. ``import_url`` is a raw
 # ``.dbc`` the app can fetch when ``importable`` is True; the homepage is the
@@ -139,6 +145,61 @@ CATALOG: list[dict[str, Any]] = [
 def catalog() -> list[dict[str, Any]]:
     """The catalog, defensively copied."""
     return [dict(e) for e in CATALOG]
+
+
+_PERMISSIVE = ("mit", "cc0", "bsd", "apache", "public")
+
+
+def _is_permissive(license: str) -> bool:
+    lic = (license or "").lower()
+    return any(t in lic for t in _PERMISSIVE)
+
+
+def bundled() -> list[dict[str, Any]]:
+    """The DBC files shipped with the app, from ``data/dbc/manifest.json``. Each
+    entry is offline-installable (``bundled`` True). Only permissively-licensed
+    files are ever listed, so nothing restrictive is shipped or installed. Never
+    raises: a missing or broken manifest yields an empty list."""
+    manifest = _BUNDLED_DIR / "manifest.json"
+    try:
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    out: list[dict[str, Any]] = []
+    for entry in data.get("databases", []):
+        if not _is_permissive(entry.get("license", "")):
+            continue  # defensive: never surface a non-open file as installable
+        if not (_BUNDLED_DIR / Path(str(entry.get("file", ""))).name).is_file():
+            continue
+        item = dict(entry)
+        item["bundled"] = True
+        out.append(item)
+    return out
+
+
+def bundled_entry(file: str) -> dict[str, Any] | None:
+    """The manifest entry for a bundled file name, or ``None`` if it is not a
+    listed, permissive, present file (so an install request cannot reach an
+    arbitrary path)."""
+    name = Path(str(file)).name
+    for entry in bundled():
+        if entry.get("file") == name:
+            return entry
+    return None
+
+
+def bundled_dbc_text(file: str) -> str | None:
+    """The DBC text of a bundled file, or ``None`` when it is not a listed file.
+    The lookup goes through ``bundled_entry`` so only manifest-listed files under
+    the bundle directory can be read (no path traversal)."""
+    entry = bundled_entry(file)
+    if entry is None:
+        return None
+    path = _BUNDLED_DIR / Path(str(entry["file"])).name
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        return None
 
 
 def _norm(value: Any) -> str:

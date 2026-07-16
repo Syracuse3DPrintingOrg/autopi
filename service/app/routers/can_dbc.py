@@ -50,6 +50,46 @@ def dbc_catalog_route():
     return {"catalog": entries}
 
 
+@router.get("/dbc/bundled")
+def dbc_bundled_route():
+    """The truly-open DBC files that ship with the app and install offline. Ones
+    that fit the active vehicle are flagged ``matches``."""
+    v = _active_vehicle()
+    entries = dbc_catalog.annotate_matches(
+        dbc_catalog.bundled(), v.get("make", ""), v.get("model", ""), v.get("year"))
+    return {"bundled": entries}
+
+
+class InstallBundledIn(BaseModel):
+    file: str
+
+
+@router.post("/dbc/install-bundled")
+def install_bundled(body: InstallBundledIn):
+    """Install a bundled DBC by importing it from the shipped file, no network.
+    The file must be listed in the bundle manifest, so this cannot read an
+    arbitrary path."""
+    entry = dbc_catalog.bundled_entry(body.file)
+    if entry is None:
+        raise HTTPException(404, "No such bundled database")
+    text = dbc_catalog.bundled_dbc_text(body.file)
+    if not text:
+        raise HTTPException(404, "The bundled database file is missing")
+    if not dbc_mod.available():
+        raise HTTPException(400, "cantools is not installed on this host")
+    try:
+        with session_scope() as s:
+            d = dbc_mod.import_dbc(
+                s, name=entry.get("name") or body.file, dbc_text=text,
+                source=entry.get("source") or "bundled", license=entry.get("license", ""),
+                make=entry.get("make", ""), models=",".join(entry.get("models") or []),
+                years=entry.get("years", ""), author=entry.get("author", ""))
+            s.flush()
+            return {"ok": True, "database": d.to_dict()}
+    except Exception as exc:
+        return {"ok": False, "error": f"Could not import the bundled database: {exc}"}
+
+
 @router.get("/databases")
 def list_databases():
     v = _active_vehicle()
