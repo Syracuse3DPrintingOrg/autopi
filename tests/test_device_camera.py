@@ -300,3 +300,20 @@ def test_snapshot_endpoint_returns_jpeg_or_503(monkeypatch):
     assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg" and r.content == b"\xff\xd8\xff\xd9"
     monkeypatch.setattr(cam, "capture_jpeg", lambda dev, **k: None)
     assert c.get("/camera/snapshot", params={"device": "/dev/video0"}).status_code == 503
+
+
+def test_fswebcam_command_skips_frames_for_exposure():
+    from app.services import device_camera as cam
+    argv = cam.build_capture_command("fswebcam", "/dev/video0")
+    assert "--skip" in argv  # skip initial frames so the sensor auto-exposes (no black frame)
+    assert "/dev/video0" in argv
+
+
+def test_list_devices_filters_out_non_capture_nodes(monkeypatch):
+    from app.services import device_camera as cam
+    # Two nodes (a UVC webcam's capture + metadata); only the capture one is kept.
+    monkeypatch.setattr(cam.glob, "glob", lambda p: ["/dev/video0", "/dev/video1"])
+    monkeypatch.setattr(cam, "_sysfs_name", lambda d: "HD Webcam C270")
+    monkeypatch.setattr(cam, "supports_capture", lambda d: d == "/dev/video0")
+    devices = cam.list_devices()
+    assert [d["device"] for d in devices] == ["/dev/video0"]

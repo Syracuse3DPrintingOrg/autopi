@@ -19,12 +19,22 @@ a machine with no camera.
 """
 from __future__ import annotations
 
+import fcntl
 import glob
+import os
 import re
 import shutil
 import subprocess
 from pathlib import Path
 from typing import Callable, Iterable
+
+# V4L2 QUERYCAP ioctl and the flags we read, so a metadata- or output-only node
+# (UVC webcams expose a second /dev/videoN that cannot capture, which is why
+# /dev/video1 showed a broken image) can be told apart from a real camera without
+# a v4l2 library. Number: _IOR('V', 0, struct v4l2_capability[104 bytes]).
+_VIDIOC_QUERYCAP = 0x80685600
+_V4L2_CAP_VIDEO_CAPTURE = 0x00000001
+_V4L2_CAP_DEVICE_CAPS = 0x80000000
 
 # The only device paths we will ever open. Anything else (symlinks, shell
 # metacharacters, /dev/media*, paths from a hostile request body) is refused.
@@ -69,9 +79,36 @@ def _sysfs_name(device: str) -> str:
         return ""
 
 
+def supports_capture(device: str) -> bool:
+    """Whether ``/dev/videoN`` can actually capture video, so a metadata- or
+    output-only node (the extra node a UVC webcam exposes, e.g. /dev/video1) is
+    not offered as a camera. Uses a V4L2 QUERYCAP ioctl. Returns True on any
+    error (device busy, permission, odd driver), so a probe failure never hides a
+    real camera; it only drops a node that clearly says it cannot capture."""
+    if not DEVICE_RE.match(device):
+        return False
+    try:
+        fd = os.open(device, os.O_RDONLY | os.O_NONBLOCK)
+    except OSError:
+        return True
+    try:
+        buf = bytearray(104)
+        fcntl.ioctl(fd, _VIDIOC_QUERYCAP, buf, True)
+    except OSError:
+        return True
+    finally:
+        os.close(fd)
+    caps = int.from_bytes(buf[84:88], "little")
+    device_caps = int.from_bytes(buf[88:92], "little")
+    effective = device_caps if (caps & _V4L2_CAP_DEVICE_CAPS) else caps
+    return bool(effective & _V4L2_CAP_VIDEO_CAPTURE)
+
+
 def list_devices() -> list[dict]:
-    """The cameras present on this device, sorted, with friendly labels."""
-    return parse_devices(glob.glob("/dev/video*"), name_for=_sysfs_name)
+    """The capture-capable cameras present on this device, sorted, with friendly
+    labels. Metadata/output-only nodes are filtered out."""
+    devices = parse_devices(glob.glob("/dev/video*"), name_for=_sysfs_name)
+    return [d for d in devices if supports_capture(d["device"])]
 
 
 def capture_tool() -> str:
@@ -90,8 +127,10 @@ def build_capture_command(tool: str, device: str) -> list[str]:
                 "-i", device, "-frames:v", "1", "-q:v", "3", "-f", "image2",
                 "pipe:1"]
     if tool == "fswebcam":
+        # --skip discards the first frames so the sensor auto-exposes; without it
+        # a webcam like the C270 hands back a black first frame.
         return ["fswebcam", "-q", "--no-banner", "-r", "640x480",
-                "--jpeg", "85", "-d", device, "-"]
+                "--skip", "20", "--jpeg", "85", "-d", device, "-"]
     raise ValueError(f"unknown capture tool: {tool!r}")
 
 

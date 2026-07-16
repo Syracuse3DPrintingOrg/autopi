@@ -8,6 +8,10 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Fixed
 
+- **The on-device camera preview is no longer black, and phantom camera entries are gone.** A webcam hands back a dark first frame before it auto-exposes, so the preview showed black; AutoPi now skips the first frames so you get a real picture. It also lists only cameras that can actually capture, so the extra metadata node a webcam exposes (which showed as a broken image) no longer appears. And a flaky package mirror during a device update can no longer stop the whole update just because the camera tool would not install.
+
+### Fixed
+
 - **The on-device camera now actually finds your USB camera, with a live preview to aim it.** The app runs in a container that could not see a camera plugged into the device, and it had no tool to grab a frame, so the device-camera list came up empty. Now the app image ships fswebcam, a Pi appliance passes any plugged-in camera through automatically, and the plain server compose has a ready-to-uncomment camera block. The Dashboard camera's device option shows a live preview so you can aim it at the dashboard before you start, and when a camera still is not usable it tells you the exact fix (grant the container access, or rebuild the image for the capture tool) instead of a blank list.
 
 ### Added
