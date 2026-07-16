@@ -6,6 +6,10 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ## [Unreleased]
 
+### Fixed
+
+- **The top-menu dropdowns are clickable again.** On the new dark theme the frosted top bar was trapping its own menus behind the page, so the CAN Lab, Builder, Settings, and vehicle menus could not be reached. They now open above the page as they should.
+
 ### Added
 
 - **Graph a signal over time.** Each bit-search candidate now has a "Graph" button that plots that field's decoded value across the capture on its own timeline, so you can see the trend and spot glitches, without needing a reference to compare against.

@@ -126,7 +126,15 @@ h1, h2, h3, h4, .h1, .h2, .h3, .h4 { letter-spacing: 0.01em; }
   box-shadow: 0 10px 30px -22px rgba(var(--ap-accent-rgb), 0.55);
   padding-top: 0.35rem;
   padding-bottom: 0.35rem;
+  /* backdrop-filter makes the nav a stacking context, which would trap its
+     open dropdown menus behind later page content. Lift the whole nav (and so
+     its menus) above the page so the menu items stay clickable. */
+  position: relative;
+  z-index: 1030;
 }
+/* The menus themselves ride above everything short of modals/tooltips, in case
+   an in-page dropdown sits inside a card rather than the nav. */
+.dropdown-menu.show { z-index: 1035; }
 .navbar .nav-link {
   font-size: 0.85rem;
   letter-spacing: 0.02em;
