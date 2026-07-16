@@ -975,6 +975,39 @@ def reference_mark(body: ReferenceMarkIn):
     return rec.mark(body.value)
 
 
+class VisionFrameIn(BaseModel):
+    image: str            # data URL ("data:image/jpeg;base64,...") or raw base64
+    what: str = "speed"
+
+
+@router.post("/reference/vision-frame")
+def reference_vision_frame(body: VisionFrameIn):
+    """Read the dashboard value off one camera frame and record it as a reference
+    sample at the current time (a sweep-mode reference, which lines up with a live
+    capture on the server clock). The browser sends a frame every couple of
+    seconds while the value changes; each becomes a reference point, so an unknown
+    CAN field can be matched to what the dash actually showed. Needs the vision
+    LLM configured."""
+    raw = body.image or ""
+    mime = "image/jpeg"
+    if raw.startswith("data:"):
+        header, _, raw = raw.partition(",")
+        if ";" in header and ":" in header:
+            mime = header.split(":", 1)[1].split(";", 1)[0] or mime
+    if not raw:
+        return {"ok": False, "error": "No image data."}
+    try:
+        reading = llm.read_dashboard_value(raw, mime, body.what)
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+    value = reading.get("value")
+    marked = None
+    if value is not None:
+        marked = rec.mark(float(value))
+    return {"ok": True, "value": value, "recording": bool(marked and marked.get("recording")),
+            "status": marked}
+
+
 @router.post("/reference/event")
 def reference_event():
     return rec.event()

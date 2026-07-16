@@ -8,6 +8,10 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 
 ### Added
 
+- **Read the dashboard with a camera to find a signal.** The reference recorder has a new "Dashboard camera" mode: point a camera (or your webcam) at the dash, change the value, and AutoPi reads the number off each frame with the vision AI and records it as the reference, timed against the live capture. Then the bit search matches an unknown CAN field to what the dash actually showed, so you can find things like speed or RPM without a known signal to compare against. Needs an AI provider configured.
+
+### Added
+
 - **The bit search understands multiplexed messages.** Some messages reuse the same bytes for different signals depending on a selector byte, so a signal that only exists for one selector value used to get averaged away and missed. AutoPi now spots the selector and lets you search within a single value, so those signals can be found. When a search comes up empty on a multiplexed message, it tells you and offers the selector values to try.
 
 ### Added

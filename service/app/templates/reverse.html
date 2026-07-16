@@ -59,6 +59,10 @@
           <label class="btn btn-outline-primary" for="ref-mode-sweep">Sweep (knob/slider)</label>
           <input type="radio" class="btn-check" name="ref-mode" id="ref-mode-button" value="button">
           <label class="btn btn-outline-primary" for="ref-mode-button">Button (press)</label>
+          {% if llm_configured %}
+          <input type="radio" class="btn-check" name="ref-mode" id="ref-mode-vision" value="vision">
+          <label class="btn btn-outline-primary" for="ref-mode-vision">Dashboard camera</label>
+          {% endif %}
         </div>
 
         <div class="row g-2 mb-2">
@@ -78,6 +82,18 @@
         </div>
         <div id="ref-button-panel" class="d-none">
           <button class="btn btn-outline-primary w-100 mb-1" id="ref-press-btn" disabled>Mark press (or press spacebar)</button>
+        </div>
+        <div id="ref-vision-panel" class="d-none">
+          <div class="row g-2 mb-1 align-items-end">
+            <div class="col-8">
+              <label class="form-label small mb-0">Value to read from the dash</label>
+              <input type="text" class="form-control form-control-sm" id="ref-vision-what" value="speed">
+            </div>
+          </div>
+          <video id="ref-vision-video" class="w-100 rounded border" style="max-height:220px;background:#000" playsinline muted></video>
+          <div class="small text-secondary mt-1">Point a camera (or your webcam) at the dashboard and change the value.
+            AutoPi reads it every couple of seconds and records it as the reference, timed against the capture.</div>
+          <div class="small mono mt-1" id="ref-vision-read">Last read: -</div>
         </div>
         <div class="small text-secondary mb-2" id="ref-count">Not recording.</div>
 
@@ -420,9 +436,14 @@
     const stopBtn = document.getElementById('ref-stop-btn');
     const countEl = document.getElementById('ref-count');
     const statusEl = document.getElementById('ref-status');
+    const visionPanel = document.getElementById('ref-vision-panel');
+    const visionVideo = document.getElementById('ref-vision-video');
+    const visionRead = document.getElementById('ref-vision-read');
     let recording = false;
     let markPending = false;
     let markTimer = null;
+    let visionStream = null;
+    let visionTimer = null;
 
     function mode() {
       return document.querySelector('input[name="ref-mode"]:checked').value;
@@ -430,6 +451,40 @@
     function syncPanels() {
       sweepPanel.classList.toggle('d-none', mode() !== 'sweep');
       buttonPanel.classList.toggle('d-none', mode() !== 'button');
+      if (visionPanel) visionPanel.classList.toggle('d-none', mode() !== 'vision');
+    }
+
+    async function startVision() {
+      const what = (document.getElementById('ref-vision-what').value || 'speed').trim();
+      try {
+        visionStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        visionVideo.srcObject = visionStream;
+        await visionVideo.play();
+      } catch (e) {
+        statusEl.innerHTML = '<span class="text-danger">Could not open a camera: ' + esc(e.message || e) + '</span>';
+        return;
+      }
+      const canvas = document.createElement('canvas');
+      const grab = () => {
+        if (!recording || !visionVideo.videoWidth) return;
+        canvas.width = visionVideo.videoWidth; canvas.height = visionVideo.videoHeight;
+        canvas.getContext('2d').drawImage(visionVideo, 0, 0);
+        const image = canvas.toDataURL('image/jpeg', 0.6);
+        fetch('reverse/reference/vision-frame', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image, what }) })
+          .then((r) => r.json()).then((d) => {
+            if (!d.ok) { visionRead.textContent = 'Last read: ' + esc(d.error || 'failed'); return; }
+            visionRead.textContent = 'Last read: ' + (d.value == null ? '(not visible)' : d.value)
+              + (d.status ? '  ' + (d.status.count || 0) + ' points' : '');
+            if (d.status) countEl.textContent = (d.status.count || 0) + ' points recorded.';
+          }).catch(() => { visionRead.textContent = 'Last read: failed'; });
+      };
+      visionTimer = setInterval(grab, 2500);
+    }
+    function stopVision() {
+      if (visionTimer) { clearInterval(visionTimer); visionTimer = null; }
+      if (visionStream) { visionStream.getTracks().forEach((t) => t.stop()); visionStream = null; }
+      if (visionVideo) visionVideo.srcObject = null;
     }
     document.querySelectorAll('input[name="ref-mode"]').forEach((r) => r.addEventListener('change', syncPanels));
     syncPanels();
@@ -443,6 +498,8 @@
       stopBtn.classList.toggle('d-none', !on);
       document.getElementById('ref-mode-sweep').disabled = on;
       document.getElementById('ref-mode-button').disabled = on;
+      const visionRadio = document.getElementById('ref-mode-vision');
+      if (visionRadio) visionRadio.disabled = on;
       if (!on) countEl.textContent = 'Not recording.';
     }
     setRecordingUi(false);
@@ -486,20 +543,25 @@
 
     startBtn.addEventListener('click', () => {
       const m = mode();
+      // Vision records sweep-style points (a value per camera read), so it starts
+      // a sweep reference under the hood and drives the marks from the camera.
+      const backendMode = (m === 'vision') ? 'sweep' : m;
       const channel = document.getElementById('live-channel').value;
       const captureName = document.getElementById('ref-capture-name').value.trim();
       statusEl.textContent = 'Starting…';
       fetch('reverse/reference/start', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: m, channel: channel || null, capture_name: captureName }) })
+        body: JSON.stringify({ mode: backendMode, channel: channel || null, capture_name: captureName }) })
         .then((r) => r.json()).then((d) => {
           if (d.ok === false) { statusEl.textContent = d.detail || 'Could not start.'; return; }
           statusEl.textContent = d.capturing ? 'Recording and capturing on ' + esc(channel) + '…' : 'Recording (no capture channel set)…';
           setRecordingUi(true);
+          if (m === 'vision') startVision();
         }).catch(() => { statusEl.textContent = 'Could not start.'; });
     });
 
     stopBtn.addEventListener('click', () => {
       statusEl.textContent = 'Stopping…';
+      stopVision();
       fetch('reverse/reference/stop', { method: 'POST' })
         .then((r) => r.json()).then((d) => {
           setRecordingUi(false);

@@ -320,3 +320,28 @@ def test_to_workbench_creates_sim_entry(monkeypatch):
     assert entry["enabled"] is False  # added paused, user runs it deliberately
     sim.delete_entry(eid)
     assert len(sim.list_entries()) == before
+
+
+def test_vision_frame_reads_and_marks(monkeypatch):
+    from app.services import ref_recorder as rec
+    rec.start("sweep")  # a sweep reference so mark() records
+    monkeypatch.setattr("app.routers.reverse.llm.read_dashboard_value",
+                        lambda raw, mime, what: {"value": 42.0})
+    client = TestClient(app)
+    resp = client.post("/reverse/reference/vision-frame",
+                       json={"image": "data:image/jpeg;base64,QUJD", "what": "speed"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True and body["value"] == 42.0 and body["recording"] is True
+    rec.stop()
+
+
+def test_vision_frame_handles_unreadable(monkeypatch):
+    from app.services import ref_recorder as rec
+    rec.start("sweep")
+    monkeypatch.setattr("app.routers.reverse.llm.read_dashboard_value",
+                        lambda raw, mime, what: {"value": None})
+    client = TestClient(app)
+    resp = client.post("/reverse/reference/vision-frame", json={"image": "rawbase64", "what": "rpm"})
+    assert resp.json()["ok"] is True and resp.json()["value"] is None
+    rec.stop()

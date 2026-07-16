@@ -128,3 +128,18 @@ def test_with_context_includes_hint_and_known_signals():
 
 def test_with_context_empty_when_no_extras():
     assert llm._with_context("BODY", "", "") == "BODY"
+
+
+def test_read_dashboard_value_parses_number(monkeypatch):
+    monkeypatch.setattr(llm, "status", lambda: {"available": True, "provider": "gemini", "model": "m", "reason": ""})
+    monkeypatch.setattr(llm, "_provider", lambda: "gemini")
+    monkeypatch.setattr(llm, "_model", lambda: "m")
+    monkeypatch.setitem(llm._VISION_CALLERS, "gemini", lambda *a, **k: '{"value": 73.5}')
+    assert llm.read_dashboard_value("b64", "image/jpeg", "speed") == {"value": 73.5}
+    monkeypatch.setitem(llm._VISION_CALLERS, "gemini", lambda *a, **k: '{"value": null}')
+    assert llm.read_dashboard_value("b64", "image/jpeg", "speed") == {"value": None}
+
+
+def test_read_dashboard_value_without_key_raises():
+    with pytest.raises(RuntimeError):
+        llm.read_dashboard_value("b64", "image/jpeg", "speed")

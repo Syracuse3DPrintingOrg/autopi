@@ -289,6 +289,109 @@ _CALLERS = {
 
 
 # --------------------------------------------------------------------------
+# Vision: read a number off a dashboard photo, for a vision-based reference.
+# --------------------------------------------------------------------------
+
+def _call_gemini_vision(system: str, user: str, image_b64: str, mime: str, model: str, max_tokens: int) -> str:
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+    payload = {
+        "system_instruction": {"parts": [{"text": system}]},
+        "contents": [{"role": "user", "parts": [
+            {"text": user}, {"inline_data": {"mime_type": mime, "data": image_b64}}]}],
+        "generationConfig": {"responseMimeType": "application/json", "temperature": 0.0,
+                             "maxOutputTokens": max_tokens},
+    }
+    data = _post_json(url, params={"key": _api_key()}, payload=payload)
+    candidates = data.get("candidates") or []
+    if not candidates:
+        raise RuntimeError("The model returned no answer (a safety block or a bad model name?).")
+    parts = (candidates[0].get("content") or {}).get("parts") or []
+    return "".join(p.get("text", "") for p in parts)
+
+
+def _call_anthropic_vision(system: str, user: str, image_b64: str, mime: str, model: str, max_tokens: int) -> str:
+    url = "https://api.anthropic.com/v1/messages"
+    headers = {"x-api-key": _api_key(), "anthropic-version": "2023-06-01", "content-type": "application/json"}
+    payload = {
+        "model": model, "max_tokens": max_tokens, "system": system,
+        "messages": [{"role": "user", "content": [
+            {"type": "text", "text": user},
+            {"type": "image", "source": {"type": "base64", "media_type": mime, "data": image_b64}}]}],
+    }
+    data = _post_json(url, headers=headers, payload=payload)
+    blocks = data.get("content") or []
+    return "".join(b.get("text", "") for b in blocks if b.get("type") == "text")
+
+
+def _call_openai_vision(system: str, user: str, image_b64: str, mime: str, model: str, max_tokens: int) -> str:
+    url = "https://api.openai.com/v1/chat/completions"
+    headers = {"Authorization": f"Bearer {_api_key()}", "content-type": "application/json"}
+    payload = {
+        "model": model,
+        "messages": [{"role": "system", "content": system}, {"role": "user", "content": [
+            {"type": "text", "text": user},
+            {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{image_b64}"}}]}],
+        "response_format": {"type": "json_object"}, "max_tokens": max_tokens, "temperature": 0.0,
+    }
+    data = _post_json(url, headers=headers, payload=payload)
+    choices = data.get("choices") or []
+    if not choices:
+        raise RuntimeError("The model returned no answer.")
+    return (choices[0].get("message") or {}).get("content", "")
+
+
+def _call_ollama_vision(system: str, user: str, image_b64: str, mime: str, model: str, max_tokens: int) -> str:
+    base = _base_url() or _DEFAULT_OLLAMA_BASE
+    url = f"{base.rstrip('/')}/api/chat"
+    payload = {
+        "model": model,
+        "messages": [{"role": "system", "content": system},
+                     {"role": "user", "content": user, "images": [image_b64]}],
+        "format": "json", "stream": False, "options": {"temperature": 0.0, "num_predict": max_tokens},
+    }
+    data = _post_json(url, payload=payload)
+    return (data.get("message") or {}).get("content", "")
+
+
+_VISION_CALLERS = {
+    "gemini": _call_gemini_vision,
+    "anthropic": _call_anthropic_vision,
+    "openai": _call_openai_vision,
+    "ollama": _call_ollama_vision,
+}
+
+_VISION_SYSTEM = (
+    "You read a single number off a photo of a vehicle dashboard or display. Return only "
+    "the numeric value of the quantity asked for, as JSON. If the value is not clearly "
+    "visible, return null. Do not guess."
+)
+
+
+def read_dashboard_value(image_b64: str, mime_type: str, what: str) -> dict[str, Any]:
+    """Read one numeric value (e.g. speed) from a dashboard image via the vision
+    model. Returns ``{"value": float|None}``. Raises ``RuntimeError`` with a
+    bench-friendly message when the provider is not ready or the call fails."""
+    ready = status()
+    if not ready["available"]:
+        raise RuntimeError(ready["reason"])
+    caller = _VISION_CALLERS.get(_provider())
+    if caller is None:
+        raise RuntimeError(f"The {_provider()} provider is not set up for image reading here.")
+    what = (what or "the displayed value").strip()
+    user = (f'Read the current {what} shown in this image. Reply as JSON '
+            '{"value": <number or null>}.')
+    text = caller(_VISION_SYSTEM, user, image_b64, mime_type or "image/jpeg", _model(), 300)
+    data = parse_json_response(text)
+    value = data.get("value") if isinstance(data, dict) else None
+    if value is None:
+        return {"value": None}
+    try:
+        return {"value": float(value)}
+    except (TypeError, ValueError):
+        return {"value": None}
+
+
+# --------------------------------------------------------------------------
 # The one shaped call, and the two entry points
 # --------------------------------------------------------------------------
 
