@@ -519,6 +519,7 @@
     let visionStream = null;
     let visionTimer = null;
     let visionRoi = null;         // {x,y,w,h} fractions of the frame, or null for the whole frame
+    let cropDragging = false;     // true while dragging a crop box (pauses the preview refresh)
     let visionValues = [];        // every value read this recording, for a visible sanity check
     const visionReaderSel = document.getElementById('ref-vision-reader');
     function visionReader() { return (visionReaderSel && visionReaderSel.value) || 'auto'; }
@@ -548,6 +549,8 @@
     function refreshPreview() {
       const device = visionDeviceSel.value;
       if (!previewActive || !device) return;
+      // Do not swap the frame out from under an in-progress crop drag.
+      if (cropDragging) { setTimeout(refreshPreview, 300); return; }
       visionPreview.src = 'camera/snapshot?device=' + encodeURIComponent(device) + '&t=' + Date.now();
     }
     function startDevicePreview() {
@@ -571,8 +574,14 @@
     function imageContentRect(el) {
       // The rect of the actual image inside el, given object-fit:contain.
       const r = el.getBoundingClientRect();
-      const natW = el.tagName === 'VIDEO' ? el.videoWidth : el.naturalWidth;
-      const natH = el.tagName === 'VIDEO' ? el.videoHeight : el.naturalHeight;
+      let natW = el.tagName === 'VIDEO' ? el.videoWidth : el.naturalWidth;
+      let natH = el.tagName === 'VIDEO' ? el.videoHeight : el.naturalHeight;
+      // The device preview reloads every second; while a fresh snapshot is
+      // loading, naturalWidth reads 0. Reuse the last known size so the letterbox
+      // math never flips to the full element rect mid-drag (which made the crop
+      // box jump and shrink when the reload landed).
+      if ((!natW || !natH) && el._natW && el._natH) { natW = el._natW; natH = el._natH; }
+      if (natW && natH) { el._natW = natW; el._natH = natH; }
       if (!natW || !natH) return { left: r.left, top: r.top, width: r.width, height: r.height };
       const scale = Math.min(r.width / natW, r.height / natH);
       const w = natW * scale, h = natH * scale;
@@ -605,7 +614,7 @@
         const c = imageContentRect(el());
         const p = e.touches ? e.touches[0] : e;
         if (p.clientX < c.left || p.clientX > c.left + c.width || p.clientY < c.top || p.clientY > c.top + c.height) return;
-        dragging = true; sx = p.clientX; sy = p.clientY;
+        dragging = true; cropDragging = true; sx = p.clientX; sy = p.clientY;
         e.preventDefault();
       };
       const onMove = (e) => {
@@ -623,7 +632,7 @@
       };
       const onUp = () => {
         if (!dragging) return;
-        dragging = false;
+        dragging = false; cropDragging = false;
         if (!visionRoi || visionRoi.w < 0.03 || visionRoi.h < 0.03) { setCropCleared(); return; }
         if (cropClearBtn) cropClearBtn.classList.remove('d-none');
       };

@@ -12,6 +12,7 @@ semantic versioning while pre-1.0 (staying in `0.x`).
 - **Crop the dashboard camera to just the value you want read.** A cluster that shows speed, RPM, gear, and temperature at once could send the AI reading the wrong number. Drag a box on the camera preview around only the value to read, and every frame is cropped to that box before it is read, so the reference tracks the number you meant. A Clear crop button goes back to reading the whole frame.
 
 ### Fixed
+- **The dashboard camera crop box stays where you draw it.** While you were dragging a box around the value, the live preview refreshing in the background could make the selection jump to a thin sliver. The box now holds its position through a preview refresh, and the preview pauses while you are drawing.
 
 - **The dashboard camera reference lines up with the capture now, and low-quality references are caught instead of guessed.** Each reading is timed to the moment its frame was grabbed, not the couple of seconds later when the AI answered (that delay varied per reading and smeared everything out of alignment). The readings are shown live as they come in, so you can see the value tracking your sweep. And when a search finds nothing, it now says why (too few readings, the value never changed, no CAN frames on the channel, or nothing tracked) instead of a generic message, and a flat reference no longer produces a confident but bogus match.
 
