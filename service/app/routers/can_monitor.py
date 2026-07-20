@@ -48,6 +48,41 @@ def status():
     return {"channels": mon.list_statuses()}
 
 
+@router.post("/clear")
+def clear(body: MonitorRequest):
+    """Forget the traffic seen so far on this channel, including the by-id table,
+    so the next look at the bus starts clean."""
+    mon.get_monitor(body.channel, backend=body.backend).clear()
+    return {"ok": True}
+
+
+@router.get("/ids")
+def ids(channel: str = "can0", backend: str = "socketcan", database_id: int | None = None,
+        obd2: bool | None = None):
+    """Every arbitration id seen on this channel with the message it last sent.
+
+    Unlike ``/frames`` (the recent-frame ring buffer, where an id that stops
+    transmitting scrolls out within a second on a busy bus), this keeps one row
+    per id for as long as the monitor runs, so a quiet id stays visible with its
+    last payload. That is what makes it usable for watching which byte moves when
+    you operate a control."""
+    from ..config import settings
+    from ..services import can_databases as can_db_svc
+    obd2_overlay = settings.obd2_overlay if obd2 is None else bool(obd2)
+    monitor = mon.get_monitor(channel, backend=backend)
+    if database_id:
+        dbc_text = _resolve_dbc_text(database_id)
+    else:
+        dbc_text = can_db_svc.active_dbc_text()
+    rows = []
+    for record in monitor.latest_by_id():
+        entry = dict(record)
+        entry["decoded"] = (decode_record(record, dbc_text, obd2_overlay=obd2_overlay)
+                            if (dbc_text or obd2_overlay) else None)
+        rows.append(entry)
+    return {"status": monitor.status(), "ids": rows, "obd2_overlay": obd2_overlay}
+
+
 @router.get("/frames")
 def frames(channel: str = "can0", backend: str = "socketcan", database_id: int | None = None,
            obd2: bool | None = None):

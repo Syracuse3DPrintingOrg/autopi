@@ -14,6 +14,9 @@
   #mon-table th.sortable.sorted .sort-arrow { opacity: 1; }
   .byte-cell span { padding: 0 0.1rem; border-radius: 0.2rem; }
   .byte-cell span.byte-changed { background: rgba(255, 193, 7, 0.35); color: var(--bs-warning-text-emphasis, #ffda6a); }
+  /* An id that has stopped transmitting stays listed, just dimmed, so the full
+     set of ids on the bus remains readable while the live ones stand out. */
+  #mon-table tr.quiet-row { opacity: 0.55; }
 </style>
 {% endblock %}
 {% block body %}
@@ -61,9 +64,21 @@
         <input type="text" class="form-control form-control-sm" id="f-filter"
                placeholder="Filter by ID (5C6 or 0x5C6) or signal name">
       </div>
-      <div class="col-md-8 d-flex align-items-center">
+      <div class="col-md-4">
+        <div class="btn-group btn-group-sm w-100" role="group" aria-label="View">
+          <input type="radio" class="btn-check" name="mon-view" id="view-ids" value="ids" checked>
+          <label class="btn btn-outline-secondary" for="view-ids">One row per ID</label>
+          <input type="radio" class="btn-check" name="mon-view" id="view-frames" value="frames">
+          <label class="btn btn-outline-secondary" for="view-frames">Frame log</label>
+        </div>
+      </div>
+      <div class="col-md-4 d-flex align-items-center">
         <span class="text-body-secondary small">Changed bytes flash <span class="byte-cell"><span class="byte-changed">amber</span></span> as they update.</span>
       </div>
+    </div>
+    <div class="text-body-secondary small mb-2" id="view-note">
+      Every ID seen stays listed with the message it last sent, including ones that
+      have gone quiet, so you can watch a byte move while you operate a control.
     </div>
     <div class="table-responsive">
       <table class="table table-sm align-middle" id="mon-table">
@@ -73,6 +88,7 @@
             <th class="sortable" data-sort="count">Count <span class="sort-arrow"></span></th>
             <th>Data</th>
             <th class="sortable" data-sort="last">Last seen <span class="sort-arrow"></span></th>
+            <th class="sortable d-none" data-sort="age" id="th-age">Age <span class="sort-arrow"></span></th>
             <th>Decoded signals</th>
           </tr>
         </thead>
@@ -100,6 +116,10 @@
   let sortKey = null;
   let sortDir = 1;
   const HIGHLIGHT_MS = 1500;
+  const ageTh = document.getElementById('th-age');
+  const noteEl = document.getElementById('view-note');
+  // How long an id can go without a frame before its row is dimmed as quiet.
+  const QUIET_AFTER_S = 2;
   // Per-ID byte history: id -> { bytes: [..], changedAt: [..] }
   const byteState = new Map();
 
@@ -119,6 +139,9 @@
       let va, vb;
       if (sortKey === 'id') { va = a.arbitration_id; vb = b.arbitration_id; }
       else if (sortKey === 'count') { va = a.count || 0; vb = b.count || 0; }
+      // Age sorts by last-seen the other way round: newest traffic has the
+      // smallest age, so sorting ascending puts the busiest ids on top.
+      else if (sortKey === 'age') { va = -(a.timestamp || 0); vb = -(b.timestamp || 0); }
       else { va = a.timestamp || 0; vb = b.timestamp || 0; }
       return (va < vb ? -1 : va > vb ? 1 : 0) * sortDir;
     });
@@ -175,6 +198,11 @@
     }
   }
 
+  function viewMode() {
+    const el = document.querySelector('input[name="mon-view"]:checked');
+    return el ? el.value : 'ids';
+  }
+
   async function refreshFrames() {
     const channel = channelEl.value || 'can0';
     const backend = backendEl.value || 'socketcan';
@@ -182,9 +210,10 @@
     if (databaseSel.value) params.set('database_id', databaseSel.value);
     const obd2El = document.getElementById('f-obd2');
     params.set('obd2', obd2El && obd2El.checked ? '1' : '0');
+    const byId = viewMode() === 'ids';
     let body;
     try {
-      const res = await fetch('can/monitor/frames?' + params.toString());
+      const res = await fetch('can/monitor/' + (byId ? 'ids' : 'frames') + '?' + params.toString());
       body = await res.json();
     } catch (e) {
       return;
@@ -197,10 +226,10 @@
       ? `Running: ${status.frame_count || 0} frames, ${status.unique_ids || 0} ids`
       : 'Stopped';
 
-    let frames = body.frames || [];
+    let frames = byId ? (body.ids || []) : (body.frames || []);
     if (clearedAt) frames = frames.filter((f) => f.timestamp > clearedAt);
     const now = Date.now();
-    // Diff bytes for every frame (even filtered-out ones) so history stays accurate.
+    // Diff bytes for every row (even filtered-out ones) so history stays accurate.
     const dataCells = new Map();
     for (const f of frames) dataCells.set(f.arbitration_id, renderDataCell(f, now));
     const needle = (filterEl.value || '').trim();
@@ -209,17 +238,33 @@
     emptyEl.textContent = frames.length > 0 && needle
       ? 'No frames match the filter.'
       : 'No frames seen yet. Start the monitor to watch live traffic.';
+    ageTh.classList.toggle('d-none', !byId);
+    noteEl.classList.toggle('d-none', !byId);
     rowsEl.innerHTML = '';
     for (const f of visible) {
+      const age = (now / 1000) - (f.timestamp || 0);
+      // A row nobody has sent for a while is dimmed rather than dropped, so the
+      // full set of ids on the bus stays readable.
+      const quiet = byId && age > QUIET_AFTER_S;
       const tr = document.createElement('tr');
+      if (quiet) tr.classList.add('quiet-row');
       tr.innerHTML = `
         <td class="mono">0x${Number(f.arbitration_id).toString(16).toUpperCase()}</td>
         <td>${f.count}</td>
         <td class="mono byte-cell">${dataCells.get(f.arbitration_id)}</td>
         <td>${fmtTime(f.timestamp)}</td>
+        <td class="${byId ? '' : 'd-none'} small">${byId ? fmtAge(age) : ''}</td>
         <td class="decoded-cell small">${fmtDecoded(f.decoded)}</td>`;
       rowsEl.appendChild(tr);
     }
+  }
+
+  function fmtAge(seconds) {
+    if (!isFinite(seconds) || seconds < 0) return '';
+    if (seconds < 1) return 'now';
+    if (seconds < 60) return seconds.toFixed(1) + 's';
+    const m = Math.floor(seconds / 60);
+    return m + 'm ' + Math.floor(seconds % 60) + 's';
   }
 
   function updateSortArrows() {
@@ -260,11 +305,22 @@
     refreshFrames();
   });
 
-  document.getElementById('btn-clear').addEventListener('click', () => {
-    clearedAt = Date.now() / 1000;
+  document.getElementById('btn-clear').addEventListener('click', async () => {
+    // Also drop the server's by-id table, otherwise ids seen before the clear
+    // would keep showing up with their old payload.
+    try {
+      await fetch('can/monitor/clear', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channel: channelEl.value || 'can0', backend: backendEl.value || 'socketcan' }),
+      });
+    } catch (e) { /* clearing the local view still helps */ }
+    clearedAt = 0;
     byteState.clear();
     refreshFrames();
   });
+
+  document.querySelectorAll('input[name="mon-view"]').forEach((r) =>
+    r.addEventListener('change', () => { byteState.clear(); refreshFrames(); }));
 
   channelEl.addEventListener('change', () => { clearedAt = 0; byteState.clear(); refreshFrames(); });
   backendEl.addEventListener('change', () => { clearedAt = 0; byteState.clear(); refreshFrames(); });

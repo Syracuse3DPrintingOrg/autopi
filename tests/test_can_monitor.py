@@ -252,3 +252,72 @@ def test_ui_page_renders(client):
     resp = client.get("/ui/can-monitor")
     assert resp.status_code == 200
     assert "CAN Bus Monitor" in resp.text
+
+
+# --------------------------------------------------------------------------
+# latest-per-id table: what the by-id monitor view is built from
+# --------------------------------------------------------------------------
+
+def test_latest_survives_ring_buffer_eviction():
+    # The whole point of the by-id view: an id that stops transmitting scrolls out
+    # of the small ring buffer on a busy bus, but must stay listed with the
+    # payload it last sent.
+    buffer = deque(maxlen=3)
+    counts, latest = {}, {}
+    ingest_frame(buffer, counts, Frame(arbitration_id=0x2A0, data=[0xAA, 0xBB]),
+                 timestamp=1.0, latest=latest)
+    for i in range(10):   # flood with other traffic, evicting 0x2A0 from the ring
+        ingest_frame(buffer, counts, Frame(arbitration_id=0x100 + i, data=[i]),
+                     timestamp=2.0 + i, latest=latest)
+    assert all(r["arbitration_id"] != 0x2A0 for r in buffer)   # gone from the ring
+    assert latest[0x2A0]["hex"] == "AA BB"                     # still in the by-id table
+    assert latest[0x2A0]["timestamp"] == 1.0
+
+
+def test_latest_keeps_only_the_newest_record_per_id():
+    buffer, counts, latest = deque(maxlen=50), {}, {}
+    ingest_frame(buffer, counts, Frame(arbitration_id=0x300, data=[1]), timestamp=1.0, latest=latest)
+    ingest_frame(buffer, counts, Frame(arbitration_id=0x300, data=[2]), timestamp=2.0, latest=latest)
+    assert len(latest) == 1
+    assert latest[0x300]["hex"] == "02"
+    assert latest[0x300]["count"] == 2
+    assert latest[0x300]["first_seen"] == 1.0   # first_seen is preserved
+
+
+def test_latest_is_capped_but_keeps_updating_known_ids():
+    from app.can.monitor import MAX_TRACKED_IDS
+    buffer, counts, latest = deque(maxlen=10), {}, {}
+    for i in range(MAX_TRACKED_IDS + 25):
+        ingest_frame(buffer, counts, Frame(arbitration_id=i, data=[0]), timestamp=float(i), latest=latest)
+    assert len(latest) == MAX_TRACKED_IDS
+    # An id already tracked still updates after the cap is reached.
+    ingest_frame(buffer, counts, Frame(arbitration_id=0, data=[9]), timestamp=99.0, latest=latest)
+    assert latest[0]["hex"] == "09"
+
+
+def test_monitor_channel_latest_by_id_sorted_and_clearable():
+    m = MonitorChannel("can0")
+    for arb, val in ((0x300, 3), (0x100, 1), (0x200, 2)):
+        ingest_frame(m._buffer, m._counts, Frame(arbitration_id=arb, data=[val]),
+                     timestamp=float(arb), latest=m._latest)
+    rows = m.latest_by_id()
+    assert [r["arbitration_id"] for r in rows] == [0x100, 0x200, 0x300]   # lowest id first
+    m.clear()
+    assert m.latest_by_id() == []
+    assert m.status()["unique_ids"] == 0
+
+
+def test_ids_endpoint_lists_every_id_with_its_last_message():
+    from starlette.testclient import TestClient
+    from app.main import app
+    m = mon.get_monitor("can0", backend="socketcan")
+    m.clear()
+    ingest_frame(m._buffer, m._counts, Frame(arbitration_id=0x5C6, data=[0x11, 0x22]),
+                 timestamp=10.0, latest=m._latest)
+    ingest_frame(m._buffer, m._counts, Frame(arbitration_id=0x1A0, data=[0x33]),
+                 timestamp=11.0, latest=m._latest)
+    body = TestClient(app).get("/can/monitor/ids?channel=can0").json()
+    ids = {r["arbitration_id"]: r for r in body["ids"]}
+    assert set(ids) == {0x5C6, 0x1A0}
+    assert ids[0x5C6]["hex"] == "11 22"
+    m.clear()

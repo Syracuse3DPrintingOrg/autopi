@@ -27,6 +27,11 @@ log = logging.getLogger(__name__)
 
 # How many recent frames to keep per channel.
 DEFAULT_BUFFER_SIZE = 500
+
+# Ceiling on distinct arbitration ids tracked for the by-id view. A normal bus
+# shows tens to low hundreds; this only bounds memory if a bus sprays randomised
+# extended ids. Ids already tracked keep updating once the cap is reached.
+MAX_TRACKED_IDS = 4096
 # How long recv() blocks waiting for a frame before checking the stop flag.
 RECV_TIMEOUT = 0.5
 
@@ -49,6 +54,7 @@ def ingest_frame(
     counts: dict[int, int],
     frame: Frame,
     timestamp: float | None = None,
+    latest: dict[int, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Append one received frame to a ring buffer and bump its id count.
 
@@ -57,12 +63,27 @@ def ingest_frame(
     test can drive it directly with a synthetic clock and hand-built
     :class:`Frame` values, no thread or hardware involved. Returns the record
     that was appended.
+
+    ``latest``, when given, is updated with this id's newest record and is NOT
+    ring-trimmed: the ring buffer only holds the last few hundred frames, so on a
+    busy bus an id that stops transmitting scrolls out of it within a second and
+    would disappear from any view built from the buffer. Keeping the newest record
+    per id separately is what lets a by-id view show every id ever seen, with the
+    payload it last sent, including ids that have gone quiet.
     """
     timestamp = time.time() if timestamp is None else timestamp
     record = _frame_to_record(frame, timestamp)
     counts[frame.arbitration_id] = counts.get(frame.arbitration_id, 0) + 1
     record["count"] = counts[frame.arbitration_id]
     buffer.append(record)
+    if latest is not None:
+        previous = latest.get(frame.arbitration_id)
+        entry = dict(record)
+        # first_seen lets the UI tell a long-standing id from one that just
+        # appeared, which is often the interesting one when hunting a control.
+        entry["first_seen"] = previous["first_seen"] if previous else timestamp
+        if len(latest) < MAX_TRACKED_IDS or frame.arbitration_id in latest:
+            latest[frame.arbitration_id] = entry
     return record
 
 
@@ -103,6 +124,9 @@ class MonitorChannel:
         self.backend = backend
         self._buffer: deque = deque(maxlen=buffer_size)
         self._counts: dict[int, int] = {}
+        # Newest record per arbitration id, never ring-trimmed, so the by-id view
+        # keeps showing an id (and what it last sent) after it goes quiet.
+        self._latest: dict[int, dict[str, Any]] = {}
         self._lock = threading.Lock()
         self._thread: threading.Thread | None = None
         self._running = False
@@ -121,6 +145,22 @@ class MonitorChannel:
     def frames(self) -> list[dict[str, Any]]:
         with self._lock:
             return list(self._buffer)
+
+    def latest_by_id(self) -> list[dict[str, Any]]:
+        """The newest record for every arbitration id seen since the last clear,
+        lowest id first. Ids that have stopped transmitting stay in this list with
+        the payload they last sent, which is what makes a by-id view usable for
+        spotting which byte moves when you operate a control."""
+        with self._lock:
+            return [dict(entry) for _, entry in sorted(self._latest.items())]
+
+    def clear(self) -> None:
+        """Forget everything seen so far (frames, per-id counts, and the by-id
+        table), so a fresh look at the bus is not coloured by earlier traffic."""
+        with self._lock:
+            self._buffer.clear()
+            self._counts.clear()
+            self._latest.clear()
 
     def status(self) -> dict[str, Any]:
         with self._lock:
@@ -177,7 +217,7 @@ class MonitorChannel:
             if frame is None:
                 continue
             with self._lock:
-                ingest_frame(self._buffer, self._counts, frame)
+                ingest_frame(self._buffer, self._counts, frame, latest=self._latest)
 
 
 # -- module-level registry, one MonitorChannel per (backend, channel) -------
