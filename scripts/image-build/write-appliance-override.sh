@@ -31,29 +31,35 @@ devs=()
 for d in /dev/gpiomem /dev/gpiomem0 /dev/gpiochip0 /dev/gpiochip4; do
   [ -e "$d" ] && devs+=("$d")
 done
-# USB camera(s) for the vision reference: pass through any /dev/video* present at
-# generation time so a plugged-in camera works with no manual compose edit. Only
-# existing nodes are added, so a Pi with no camera is unaffected. Replug then
-# re-run this (or update) to pick up a camera added after first boot.
-for d in /dev/video*; do
-  [ -e "$d" ] && devs+=("$d")
-done
 
+# USB camera(s) for the vision reference are deliberately NOT listed under
+# devices:. Every devices: entry must exist when the container starts, so pinning
+# /dev/video0 meant that unplugging the camera later stopped the app from starting
+# at all, and restart: unless-stopped just retried the same failure. That took the
+# whole web UI down with SSH-only recovery. Granting the video4linux major (81)
+# through the device cgroup and mounting /dev instead means the container starts
+# whether or not a camera is attached, and sees one the moment it is plugged in,
+# with no regeneration or restart needed.
 compose_files="docker-compose.appliance.yml"
 override="$REPO_DIR/docker-compose.override.yml"
-if [ "${#devs[@]}" -gt 0 ]; then
-  {
-    echo "# Generated: device passthrough for this Pi (GPIO + any USB camera),"
-    echo "# merged over the appliance file."
-    echo "services:"
-    echo "  autopi:"
+{
+  echo "# Generated: device access for this Pi, merged over the appliance file."
+  echo "# GPIO nodes are fixed on a board so they are passed through directly."
+  echo "# Cameras are hot-pluggable, so they are granted by cgroup rule plus a /dev"
+  echo "# mount: a devices: entry for a camera that is unplugged stops the container"
+  echo "# from starting at all."
+  echo "services:"
+  echo "  autopi:"
+  if [ "${#devs[@]}" -gt 0 ]; then
     echo "    devices:"
     for d in "${devs[@]}"; do echo "      - \"$d:$d\""; done
-  } > "$override"
-  compose_files="${compose_files}:docker-compose.override.yml"
-else
-  rm -f "$override"
-fi
+  fi
+  echo "    device_cgroup_rules:"
+  echo "      - \"c 81:* rmw\"   # video4linux: any USB camera, present or not"
+  echo "    volumes:"
+  echo "      - \"/dev:/dev\"    # so a camera plugged in later shows up live"
+} > "$override"
+compose_files="${compose_files}:docker-compose.override.yml"
 
 # Point docker compose at the appliance file(s). Preserve any other .env lines.
 env_file="$REPO_DIR/.env"

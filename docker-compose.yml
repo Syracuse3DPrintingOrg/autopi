@@ -14,14 +14,20 @@ services:
       - "9284:8000"
     # Hardware device access (optional). Left off by default so `docker compose
     # up` works on a server that has no such devices (the app degrades
-    # gracefully). Uncomment the lines you need on a Pi, then `docker compose up -d`:
-    #   - GPIO: /dev/gpiomem
-    #   - USB camera for the vision reference: map the video node(s) your camera
-    #     creates. A Logitech C270 is usually /dev/video0 (plus /dev/video1 for
-    #     metadata). The camera must be plugged in when the container starts.
-    #     The image already ships fswebcam to grab frames.
+    # gracefully). Uncomment the lines you need, then `docker compose up -d`.
+    #
+    # GPIO is a fixed node, so pass it through directly:
     # devices:
     #   - "/dev/gpiomem:/dev/gpiomem"
-    #   - "/dev/video0:/dev/video0"
-    #   - "/dev/video1:/dev/video1"
+    #
+    # A USB camera for the vision reference is hot-pluggable, so do NOT list it
+    # under devices:. Docker requires every devices: entry to exist when the
+    # container starts, so unplugging the camera would stop the app from starting
+    # at all. Grant the video4linux major and mount /dev instead; the container
+    # then starts with or without a camera and sees one as soon as it is plugged
+    # in. The image already ships fswebcam to grab frames.
+    # device_cgroup_rules:
+    #   - "c 81:* rmw"
+    # volumes:
+    #   - "/dev:/dev"
     restart: unless-stopped
