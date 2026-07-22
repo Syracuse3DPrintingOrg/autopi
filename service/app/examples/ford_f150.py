@@ -28,7 +28,7 @@ from ..db import CanDatabase, session_scope
 from ..services import layout as layout_svc
 from ..services import profiles as profiles_svc
 
-NAME = "Ford F-150 (2024) — real opendbc Ford CAN-FD"
+NAME = "Ford F-150 (2024), real opendbc Ford CAN-FD"
 DESCRIPTION = ("A live Ford F-150 sample on the real ford_lincoln_base_pt.dbc (opendbc, MIT, "
                "covers F-150/Mach-E/Explorer/Bronco/Maverick): monitor real speed, gear, engine "
                "RPM, wheel speeds, and steering angle, with a speed/gear/RPM cluster simulation. "

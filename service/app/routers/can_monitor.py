@@ -74,11 +74,15 @@ def ids(channel: str = "can0", backend: str = "socketcan", database_id: int | No
         dbc_text = _resolve_dbc_text(database_id)
     else:
         dbc_text = can_db_svc.active_dbc_text()
+    # Parse the DBC once per request rather than once per id (this endpoint is
+    # polled on the same 500ms cadence as /frames).
+    from ..can import dbc as dbc_mod
+    parsed_db = dbc_mod.load(dbc_text) if dbc_text else None
     rows = []
     for record in monitor.latest_by_id():
         entry = dict(record)
-        entry["decoded"] = (decode_record(record, dbc_text, obd2_overlay=obd2_overlay)
-                            if (dbc_text or obd2_overlay) else None)
+        entry["decoded"] = (decode_record(record, dbc_text, obd2_overlay=obd2_overlay, db=parsed_db)
+                            if (parsed_db is not None or obd2_overlay) else None)
         rows.append(entry)
     return {"status": monitor.status(), "ids": rows, "obd2_overlay": obd2_overlay}
 
@@ -96,11 +100,15 @@ def frames(channel: str = "can0", backend: str = "socketcan", database_id: int |
         dbc_text = _resolve_dbc_text(database_id)
     else:
         dbc_text = can_db_svc.active_dbc_text()
+    # Parse the DBC once per request, not once per frame: this loop runs over up
+    # to 500 buffered frames every 500ms poll.
+    from ..can import dbc as dbc_mod
+    parsed_db = dbc_mod.load(dbc_text) if dbc_text else None
     records = []
     for record in monitor.frames():
         entry = dict(record)
-        entry["decoded"] = (decode_record(record, dbc_text, obd2_overlay=obd2_overlay)
-                            if (dbc_text or obd2_overlay) else None)
+        entry["decoded"] = (decode_record(record, dbc_text, obd2_overlay=obd2_overlay, db=parsed_db)
+                            if (parsed_db is not None or obd2_overlay) else None)
         records.append(entry)
     # Newest first: easier to watch live traffic without the table scrolling.
     records.reverse()

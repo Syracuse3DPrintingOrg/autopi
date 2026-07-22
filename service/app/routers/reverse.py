@@ -147,7 +147,7 @@ def _explain_empty_capture(channel: str, before: dict | None, after: dict | None
     erroring = err0 is not None and err1 is not None and err1 > err0
     if erroring:
         return (f"{channel} is receiving bus errors, not clean frames (rx errors +{err1 - err0} during "
-                f"the capture) — a CAN-FD bit-timing or termination problem, not the app. Check the HAT's "
+                f"the capture), a CAN-FD bit-timing or termination problem, not the app. Check the HAT's "
                 f"terminator jumper for this port is OFF if the bus is already terminated elsewhere, and "
                 f"that the data bitrate, sample point, and oscillator match the bus.")
     rx0 = (before or {}).get("rx_packets")
@@ -272,6 +272,9 @@ def bitsearch_route(body: BitsearchIn):
     reference = [p.model_dump() for p in body.reference]
     candidates = rev.bitsearch(frames, reference, body.opts or {})
     mux = rev.detect_multiplexer([list(f.get("data") or []) for f in frames[:400]])
+    # Each candidate carries a "tied" flag (another candidate scores within
+    # RANK_EPS of it); the page uses it to say the width found is a floor,
+    # not an exact answer.
     return {"candidates": candidates, "multiplexer": mux}
 
 
@@ -299,6 +302,8 @@ def auto_decode_route(body: AutoDecodeIn):
     # opts win; top_ids stays a first-class field for back-compat.
     opts = {"lags": [0.0, 0.25, 0.5, 0.75, 1.0], **(body.opts or {}), "top_ids": body.top_ids}
     candidates = rev.auto_decode(grouped, reference, opts)
+    # `best` (like every candidate) carries the "tied" flag from the merged
+    # ranking; the page uses it to say the width found is a floor, not exact.
     best = candidates[0] if candidates else None
     # Consult the diagnostic before trusting `best`: a structural problem (no
     # frames, too few readings, a flat reference, no time overlap) makes a match
@@ -780,7 +785,7 @@ def to_workbench_route(body: ToWorkbenchIn):
 # sweep, no timing sync, no guessing which bus a control is on.
 # --------------------------------------------------------------------------
 
-_hunt: dict = {"active": False, "channels": [], "backend": "socketcan", "events": []}
+_hunt: dict = {"active": False, "channels": [], "backend": "socketcan", "events": [], "before": {}}
 
 
 @router.post("/hunt/start")
@@ -793,6 +798,7 @@ def hunt_start():
     # leak into this one's candidates or hold memory.
     cap.clear_pinned()
     started = []
+    before: dict[str, dict] = {}
     for ch in channels:
         session = cap.get_inhale_session(ch, backend="socketcan",
                                          channel_factory=_capture_factory(ch, "socketcan"))
@@ -802,9 +808,15 @@ def hunt_start():
         # the frame count so a firehose bus cannot exhaust memory.
         if session.start(f"hunt {ch}", persist=False, max_frames=200000):
             started.append(ch)
+            # Snapshot the link's kernel counters now, so a channel that reads
+            # zero frames can be explained at stop time (idle port vs CAN-FD
+            # frames a classic socket never sees) with the same diagnostic the
+            # live capture path uses.
+            before[ch] = can_registry.link_stats(ch)
     if not started:
         return {"ok": False, "error": "Could not start a capture on any bus (one may already be running)."}
-    _hunt.update({"active": True, "channels": started, "backend": "socketcan", "events": []})
+    _hunt.update({"active": True, "channels": started, "backend": "socketcan", "events": [],
+                  "before": before})
     return {"ok": True, "channels": started}
 
 
@@ -821,11 +833,14 @@ def hunt_stop():
     if not _hunt.get("active"):
         return {"ok": False, "error": "Not listening."}
     events = list(_hunt.get("events") or [])
+    before = dict(_hunt.get("before") or {})
     records: list[dict] = []
     capture_ids: dict[str, str] = {}
+    frame_counts: dict[str, int] = {}
     for ch in _hunt.get("channels") or []:
         session = cap.get_inhale_session(ch, backend=_hunt.get("backend", "socketcan"))
         saved = session.stop()
+        frame_counts[ch] = len(saved.get("frames") or []) if saved else 0
         if saved:
             if saved.get("id"):
                 capture_ids[ch] = saved["id"]
@@ -838,14 +853,21 @@ def hunt_stop():
                 record["channel"] = ch
                 records.append(record)
     channels = list(_hunt.get("channels") or [])
-    _hunt.update({"active": False, "channels": [], "events": []})
+    _hunt.update({"active": False, "channels": [], "events": [], "before": {}})
+    # A channel that read zero frames the whole hunt deserves the same honest
+    # diagnosis the live capture gives: an idle port, a bus in a state the
+    # socket cannot read (CAN-FD on a classic socket), or an interface that is
+    # not up, rather than a generic "nothing reacted".
+    channel_notes = {ch: _explain_empty_capture(ch, before.get(ch), can_registry.link_stats(ch))
+                     for ch in channels if frame_counts.get(ch, 0) == 0}
     if not events:
         return {"ok": False, "error": "No presses were marked. Press Start, do the action a few times tapping Mark "
                 "(or the spacebar) each time, then Stop.", "capture_ids": capture_ids}
     candidates = rev.event_responders(records, events)
     reference = rev.reference_from_events(events)
     return {"ok": True, "events": len(events), "channels": channels,
-            "candidates": candidates, "capture_ids": capture_ids, "reference": reference}
+            "candidates": candidates, "capture_ids": capture_ids, "reference": reference,
+            "channel_notes": channel_notes}
 
 
 class VerifyControlIn(BaseModel):

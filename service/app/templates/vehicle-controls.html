@@ -146,7 +146,7 @@
     document.getElementById('map-status').textContent = '';
     const sel = document.getElementById('map-lib-select');
     sel.innerHTML = libraryCache.length
-      ? libraryCache.map((c) => '<option value="' + c.id + '">' + esc(c.name) + ' — ' + esc(cmdSummary(c.command)) + '</option>').join('')
+      ? libraryCache.map((c) => '<option value="' + c.id + '">' + esc(c.name) + ', ' + esc(cmdSummary(c.command)) + '</option>').join('')
       : '<option value="">(library is empty)</option>';
     mapModal.show();
   }

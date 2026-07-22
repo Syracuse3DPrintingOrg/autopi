@@ -27,7 +27,7 @@ from ..db import CanDatabase, session_scope
 from ..services import layout as layout_svc
 from ..services import profiles as profiles_svc
 
-NAME = "RAM 1500 (2024) — real opendbc CUSW"
+NAME = "RAM 1500 (2024), real opendbc CUSW"
 DESCRIPTION = ("A live RAM 1500 sample on the real chrysler_cusw.dbc (opendbc, MIT): "
                "monitor real speed/gear/steering/doors, a PRNDL and turn-signal selector, "
                "real steering-wheel cruise/ACC buttons, and a cluster simulation. "

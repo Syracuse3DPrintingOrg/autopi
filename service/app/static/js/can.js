@@ -25,7 +25,7 @@
   }
 
   function vehicle(d) {
-    return [d.year, d.make, d.model].filter(Boolean).join(' ') || '—';
+    return [d.year, d.make, d.model].filter(Boolean).join(' ') || '-';
   }
 
   async function loadDatabases() {

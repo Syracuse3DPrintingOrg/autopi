@@ -113,7 +113,7 @@ def test_monitor_frames_decode_falls_back_to_active_database(monkeypatch):
 
     seen = {}
 
-    def fake_decode(record, dbc_text, obd2_overlay=False):
+    def fake_decode(record, dbc_text, obd2_overlay=False, db=None):
         seen["dbc_text"] = dbc_text
         return {"stub": True}
 

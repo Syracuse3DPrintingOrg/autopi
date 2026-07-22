@@ -6,6 +6,7 @@ report a clean "unavailable" result off real hardware rather than crashing.
 from __future__ import annotations
 
 import queue
+import time
 
 import pytest
 from starlette.testclient import TestClient
@@ -156,6 +157,65 @@ def test_snapshot_summarizes_active_ids(monkeypatch):
     assert any(entry["arbitration_id"] == 0x200 for entry in ids)
     hit = next(entry for entry in ids if entry["arbitration_id"] == 0x200)
     assert 0 in hit["changing_bytes"]
+
+
+# --------------------------------------------------------------------------
+# /reverse/hunt: a bus that read zero frames gets the empty-capture diagnosis
+# --------------------------------------------------------------------------
+
+def test_hunt_explains_a_channel_that_read_zero_frames(monkeypatch):
+    silent = _FakeProvider()
+    monkeypatch.setattr("app.can.detect.list_can_interfaces",
+                        lambda: [{"name": "can0", "up": True}])
+    monkeypatch.setattr("app.routers.reverse._capture_factory",
+                        lambda ch, be: (lambda *a, **k: silent))
+    # Simulate a CAN-FD bus a classic socket cannot read: the kernel rx counter
+    # climbs between the start and stop snapshots, but the capture saw nothing.
+    stats = {"present": True, "operstate": "up", "mtu": 72, "fd": True,
+             "rx_packets": 100, "rx_errors": 0}
+
+    def fake_stats(channel, *a, **k):
+        out = dict(stats)
+        stats["rx_packets"] += 50
+        return out
+
+    monkeypatch.setattr(can_registry, "link_stats", fake_stats)
+
+    client = TestClient(app)
+    assert client.post("/reverse/hunt/start").json()["ok"] is True
+    assert client.post("/reverse/hunt/mark").json()["ok"] is True
+    body = client.post("/reverse/hunt/stop").json()
+    assert body["ok"] is True
+    assert body["candidates"] == []
+    notes = body["channel_notes"]
+    assert "can0" in notes and notes["can0"]
+    assert "CAN-FD" in notes["can0"]
+
+
+def test_hunt_with_frames_adds_no_channel_notes(monkeypatch):
+    fake = _FakeProvider()
+    for i in range(30):
+        fake.push(Frame(arbitration_id=0x100, data=[i % 4, 0xAA]))
+    monkeypatch.setattr("app.can.detect.list_can_interfaces",
+                        lambda: [{"name": "can0", "up": True}])
+    monkeypatch.setattr("app.routers.reverse._capture_factory",
+                        lambda ch, be: (lambda *a, **k: fake))
+    monkeypatch.setattr(can_registry, "link_stats",
+                        lambda channel, *a, **k: {"present": True, "operstate": "up",
+                                                  "rx_packets": 0, "rx_errors": 0})
+
+    client = TestClient(app)
+    assert client.post("/reverse/hunt/start").json()["ok"] is True
+    # Wait until the inhale thread has drained the queued frames, so the stop
+    # below cannot race it into looking like an empty capture.
+    session = cap.get_inhale_session("can0", backend="socketcan")
+    deadline = time.time() + 2.0
+    while time.time() < deadline and session.status()["frame_count"] < 30:
+        time.sleep(0.02)
+    assert client.post("/reverse/hunt/mark").json()["ok"] is True
+    body = client.post("/reverse/hunt/stop").json()
+    assert body["ok"] is True
+    assert body.get("channel_notes", {}) == {}
 
 
 def test_fire_opens_fd_channel_for_fd_frame(monkeypatch):

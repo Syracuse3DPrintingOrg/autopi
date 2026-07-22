@@ -913,6 +913,7 @@
           + (b.mux ? ' (mux byte ' + b.mux.byte + '=0x' + b.mux.value.toString(16).toUpperCase() + ')' : '')
           + ' scale ' + (+b.scale).toPrecision(4) + ' offset ' + (+b.offset).toPrecision(4)
           + ' <span class="' + r2cls + '">r² ' + (+b.r2).toFixed(3) + '</span></div>'
+          + (b.tied ? '<div class="text-secondary">Statistically tied with another match; the real field may be wider, this width covers the values seen.</div>' : '')
           + (d.named && d.named.reason ? '<div class="text-secondary">' + esc(d.named.reason) + '</div>' : '')
           + (d.named && d.named.plausible === false ? '<div class="text-warning">The model thinks this fit is questionable.</div>' : '')
           + '<button class="btn btn-outline-success btn-sm mt-1" id="auto-save">Save this signal</button></div>';
@@ -974,6 +975,9 @@
         const best = Math.max.apply(null, cands.map((c) => +c.r2));
         el.innerHTML = (best < 0.5
             ? '<div class="alert alert-warning py-1 px-2 small mb-2">No candidate tracks your reference well (best fit r² ' + best.toFixed(2) + '). This field is probably not the signal, or the reference was noisy. Try a cleaner sweep or a different message.</div>'
+            : '')
+          + (cands[0] && cands[0].tied
+            ? '<div class="text-secondary mb-1">The top matches are statistically tied; the real field may be wider, the listed width covers the values seen in this capture.</div>'
             : '')
           + '<table class="table table-sm table-dark align-middle mb-0"><thead><tr>'
           + '<th>bits</th><th>order</th><th>scale</th><th>offset</th><th>fit r²</th><th></th></tr></thead><tbody>'
@@ -1065,8 +1069,8 @@
     };
     return '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" style="background:#111;border-radius:.35rem">'
       + poly(ref, '#7dd3fc') + poly(dec, '#f2006e') + '</svg>'
-      + '<div class="small mt-1"><span style="color:#7dd3fc">— reference</span> &nbsp; '
-      + '<span style="color:#f2006e">— decoded candidate</span>. If the shapes track, this is your signal.</div>';
+      + '<div class="small mt-1"><span style="color:#7dd3fc">▬ reference</span> &nbsp; '
+      + '<span style="color:#f2006e">▬ decoded candidate</span>. If the shapes track, this is your signal.</div>';
   }
 
   function openSave(cand) {
@@ -1167,7 +1171,7 @@
         if (d.name) document.getElementById('save-name').value = d.name;
         if (d.unit) document.getElementById('save-unit').value = d.unit;
         let html = '<strong>' + esc(d.name || '') + '</strong>' + (d.unit ? ' [' + esc(d.unit) + ']' : '');
-        if (d.description) html += ' — ' + esc(d.description);
+        if (d.description) html += ': ' + esc(d.description);
         if (d.plausible === false) html += ' <span class="text-warning">(the model thinks this fit is questionable)</span>';
         if (d.reason) html += '<div class="text-secondary mt-1">' + esc(d.reason) + '</div>';
         out.innerHTML = html;
@@ -1260,7 +1264,18 @@
       huntCaptures = d.capture_ids || {};
       huntReference = d.reference || [];
       const cands = (d.candidates || []).filter((c) => c.responded > 0);
-      if (!cands.length) { huntResults.innerHTML = '<span class="text-secondary">Nothing reacted consistently. Try more presses, or a different control.</span>'; return; }
+      if (!cands.length) {
+        const notes = d.channel_notes || {};
+        const chans = d.channels || [];
+        const noteLines = chans.filter((ch) => notes[ch])
+          .map((ch) => '<div class="text-warning">' + esc(notes[ch]) + '</div>').join('');
+        // When every bus read zero frames, "nothing reacted" would be
+        // misleading: the diagnosis of each silent bus is the whole story.
+        const allSilent = chans.length > 0 && chans.every((ch) => notes[ch]);
+        huntResults.innerHTML = noteLines + (allSilent ? ''
+          : '<span class="text-secondary">Nothing reacted consistently. Try more presses, or a different control.</span>');
+        return;
+      }
       const kindBadge = (c) => c.kind === 'status'
         ? '<span class="badge bg-secondary" title="' + esc(c.hint || '') + '">likely status</span>'
         : '<span class="badge bg-info text-dark" title="' + esc(c.hint || '') + '">likely command</span>';

@@ -411,6 +411,57 @@ def test_rerank_tied_promotes_the_plausible_candidate_within_the_band():
     assert rev._rerank_tied(far, lambda c: c[0], lambda c: rev._plausibility_key(c[1]))[0][1] is alias
 
 
+def test_bitsearch_ranks_binary_scale_field_over_truncation_alias():
+    # A 16-bit LE field at start_bit 8 with the J1939 binary scale 1/64
+    # (0.015625), carrying raw values that never exercise the top bits.
+    # Truncation aliases (the same field minus its low bits) fit within
+    # RANK_EPS at scales like 0.125 (drop 3 bits) and 0.25 (drop 4, and that
+    # one starts nibble-aligned at bit 12), both of which sit in NICE_SCALES.
+    # If the ranker did not also accept 1/64 as a real OEM scale, one of those
+    # aliases would win the tied band; the true anchor must come out first.
+    rng = random.Random(7)
+    records, reference = [], []
+    for i in range(300):
+        raw = rng.randrange(0, 7680)
+        data = [0] * 8
+        data[1] = raw & 0xFF
+        data[2] = (raw >> 8) & 0xFF
+        records.append({"arbitration_id": 0x18F, "data": data, "timestamp": i * 0.05})
+        reference.append({"t": i * 0.05, "value": raw * 0.015625, "available": True})
+    best = bitsearch(records, reference, {"byte_orders": ["little_endian"]})[0]
+    assert best["start_bit"] == 8, (
+        f"got start_bit {best['start_bit']} (a truncation alias outranked the true field)")
+    assert best["scale"] == pytest.approx(0.015625, rel=0.02)
+    assert rev._is_nice_scale(0.015625)
+
+
+def test_bitsearch_tied_flag_set_for_aliases_unset_for_clean_field():
+    # A 4-bit ramp whose byte never uses its top bits: the 4-bit field and its
+    # 8-bit superset decode the seen values identically, so the leading band
+    # is statistically tied and every member must say so (the reported width
+    # is a floor, not exact).
+    values = list(range(16)) * 5
+    records = [{"arbitration_id": 0x310, "data": [v, 0, 0, 0, 0, 0, 0, 0],
+                "timestamp": i * 0.1} for i, v in enumerate(values)]
+    reference = [{"t": r["timestamp"], "value": float(r["data"][0])} for r in records]
+    tied = bitsearch(records, reference, {
+        "lengths": [4, 8], "byte_orders": ["little_endian"], "signed": [False],
+    })
+    assert tied[0]["tied"] is True
+    assert any(c["tied"] for c in tied[1:])
+    # Searching only the true width leaves no alias within RANK_EPS of the
+    # winner (a one-bit shift already costs too much fit), so the flag is off.
+    clean = bitsearch(records, reference, {
+        "lengths": [4], "byte_orders": ["little_endian"], "signed": [False],
+    })
+    assert clean[0]["tied"] is False
+    assert all(c["tied"] is False for c in clean)
+    # auto_decode recomputes the flag on its merged ranking and the best
+    # candidate carries it (the default widths include the tied 8-bit superset).
+    cands = rev.auto_decode({0x310: records}, reference, {})
+    assert cands and cands[0]["tied"] is True
+
+
 def test_bitsearch_reports_true_scale_not_a_power_of_two_alias():
     # A 16-bit LE field at start_bit 8, scale 0.01, carrying a 0..120 triangle
     # (raw 0..12000, so the top bits never toggle). A shifted/truncated alias fits
@@ -530,6 +581,18 @@ def test_derive_scale_offset_leaves_odd_slope_alone():
     derived = derive_scale_offset(candidate)
     assert derived["scale"] == pytest.approx(0.337)
     assert derived["offset"] == pytest.approx(12.4)
+
+
+def test_derive_scale_offset_does_not_snap_to_rank_only_binary_scales():
+    # 1/64 counts as a nice scale when RANKING tied candidates, but snapping
+    # still uses NICE_SCALES only: a slope near 0.015625 (and near nothing in
+    # NICE_SCALES) must come through as fitted, not pulled to the binary value.
+    candidate = {"scale": 0.0157, "offset": 0.0}
+    assert rev._is_nice_scale(0.0157)
+    derived = derive_scale_offset(candidate)
+    assert derived["scale"] == pytest.approx(0.0157)
+    # The decimal snapping behaviour itself is unchanged.
+    assert derive_scale_offset({"scale": 0.0099, "offset": 0.0})["scale"] == 0.01
 
 
 def test_to_dbc_signal_shape():

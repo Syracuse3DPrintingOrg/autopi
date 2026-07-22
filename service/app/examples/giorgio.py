@@ -23,7 +23,7 @@ from ..can import simulation
 from ..services import layout as layout_svc
 from ..services import profiles as profiles_svc
 
-NAME = "Alfa Romeo Giulia (2024) — real opendbc Giorgio"
+NAME = "Alfa Romeo Giulia (2024), real opendbc Giorgio"
 DESCRIPTION = ("A live Alfa Romeo Giulia sample on the real fca_giorgio.dbc (opendbc, MIT): "
                "monitor real wheel speeds, steering angle, engine RPM, and ACC HUD speed, with a "
                "speed / RPM / steering cluster simulation. Reading is fully real; the checksum'd "

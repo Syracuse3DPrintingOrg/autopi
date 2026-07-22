@@ -125,12 +125,28 @@ def import_dbc(session, name: str, dbc_text: str, *, source: str = "upload",
     return database
 
 
-def decode(dbc_text: str, arbitration_id: int, data: bytes) -> dict[str, Any]:
-    """Decode a frame's data into named signal values using cantools."""
-    db = _load_cached(dbc_text)
+def load(dbc_text: str):
+    """The parsed cantools Database for a DBC text (cached by the text), or None
+    when it will not parse. Resolve this ONCE per request and pass it to
+    :func:`decode_message` per frame, so a hot decode loop (the live monitor
+    decodes up to 500 frames every 500ms poll) does not re-hash the whole DBC
+    string on every single frame just to hit the parse cache."""
+    try:
+        return _load_cached(dbc_text)
+    except Exception:
+        return None
+
+
+def decode_message(db, arbitration_id: int, data: bytes) -> dict[str, Any]:
+    """Decode one frame against an already-parsed cantools Database."""
     decoded = db.decode_message(arbitration_id, bytes(data))
     # cantools may return NamedSignalValue objects; make them JSON-friendly.
     return {k: (v.value if hasattr(v, "value") else v) for k, v in decoded.items()}
+
+
+def decode(dbc_text: str, arbitration_id: int, data: bytes) -> dict[str, Any]:
+    """Decode a frame's data into named signal values using cantools."""
+    return decode_message(_load_cached(dbc_text), arbitration_id, data)
 
 
 def encode(dbc_text: str, message: str | int, signals: dict[str, Any],

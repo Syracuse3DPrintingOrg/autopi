@@ -15,6 +15,7 @@ elsewhere in this codebase's sibling projects.
 """
 from __future__ import annotations
 
+import threading
 import time
 from typing import Any
 
@@ -22,6 +23,13 @@ from ..config import settings
 from .state import StateFile
 
 MODES = ("sweep", "button")
+
+# StateFile serializes each read and each write on its own, but mark() and
+# event() do a read-append-write cycle across the two. Without a lock, two
+# near-simultaneous calls can both read the same document and the later write
+# drops the earlier append. This lock makes the whole cycle atomic within the
+# process.
+_append_lock = threading.Lock()
 
 _DEFAULT: dict[str, Any] = {
     "recording": False,
@@ -56,25 +64,27 @@ def mark(value: float, t: float | None = None) -> dict:
     Stamping at grab time keeps every point lined up with the frames the capture
     recorded. Defaults to now for a live sweep where the value is true as it is
     marked."""
-    store = _store()
-    doc = store.read()
-    if not doc.get("recording") or doc.get("mode") != "sweep":
-        return status()
-    doc.setdefault("points", []).append({"t": float(t) if t is not None else time.time(),
-                                          "value": float(value)})
-    store.write(doc)
+    with _append_lock:
+        store = _store()
+        doc = store.read()
+        if not doc.get("recording") or doc.get("mode") != "sweep":
+            return status()
+        doc.setdefault("points", []).append({"t": float(t) if t is not None else time.time(),
+                                              "value": float(value)})
+        store.write(doc)
     return status()
 
 
 def event() -> dict:
     """Record a button press at the current time. No-op (returns current
     status) if not recording in button mode."""
-    store = _store()
-    doc = store.read()
-    if not doc.get("recording") or doc.get("mode") != "button":
-        return status()
-    doc.setdefault("events", []).append(time.time())
-    store.write(doc)
+    with _append_lock:
+        store = _store()
+        doc = store.read()
+        if not doc.get("recording") or doc.get("mode") != "button":
+            return status()
+        doc.setdefault("events", []).append(time.time())
+        store.write(doc)
     return status()
 
 

@@ -30,7 +30,7 @@ _BUNDLED_DIR = Path(__file__).resolve().parent.parent / "data" / "dbc"
 # open-source sources; a user can always import any other DBC by URL or file.
 CATALOG: list[dict[str, Any]] = [
     {
-        "name": "opendbc — Toyota / Lexus powertrain",
+        "name": "opendbc, Toyota / Lexus powertrain",
         "make": "Toyota", "models": ["Corolla", "Camry", "RAV4", "Prius", "Highlander"],
         "years": "2015+", "author": "comma.ai / opendbc community", "license": "MIT",
         "homepage": "https://github.com/commaai/opendbc/tree/master/opendbc/dbc",
@@ -38,7 +38,7 @@ CATALOG: list[dict[str, Any]] = [
         "importable": True,
     },
     {
-        "name": "opendbc — Honda / Acura powertrain",
+        "name": "opendbc, Honda / Acura powertrain",
         "make": "Honda", "models": ["Civic", "Accord", "CR-V"],
         "years": "2016+", "author": "comma.ai / opendbc community", "license": "MIT",
         "homepage": "https://github.com/commaai/opendbc/tree/master/opendbc/dbc",
@@ -46,7 +46,7 @@ CATALOG: list[dict[str, Any]] = [
         "importable": True,
     },
     {
-        "name": "opendbc — Hyundai / Kia generic",
+        "name": "opendbc, Hyundai / Kia generic",
         "make": "Hyundai", "models": ["Elantra", "Sonata", "Kona"],
         "years": "2015+", "author": "comma.ai / opendbc community", "license": "MIT",
         "homepage": "https://github.com/commaai/opendbc/tree/master/opendbc/dbc",
@@ -54,7 +54,7 @@ CATALOG: list[dict[str, Any]] = [
         "importable": True,
     },
     {
-        "name": "opendbc — full library (all brands)",
+        "name": "opendbc, full library (all brands)",
         "make": "", "models": [], "years": "", "author": "comma.ai / opendbc community",
         "license": "MIT",
         "homepage": "https://github.com/commaai/opendbc/tree/master/opendbc/dbc",
@@ -84,7 +84,7 @@ CATALOG: list[dict[str, Any]] = [
         "notes": "A curated index of automotive CAN ID and DBC sources across many makes. Browse it to find a database for a vehicle not listed here.",
     },
     {
-        "name": "Tesla Model 3 — community DBC",
+        "name": "Tesla Model 3, community DBC",
         "make": "Tesla", "models": ["Model 3"], "years": "2017+",
         "author": "joshwardell", "license": "See source",
         "homepage": "https://github.com/joshwardell/model3dbc",
@@ -92,7 +92,7 @@ CATALOG: list[dict[str, Any]] = [
         "notes": "Community-maintained DBC for the Model 3. Check the repo's license before relying on it, then import the .dbc by its raw URL.",
     },
     {
-        "name": "Nissan Leaf (Gen 1) — CAN message list",
+        "name": "Nissan Leaf (Gen 1), CAN message list",
         "make": "Nissan", "models": ["Leaf"], "years": "2011-2017",
         "author": "dalathegreat and contributors", "license": "See source",
         "homepage": "https://github.com/dalathegreat/leaf_can_bus_messages",
@@ -100,7 +100,7 @@ CATALOG: list[dict[str, Any]] = [
         "notes": "Reverse-engineered CAN messages for the first-generation Leaf, widely used in EV battery projects.",
     },
     {
-        "name": "Ford Mustang S550 — CAN bus reference",
+        "name": "Ford Mustang S550, CAN bus reference",
         "make": "Ford", "models": ["Mustang"], "years": "2015-2017",
         "author": "EricTurner3", "license": "See source",
         "homepage": "https://github.com/EricTurner3/s550-canbus",
@@ -108,7 +108,7 @@ CATALOG: list[dict[str, Any]] = [
         "notes": "Scripts and a wiki mapping S550 Mustang CAN IDs.",
     },
     {
-        "name": "Kia Soul — Open Source Car Control (OSCC)",
+        "name": "Kia Soul, Open Source Car Control (OSCC)",
         "make": "Kia", "models": ["Soul"], "years": "2014-2018",
         "author": "PolySync", "license": "MIT",
         "homepage": "https://github.com/PolySync/OSCC",
@@ -116,7 +116,7 @@ CATALOG: list[dict[str, Any]] = [
         "notes": "MIT-licensed steering, throttle, and brake CAN references for the Kia Soul. A reference project, not a single DBC, so follow the source.",
     },
     {
-        "name": "Volkswagen MEB EV (ID.3 / ID.4 / Enyaq) — UDS PIDs",
+        "name": "Volkswagen MEB EV (ID.3 / ID.4 / Enyaq), UDS PIDs",
         "make": "Volkswagen", "models": ["ID.3", "ID.4"], "years": "2020+",
         "author": "spot2000", "license": "See source",
         "homepage": "https://github.com/spot2000/Volkswagen-MEB-CAN-Bus-and-UDS-info",
@@ -124,7 +124,7 @@ CATALOG: list[dict[str, Any]] = [
         "notes": "UDS PID and CAN references for the VW Group MEB electric platform.",
     },
     {
-        "name": "BMW E65 (7 Series) — CAN bus",
+        "name": "BMW E65 (7 Series), CAN bus",
         "make": "BMW", "models": ["7 Series", "E65"], "years": "2001-2008",
         "author": "damienmaguire", "license": "See source",
         "homepage": "https://github.com/damienmaguire/BMW-E65-CANBUS",

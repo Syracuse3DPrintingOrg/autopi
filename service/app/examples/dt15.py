@@ -26,7 +26,7 @@ from ..db import CanDatabase, session_scope
 from ..services import layout as layout_svc
 from ..services import profiles as profiles_svc
 
-NAME = "DT15 — 2025 RAM DT (Atlantis High)"
+NAME = "DT15, 2025 RAM DT (Atlantis High)"
 DESCRIPTION = ("A full RAM DT test bench: media/ICS and steering-wheel controls, "
                "an adjustable speed signal, PNDL and ignition selectors, and a "
                "simulated instrument cluster, over the Waveshare 2-Ch CAN-FD HAT.")

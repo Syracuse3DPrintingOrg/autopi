@@ -177,7 +177,7 @@
       + '<div><div class="fw-semibold">' + esc(e.name) + ' ' + licenseBadge(e.license)
       + (e.matches ? ' <span class="badge text-bg-info" title="Fits ' + esc(ACTIVE_LABEL) + '">Matches your vehicle</span>' : '') + '</div>'
       + '<div class="small text-secondary">' + esc([e.make, (e.models || []).join('/'), e.years].filter(Boolean).join(' · '))
-      + (e.author ? ' — ' + esc(e.author) : '') + (e.notes ? '<br>' + esc(e.notes) : '') + '</div></div>'
+      + (e.author ? ', ' + esc(e.author) : '') + (e.notes ? '<br>' + esc(e.notes) : '') + '</div></div>'
       + '<div class="text-nowrap ms-2">'
       + (e.importable && e.import_url
           ? '<button class="btn btn-outline-primary btn-sm" data-imp="' + encodeURIComponent(JSON.stringify(e)) + '">Import</button> '

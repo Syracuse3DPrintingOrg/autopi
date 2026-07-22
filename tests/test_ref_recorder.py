@@ -7,6 +7,7 @@ reference, and the ``/reverse/reference/*`` router endpoints.
 from __future__ import annotations
 
 import queue
+import threading
 
 import pytest
 from starlette.testclient import TestClient
@@ -161,6 +162,31 @@ def test_starting_again_discards_the_previous_recording(monkeypatch):
     rec.mark(1.0)
     rec.start("button")
     assert rec.get() == {"mode": "button", "points": [], "events": []}
+
+
+def test_concurrent_marks_lose_no_points():
+    # mark() is a read-append-write cycle; without the module lock two threads
+    # can read the same document and the later write drops the earlier append.
+    # Explicit t values keep the test deterministic without a fake clock.
+    rec.start("sweep")
+    n_threads, per_thread = 8, 25
+    barrier = threading.Barrier(n_threads)
+
+    def worker(base: int) -> None:
+        barrier.wait()
+        for i in range(per_thread):
+            k = base * per_thread + i
+            rec.mark(float(k), t=float(k))
+
+    threads = [threading.Thread(target=worker, args=(b,)) for b in range(n_threads)]
+    for th in threads:
+        th.start()
+    for th in threads:
+        th.join()
+
+    points = rec.get()["points"]
+    assert len(points) == n_threads * per_thread
+    assert {p["t"] for p in points} == {float(k) for k in range(n_threads * per_thread)}
 
 
 # --------------------------------------------------------------------------

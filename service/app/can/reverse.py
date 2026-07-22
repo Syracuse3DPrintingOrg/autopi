@@ -917,13 +917,23 @@ def _search_start_bits(n_bits: int, opts: dict) -> range:
 # chance and must not decide the winner on its own.
 RANK_EPS = 2e-3
 
+# Scales accepted as "nice" when RANKING tied candidates. Binary buses (J1939
+# in particular) routinely use power-of-two scales such as 1/64, 1/128, and
+# 1/256; without them here, a true 1/64 field loses its tied band to a
+# truncation alias whose fitted slope happens to land on a decimal nice value.
+# Ranking only: :func:`derive_scale_offset` keeps snapping to
+# :data:`NICE_SCALES`, because snapping rewrites the scale that gets saved and
+# exported, and these binary values must not start pulling fitted slopes.
+_RANK_NICE_SCALES = NICE_SCALES + (0.015625, 0.0078125, 0.00390625)
+
 
 def _is_nice_scale(slope: float) -> bool:
-    """Whether a fitted slope lands on a scale an OEM would actually pick. A
-    truncated alias of a real field fits with the true scale times a power of two
+    """Whether a fitted slope lands on a scale an OEM would actually pick,
+    decimal (0.01, 0.25, ...) or binary-bus (1/64, 1/256, ...). A truncated
+    alias of a real field fits with the true scale times a power of two
     (e.g. 0.16 for a true 0.01), which is almost never a real scale, so this
     separates the true field from its aliases in a statistically tied band."""
-    return any(abs(slope - nice) / nice < 0.05 for nice in NICE_SCALES if nice)
+    return any(abs(slope - nice) / nice < 0.05 for nice in _RANK_NICE_SCALES if nice)
 
 
 def _alignment_penalty(byte_order: str, start_bit: int, length: int) -> int:
@@ -944,8 +954,8 @@ def _plausibility_key(candidate: dict):
     """Order statistically tied candidates by OEM plausibility: a nice scale first
     (a truncated alias rarely fits a scale an OEM would pick), then bit alignment,
     then the highest-resolution decode (a truncation collapses distinct raw
-    values), then the shortest field (drops static padding bits that decode
-    identically)."""
+    values; bitsearch caps the count at the reference's own resolution), then the
+    shortest field (drops static padding bits that decode identically)."""
     return (
         0 if _is_nice_scale(candidate.get("scale") or 0.0) else 1,
         _alignment_penalty(candidate.get("byte_order", "little_endian"),
@@ -969,6 +979,24 @@ def _rerank_tied(candidates: list, score_of, key_of) -> list:
     return sorted(candidates[:n], key=key_of) + candidates[n:]
 
 
+def _tag_tied(candidates: list[dict], score_of) -> list[dict]:
+    """Set a ``tied`` flag on each candidate dict: True for every member of the
+    leading band whose score is within :data:`RANK_EPS` of the best, when that
+    band holds more than one candidate. A tie means the capture cannot tell
+    those candidates apart, which happens when a signal never exercises its top
+    bits: a narrower field decodes the seen values identically to the true
+    full-width one, so a tied winner's width is a floor, not an exact answer.
+    One pass over the scores; mutates the dicts in place and returns the list."""
+    if not candidates:
+        return candidates
+    best = max(score_of(c) for c in candidates)
+    in_band = [best - score_of(c) <= RANK_EPS for c in candidates]
+    tied = sum(in_band) > 1
+    for candidate, hit in zip(candidates, in_band):
+        candidate["tied"] = bool(tied and hit)
+    return candidates
+
+
 def _fits(byte_order: str, start_bit: int, length: int, n_bits: int) -> bool:
     if byte_order == "little_endian":
         return start_bit + length <= n_bits
@@ -988,7 +1016,11 @@ def bitsearch(records_for_id: list[dict], reference: list[dict], opts: dict | No
     ``start_step``/``method`` (advanced tuning).
 
     Each candidate is ``{arbitration_id, start_bit, length, byte_order,
-    signed, scale, offset, r2, correlation, lag, distinct}``. Ranked by fit
+    signed, scale, offset, r2, correlation, lag, distinct, tied}``. ``tied``
+    is True when another candidate scores within :data:`RANK_EPS`: those
+    candidates decode the captured values identically (typically a field and
+    its narrower alias when the signal never exercised its top bits), so a
+    tied winner's width is a floor, not an exact answer. Ranked by fit
     quality (the stronger of |correlation| and R^2); candidates whose scores are
     statistically tied (within :data:`RANK_EPS`) are then ordered by OEM
     plausibility (a nice scale, byte/nibble alignment, decode resolution, then the
@@ -1021,6 +1053,21 @@ def bitsearch(records_for_id: list[dict], reference: list[dict], opts: dict | No
     max_candidates = opts.get("max_candidates", 20)
     lengths = _search_lengths(n_bits, opts)
     start_bits = _search_start_bits(n_bits, opts)
+
+    # A field cannot demonstrate more resolution than the reference itself
+    # shows, so the distinct-value tie-break is capped at the number of
+    # distinct reference readings. Without the cap, a window that swallows
+    # noise bits below the real field (a rolling counter, say) makes nearly
+    # every frame's raw value unique and out-ranks the true field, especially
+    # now that its 1/2^k fitted scale can count as nice.
+    ref_values = set()
+    for point in reference:
+        if isinstance(point, dict) and point.get("available", True):
+            try:
+                ref_values.add(round(float(point["value"]), 9))
+            except (KeyError, TypeError, ValueError):
+                pass
+    ref_distinct = len(ref_values)
 
     candidates = []
     for byte_order in byte_orders:
@@ -1059,7 +1106,10 @@ def bitsearch(records_for_id: list[dict], reference: list[dict], opts: dict | No
                         # decode resolution: how many distinct raw values this
                         # field takes across the capture (a truncated alias of a
                         # real signal collapses them), used to break score ties.
-                        "distinct": len({v for _, v in series}),
+                        # Capped at the reference's own distinct count: extra
+                        # resolution the reference never showed cannot count in
+                        # a candidate's favor.
+                        "distinct": min(len({v for _, v in series}), ref_distinct),
                     }))
 
     # Sort on the un-rounded score first, then re-rank the statistically tied
@@ -1072,7 +1122,10 @@ def bitsearch(records_for_id: list[dict], reference: list[dict], opts: dict | No
     # 0.16 (a scale no OEM would use).
     candidates.sort(key=lambda c: (-c[0], c[1], c[2]))
     candidates = _rerank_tied(candidates, lambda c: c[0], lambda c: _plausibility_key(c[3]))
-    return [c[3] for c in candidates[:max_candidates]]
+    # Tag ties over the full ranked list before the cap, so a tie with a
+    # candidate that falls off the end is still reported.
+    ranked = _tag_tied([c[3] for c in candidates], lambda c: c["score"])
+    return ranked[:max_candidates]
 
 
 # A camera reference needs enough readings to tell the real signal apart from
@@ -1208,7 +1261,9 @@ def auto_decode(records_by_id: dict[int, list[dict]], reference: list[dict],
     and for a multiplexed message search each selector value too, then rank every
     candidate by fit. Returns the ranked, de-duplicated candidate list (each is a
     normal bitsearch candidate, plus a ``mux`` key when it came from one selector
-    value). Pure; the LLM naming is layered on at the router."""
+    value); the ``tied`` flag is recomputed over this merged ranking, so the best
+    candidate says whether another one is statistically indistinguishable from
+    it. Pure; the LLM naming is layered on at the router."""
     opts = opts or {}
     top_ids = max(1, int(opts.get("top_ids", 3)))
     per_id = max(1, int(opts.get("per_id", 3)))
@@ -1248,6 +1303,10 @@ def auto_decode(records_by_id: dict[int, list[dict]], reference: list[dict],
             continue
         seen.add(key)
         deduped.append(c)
+    # Re-tag ties on the merged, deduped ranking (each per-id search tagged
+    # its own list; the flags must reflect this final one), before the cap so
+    # a tie with a candidate that falls off the end is still reported.
+    _tag_tied(deduped, _fit_score)
     return deduped[:int(opts.get("max_candidates", 10))]
 
 

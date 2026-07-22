@@ -7,8 +7,7 @@ Goal: a flexible controller that runs on Raspberry Pi Lite and on a server.
 - Web interface with internet access and a Wi-Fi access point fallback for
   standalone use.
 - A full-screen start menu and an optional Stream Deck that share one layout,
-  exactly like the Pantry Raider start menu and deck, but with no food
-  content.
+  so the same shortcuts drive the touchscreen and the physical keys.
 - A library of user-defined actions that perform functions and can be tied to
   external applications:
   - **gpio**: toggle, set, or pulse a pin.

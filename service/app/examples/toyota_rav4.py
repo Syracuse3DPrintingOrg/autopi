@@ -23,7 +23,7 @@ from ..db import CanDatabase, session_scope
 from ..services import layout as layout_svc
 from ..services import profiles as profiles_svc
 
-NAME = "Toyota RAV4 (2024) — real opendbc dsu-less Toyota"
+NAME = "Toyota RAV4 (2024), real opendbc dsu-less Toyota"
 DESCRIPTION = ("A live Toyota RAV4 sample on the real toyota_nodsu_pt_generated.dbc "
                "(opendbc, MIT): monitor real wheel speeds, vehicle speed, engine RPM, "
                "gear, and cruise state, with a speed/RPM/gear cluster simulation. Reading "

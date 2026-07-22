@@ -38,7 +38,7 @@ from ..db import CanDatabase, session_scope
 from ..services import layout as layout_svc
 from ..services import profiles as profiles_svc
 
-NAME = "Hyundai Elantra (2024, CAN FD) — real opendbc Hyundai/Kia CAN FD"
+NAME = "Hyundai Elantra (2024, CAN FD), real opendbc Hyundai/Kia CAN FD"
 DESCRIPTION = ("A live Hyundai Elantra sample on the real hyundai_canfd.dbc (opendbc, MIT), "
                "the shared Hyundai/Kia/Genesis CAN FD platform database: monitor real wheel "
                "speeds, steering angle, and gear, with a speed/steering/gear cluster "

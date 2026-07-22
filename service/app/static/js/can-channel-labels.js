@@ -18,7 +18,7 @@
     if (c && c.purpose_label && c.purpose_label !== name) parts.push(c.purpose_label);
     if (d && d.description) parts.push(d.description);
     if (d && d.up === false) parts.push('down');
-    return parts.length ? name + ' — ' + parts.join(', ') : name;
+    return parts.length ? name + ', ' + parts.join(', ') : name;
   }
 
   Promise.all([

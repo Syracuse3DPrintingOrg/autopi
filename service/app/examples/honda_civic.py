@@ -31,7 +31,7 @@ from ..db import CanDatabase, session_scope
 from ..services import layout as layout_svc
 from ..services import profiles as profiles_svc
 
-NAME = "Honda Civic (2022 EX) — real opendbc Bosch Civic"
+NAME = "Honda Civic (2022 EX), real opendbc Bosch Civic"
 DESCRIPTION = ("A live Honda Civic sample on the real honda_civic_ex_2022_can_generated.dbc "
                "(opendbc, MIT): monitor real wheel speeds, vehicle speed, engine RPM, gear, "
                "and steering-wheel cruise buttons, with a speed/RPM/gear cluster simulation. "

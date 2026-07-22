@@ -88,10 +88,15 @@ def ingest_frame(
 
 
 def decode_record(record: dict[str, Any], dbc_text: str | None,
-                  *, obd2_overlay: bool = False) -> dict[str, Any] | None:
+                  *, obd2_overlay: bool = False, db: Any = None) -> dict[str, Any] | None:
     """Decode one frame record against a DBC, and (when ``obd2_overlay`` is on)
     also as a standard OBD-II response, merging the two. Returns ``None`` if
     neither produces anything.
+
+    ``db`` is an optional pre-parsed cantools Database (from ``dbc.load``). A
+    caller decoding many frames should parse the DBC once and pass it here, so
+    this does not re-hash the whole DBC text on every frame just to hit the parse
+    cache. When ``db`` is not given it falls back to parsing ``dbc_text``.
 
     Never raises: an id the database does not define, a malformed DBC, or a
     missing ``dbc_text`` all just mean "no decode available" for this frame,
@@ -101,10 +106,15 @@ def decode_record(record: dict[str, Any], dbc_text: str | None,
     responses decode the same on any vehicle without a vehicle-specific database.
     """
     out: dict[str, Any] = {}
-    if dbc_text:
+    if db is not None or dbc_text:
         from . import dbc as dbc_mod
         try:
-            decoded = dbc_mod.decode(dbc_text, record["arbitration_id"], bytes(record["data"]))
+            # A pre-parsed db (the hot-loop fast path) decodes without re-hashing
+            # the DBC text; a bare dbc_text goes through the text-keyed path.
+            if db is not None:
+                decoded = dbc_mod.decode_message(db, record["arbitration_id"], bytes(record["data"]))
+            else:
+                decoded = dbc_mod.decode(dbc_text, record["arbitration_id"], bytes(record["data"]))
             if decoded:
                 out.update(decoded)
         except Exception:
